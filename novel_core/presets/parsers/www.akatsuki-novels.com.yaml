@@ -1,0 +1,54 @@
+name: 暁
+domain: www.akatsuki-novels.com
+encoding: UTF-8
+top_url: https://www.akatsuki-novels.com
+sitename: 暁
+
+access:
+  profile: chrome_desktop
+  cookies:
+    - CakeCookie[ALLOWED_ADULT_NOVEL]=on
+
+# 現行の暁は目次を table.list 配下の行で返す。
+toc_url_pattern: "https://www.akatsuki-novels.com/stories/index/novel_id~{ncode}"
+toc_sources:
+  - source: selector
+    selector: "table.list tr"
+    priority: 10
+    index_from_href_regex: "/stories/view/(\\d+)/novel_id~\\d+"
+    href_pattern: "^/stories/view/\\d+/novel_id~\\d+$"
+    item_selectors:
+      subtitle: "td:first-child a[href]"
+      href: "td:first-child a[href]::attr(href)"
+      chapter: "td[colspan] b"
+      subupdate: "td.font-s"
+
+body_selectors:
+  - priority: 10
+    pattern: |-
+      </h2>(?:<div>&nbsp;</div><div><b>前書き</b></div><div class="body-novel">(?<introduction>.+?)&nbsp;</div><hr width="100%"><div>&nbsp;</div>)?<div class="body-novel">(?<body>.+?)&nbsp;</div>(?:<div>&nbsp;</div><hr width="100%"><div>&nbsp;</div><div><b>後書き</b></div><div class="body-novel">(?<postscript>.+?)&nbsp;</div>)?
+    capture_name: body
+
+introduction_selectors:
+  - priority: 10
+    pattern: |-
+      </h2><div>&nbsp;</div><div><b>前書き</b></div><div class="body-novel">(?<introduction>.+?)&nbsp;</div><hr width="100%"><div>&nbsp;</div><div class="body-novel">(?<body>.+?)&nbsp;</div>
+    capture_name: introduction
+
+postscript_selectors:
+  - priority: 10
+    pattern: |-
+      </h2>(?:<div>&nbsp;</div><div><b>前書き</b></div><div class="body-novel">(?<introduction>.+?)&nbsp;</div><hr width="100%"><div>&nbsp;</div>)?<div class="body-novel">(?<body>.+?)&nbsp;</div><div>&nbsp;</div><hr width="100%"><div>&nbsp;</div><div><b>後書き</b></div><div class="body-novel">(?<postscript>.+?)&nbsp;</div>
+    capture_name: postscript
+
+novel_info_selectors:
+  title: "#LookNovel"
+  author: "a[href^='/users/view/']"
+  story: "div.body-x1 div"
+
+# 横断検索メタ情報
+confirm_over18: no
+append_title_to_folder_name: yes
+title_strip_pattern: null
+webnovels_site: akatsuki
+version: 2.0

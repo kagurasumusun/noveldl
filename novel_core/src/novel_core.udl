@@ -1,0 +1,25 @@
+namespace novel_core {
+  string download_first_n(string url, u32 episodes, string output_dir);
+  string create_library_placeholder(string url, string output_dir);
+  string fetch_toc_only(string url, string output_dir);
+  string download_from_chapter(string url, string chapter_index, string output_dir);
+  string download_cached_from_chapter(string url, string chapter_index, string output_dir);
+  string download_reader_cached_from_chapter(string url, string chapter_index, string output_dir);
+  string download_first_n_from_html(string url, string toc_html, string chapters_json, u32 episodes, string output_dir);
+  string cancel_download();
+  string set_extra_cookie_for_domain(string domain, string cookie);
+  string set_browser_fetch_command(string command);
+  string set_domain_engine(string domain, string engine);
+  string save_user_parser_yaml(string domain, string yaml);
+  string save_user_webnovel_yaml(string domain, string yaml);
+  string test_site_definition(string url, string yaml);
+  string set_root_dir(string root_dir);
+  string decompress_zstd_file(string input_path, string output_path);
+  string decompress_zstd_data(bytes data);
+  string decompress_zstd_data_with_dictionary(bytes data, bytes dictionary);
+  string get_download_progress();
+  string list_downloaded_novels(string root_dir);
+  string refresh_downloaded_tocs(string root_dir);
+  string search_novels(string query, u32 limit);
+  string supported_search_sites();
+};

@@ -1,0 +1,42 @@
+!!! 5
+%html{:lang => "ja"}
+  %head
+    %meta{:charset => "utf-8"}/
+    %meta{:content => "IE=edge", "http-equiv" => "X-UA-Compatible"}/
+    %meta{:content => "width=device-width, initial-scale=1", :name => "viewport"}/
+    %meta{:content => "whiteleaf", :name => "author"}/
+    %meta{:content => "none", :name => "robots"}/
+    %title Narou.rb MOD メモ帳
+    %link{:href => "//cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/css/bootstrap.min.css", :rel => "stylesheet"}/
+    %link{:href => "//cdn.jsdelivr.net/npm/perfect-scrollbar@1.5.6/css/perfect-scrollbar.min.css", :rel => "stylesheet"}/
+    %link{:href => "/style.css?_=#{Narou::VERSION}.#{Narou::COMMIT}", :rel => "stylesheet"}/
+    %link{:href => "/resources/css/default-style.css?_=#{Narou::VERSION}.#{Narou::COMMIT}", :rel => "stylesheet"}/
+  %body
+    :scss
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      #notepad.fullscreen {
+        &, div, textarea {
+          box-sizing: border-box;
+          height: 100%;
+        }
+      }
+
+    #notepad.fullscreen
+
+    %script{:src => "//cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"}
+    %script{:src => "//cdn.jsdelivr.net/npm/jquery-migrate@3.5.2/dist/jquery-migrate.js"}
+    %script{:src => "//cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/js/bootstrap.min.js"}
+    %script{:src => "//cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"}
+    %script{:src => "/resources/js/sprintf.js?_=#{Narou::VERSION}.#{Narou::COMMIT}"}
+    %script{:src => "/resources/js/narou.library.js?_=#{Narou::VERSION}.#{Narou::COMMIT}"}
+    :javascript
+      $(document).ready(function($) {
+        Narou.Notepad.replace("notepad");
+      });
+
+

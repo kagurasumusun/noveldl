@@ -1,0 +1,94 @@
+name: NovelDLiOS
+options:
+  minimumXcodeGenVersion: 2.39.0
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    IPHONEOS_DEPLOYMENT_TARGET: 26.2
+    PRODUCT_BUNDLE_IDENTIFIER: com.example.NovelDLiOS
+    TARGETED_DEVICE_FAMILY: 1,2
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift.git
+    from: 7.11.0
+targets:
+  NovelDLiOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.2"
+    sources:
+      - path: NovelDLiOS
+      - path: Generated
+    resources:
+      - path: ../../novel_core/presets
+        type: folder
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIBackgroundModes:
+          - fetch
+          - processing
+        INFOPLIST_KEY_BGTaskSchedulerPermittedIdentifiers:
+          - com.example.NovelDLiOS.toc-refresh
+          - com.example.NovelDLiOS.download-continuation
+        INFOPLIST_KEY_CFBundleURLTypes:
+          - CFBundleURLName: com.example.NovelDLiOS
+            CFBundleURLSchemes:
+              - novelios
+        FRAMEWORK_SEARCH_PATHS:
+          - "$(inherited)"
+        HEADER_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/Generated"
+        USER_HEADER_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/Generated"
+        LIBRARY_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/RustLibs/iphoneos"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-lnovel_core"
+        OTHER_SWIFT_FLAGS:
+          - "$(inherited)"
+          - "-Xcc"
+          - "-fmodule-map-file=$(SRCROOT)/Generated/novel_coreFFI.modulemap"
+          - "-Xcc"
+          - "-I$(SRCROOT)/Generated"
+        SWIFT_INCLUDE_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/Generated"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+    dependencies:
+      - sdk: WebKit.framework
+      - sdk: BackgroundTasks.framework
+      - sdk: UserNotifications.framework
+      - sdk: AppIntents.framework
+      - package: GRDB
+    scheme:
+      testTargets: []
+
+  NovelDLShareExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "26.2"
+    sources:
+      - path: ShareExtension
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.NovelDLiOS.ShareExtension
+        INFOPLIST_KEY_CFBundleDisplayName: NovelDL Share
+        INFOPLIST_KEY_NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true

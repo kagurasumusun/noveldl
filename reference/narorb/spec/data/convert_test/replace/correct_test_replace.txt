@@ -1,0 +1,13 @@
+test_replace
+whiteleaf
+
+［＃改ページ］
+
+［＃３字下げ］［＃中見出し］replace.txtテスト［＃中見出し終わり］
+
+
+　｜東京特許許可局《とうきょうとっきょきょかきょく》
+
+　HOGEHOGE
+　ＢぷよでやるPUYOPUYOは楽しいよ
+　はげはげ

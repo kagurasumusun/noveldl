@@ -1,0 +1,138 @@
+name: ios
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+jobs:
+  rust-ios-uniffi:
+    runs-on: macos-latest
+
+    defaults:
+      run:
+        working-directory: novel_core
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: novel_core
+
+      - name: Setup UniFFI
+        run: |
+          cargo install \
+            --locked \
+            uniffi@0.31.1 \
+            --features cli \
+            --bin uniffi-bindgen
+
+      - name: Build Rust core (device)
+        run: |
+          cargo build --release --target aarch64-apple-ios
+
+      - name: Generate UniFFI Swift bindings
+        run: |
+          mkdir -p ../Novelios/NovelDLiOS/Generated
+
+          ~/.cargo/bin/uniffi-bindgen generate \
+            src/novel_core.udl \
+            --language swift \
+            --out-dir ../Novelios/NovelDLiOS/Generated
+
+      - name: Prepare Rust artifacts
+        run: |
+          mkdir -p ../artifacts/rust-core/iphoneos
+          cp target/aarch64-apple-ios/release/libnovel_core.a \
+            ../artifacts/rust-core/iphoneos/
+
+      - name: Upload generated bindings
+        uses: actions/upload-artifact@v4
+        with:
+          name: uniffi-generated
+          path: Novelios/NovelDLiOS/Generated
+          if-no-files-found: error
+
+      - name: Upload Rust core artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: novel-core-ios
+          path: artifacts/rust-core
+          if-no-files-found: error
+
+  xcodegen-build:
+    runs-on: macos-latest
+    needs: rust-ios-uniffi
+
+    defaults:
+      run:
+        working-directory: Novelios/NovelDLiOS
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download generated bindings
+        uses: actions/download-artifact@v4
+        with:
+          name: uniffi-generated
+          path: Novelios/NovelDLiOS/Generated
+
+      - name: Download Rust core artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: novel-core-ios
+          path: artifacts/rust-core
+
+      - name: Install Rust core static library
+        run: |
+          mkdir -p RustLibs/iphoneos
+          cp ../../artifacts/rust-core/iphoneos/libnovel_core.a RustLibs/iphoneos/
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Setup Xcode
+
+        uses: maxim-lobanov/setup-xcode@v1
+
+        with:
+
+          xcode-version: "26.3"
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build iOS app
+        run: |
+          xcodebuild \
+            -project NovelDLiOS.xcodeproj \
+            -scheme NovelDLiOS \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package unsigned IPA artifact
+        run: |
+          rm -rf build/ipa
+          mkdir -p build/ipa/Payload build/artifacts
+          APP_PATH=$(find build/DerivedData/Build/Products -type d -name "NovelDLiOS.app" | head -n 1)
+          test -n "$APP_PATH"
+          cp -R "$APP_PATH" build/ipa/Payload/
+          (cd build/ipa && zip -qry ../artifacts/NovelDLiOS.ipa Payload)
+
+      - name: Upload built app artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: Novelios/NovelDLiOS/build/artifacts/NovelDLiOS.ipa
+          if-no-files-found: error

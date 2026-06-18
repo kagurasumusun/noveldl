@@ -1,0 +1,183 @@
+%script{ src: "/js/widget.js?mode=insert_button&_t=#{Narou::VERSION}.#{Narou::COMMIT}" }
+
+:javascript
+  local_initialize_functions.push(function($) {
+    $("[data-toggle=tooltip]").tooltip({
+      animation: false,
+      container: "body",
+    });
+
+    var bookmarklet = function(d,l,e,u,o,s,m,ssl) {
+      org='#{request.scheme}://#{env["SERVER_NAME"]}:#{env["SERVER_PORT"]}/';
+      u=org+'js/widget.js?mode=%MODE%%OPTIONS%&_='+Date.now();
+      u2=org+'widget/download?from='+l.hostname+'%OPTIONS%&target='+encodeURIComponent(l.href)+'&_='+Date.now();
+      ssl=l.protocol.match(/^https/);
+      if('%MODE%'==='download'&&ssl){
+        window.open(u2,'dl_window','width=400,height=300,menubar=no,toolbar=no,scrollbars=no,resizable=yes');
+        return
+      }
+      o=d.createElement('div');
+      m='WEB UI Server: ';
+      if(ssl){
+        m+='このサイト上では実行出来ません';
+      }
+      else{
+        m+='OFFLINE';
+      }
+      o.innerHTML=m;
+      o.id='narourb-offline';
+      s=o.style;
+      s.position='fixed';
+      s.top=-1000;
+      s.left=0;
+      s.zIndex=9998;
+      s.color='white';
+      s.background='red';
+      d.body.appendChild(o);
+      setTimeout(function(){
+        s.top=0
+      },2000);
+
+      e=d.createElement('script');
+      e.charset='utf-8';
+      e.src=u;
+      d.body.appendChild(e)
+    };
+
+    function createBookmarkletStrings(proc, mode, options) {
+      var proc_string = proc.toString();
+      proc_string = proc_string.replace(/%MODE%/g, mode);
+      proc_string = proc_string.replace(/%OPTIONS%/g, options || "");
+      return ("javascript:(" + proc_string + ")(document,location)").replace(/ {2,}|\n/g, "");
+    }
+
+    $("#bookmarklet-download").attr("href", createBookmarkletStrings(bookmarklet, "download"));
+    $("#bookmarklet-download-and-mail").attr("href", createBookmarkletStrings(bookmarklet, "download", '&mail=1'));
+    $("#bookmarklet-insert-button").attr(
+      "href",
+      createBookmarkletStrings(insertButtonBookmarklet)
+    );
+  });
+
+= partial :header, locals: { nav: "help" }
+
+#help-container.container.theme-showcase(role="main")
+  %h2 ブックマークレット
+  %h3 小説ページから直接ダウンロード
+  %div
+    %img#ss-bookmarklet1(src="/resources/help/bookmarklet1.png" class="img-thumbnail")
+    %p 小説掲載サイトを表示したまま直接ダウンロード出来るブックマークレットです。
+    %p 下記のリンクをブックマークに登録して、ダウンロードしたい小説のページで実行して下さい。（WEB UIサーバ起動中に限ります）
+    %p ブックマークバーにドラッグ＆ドロップしたり、右クリックからブックマークにいれると簡単です。
+    %p DLが始まればウィンドウは閉じても問題ありません。
+    %p.text-muted ※httpsなサイトの場合はウィンドウがポップアップします。
+    %p
+      %span.glyphicon.glyphicon-bookmark
+      %big
+        %a#bookmarklet-download{ onclick: "return false" }
+          %u Narou.rb MODでダウンロード
+    %p
+      %span.glyphicon.glyphicon-bookmark
+      %big
+        %a#bookmarklet-download-and-mail{ onclick: "return false" }
+          %u Narou.rb MODでダウンロード＆メール
+      %span.text-muted
+        ※ダウンロード完了後にメールで送信します
+
+  %h3 ページ内の小説へのリンクにダウンロードボタンを付ける
+  %div
+    %img#ss-bookmarklet2(src="/resources/help/bookmarklet2.png" class="img-thumbnail")
+    %p 小説投稿サイト内の、各小説へのリンクの横にダウンロード用のボタンを埋め込みます。
+    %p ランキングページや一覧ページなどで実行するとダウンロードが一発で出来るようになったり、どれがダウンロード済みなのかが一目瞭然になります。
+    %p
+      %span.glyphicon.glyphicon-bookmark
+      %big
+        %a#bookmarklet-insert-button{ onclick: "return false" }
+          %u DLボタン設置(Narou.rb MOD)
+        %span.text-danger ver 2.0
+    %ul
+      %li 2.0 - httpsページへの埋め込みに対応（以前のものと互換性なし）
+
+  %hr
+
+  %h2 画面の簡単な説明
+  %img#ss-main(src="/resources/help/ssmain.png" class="img-thumbnail")
+  %h4
+    タイトルロゴ
+    .badge.number 1
+  %div
+    %p クリックすることでページ上部に移動することができます
+
+  %h4
+    操作ボタン
+    .badge.number 2
+  %div
+    %p 押すことで各種操作を行うことが出来ます。Freeze, Remove, Convert, Other ボタンはひとつ以上の小説を選択していないと押すことは出来ません。また、Update, Send ボタンは小説をひとつも選択してない場合は全小説が対象に、選択しているときは選択した小説が対象になります。
+    %p 各種操作は一旦キューに積まれ、順番に処理されます（Update 中に Convert を押しても、更新処理が終わるまでは変換はされない）。現在のキュー数は画面右上の<code>*1</code>で分かります。
+
+  %h4
+    検索ボックス
+    .badge.number 3
+  %div
+    %p このボックスに入力することで、小説一覧から小説を絞り込む事ができます。小説一覧に見えている項目は全て検索対象で、日付等も対象になります。半角スペースで区切ることで、複数の単語で絞り込むことが出来ます。
+
+  %h4
+    小説一覧テーブル
+    .badge.number 4
+  %div
+    %p 現在管理している小説の一覧が表示されます。クリックすると選択状態になり、各種操作の対象となります。
+    %p テーブル上部の項目名をクリックすると、その項目でソートすることが出来ます。また、項目名を左右にドラッグ＆ドロップすることで、項目の順番を入れ替えることが出来ます。
+    %p 表示項目はカスタマイズすることが可能です。上部メニューの「表示＞表示する項目を設定」から各種項目の表示・非表示を選択出来ます。
+    %p １ページに表示する件数を調整する場合は<code>*2</code>で行うことが出来ます。
+    %p 上記の各種設定はブラウザに保存され、開き直した場合も同じ状態が復元されます。デフォルトの状態に戻す場合はメニューの「表示＞表示設定を全てリセット」を実行します。
+
+  %h4 タグ
+  %div
+    %img#ss-tag(src="/resources/help/tag.png" class="img-thumbnail")
+    %p 小説にタグが設定されている場合、タグ欄に表示されます。そのタグをクリックすることで絞込ができるようになっています。
+    %p
+      %strong タグクリック時の修飾キー操作：
+    %ul
+      %li
+        %strong 通常クリック
+        \- そのタグを含む小説を検索（AND検索）
+      %li
+        %strong Shift + クリック
+        \- そのタグを含まない小説を検索（除外検索）
+      %li
+        %strong Ctrl + クリック
+        \- 既存の検索にタグを追加（OR検索）
+      %li
+        %strong Shift + Ctrl + クリック
+        \- 既存の検索に除外タグを追加（OR除外検索）
+    %p
+      %strong 手動での高度な検索：
+      検索ボックスに直接入力することで、より柔軟な検索が可能です。
+    %ul
+      %li
+        %code tag:ラブコメ
+        \- 「ラブコメ」タグを含む小説
+      %li
+        %code -tag:シリアス
+        \- 「シリアス」タグを含まない小説
+      %li
+        %code tag:ラブコメ|青春|学園
+        \- 「ラブコメ」、「青春」、「学園」のいずれかのタグを含む小説（OR検索）
+      %li
+        %code tag:ラブコメ -tag:シリアス
+        \- 「ラブコメ」タグを含み、「シリアス」タグを含まない小説
+    %p タグの絞込状態を解除するにはメニューのタグから解除ボタンを押すか、タグの右側にある小さな空白ラベルをクリックすることでも解除することが出来ます。
+
+  %h4 シングル選択モード
+  %div
+    %p 小説一覧をクリックしてひとつずつ選択するモードです。小説リストの文字情報を選択してコピー出来るのはこのモードだけです。
+
+  %h4 範囲選択モード
+  %div
+    %img#ss-rect-select(src="/resources/help/rect_select.png" class="img-thumbnail")
+    %p 一度に複数の小説を選択する場合に便利なモードです。始点をクリックしたあと終点をクリックして範囲を確定するか、始点から終点までをドラッグすることで範囲を決めることが出来ます。範囲の始点と終点をクリック（タップ）のみで決定できるため、トラックパッドでの操作がし易いモードとなります。
+    %p 範囲が確定された際にメニューが表示されるので、選択や解除等を選択します。反転は現在の選択状態を逆転させます。
+
+  %h4 ハイブリッド選択モード
+  %div
+    %p クリックで選択とドラッグで範囲選択を同時に行える、シングル選択モードと範囲選択モードの特徴を併せ持ったモードです。

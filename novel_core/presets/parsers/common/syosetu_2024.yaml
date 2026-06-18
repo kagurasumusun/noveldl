@@ -1,0 +1,66 @@
+# 汎用: 小説家になろう系（2024年以降の p-eplist / p-novel 構造）
+encoding: UTF-8
+access:
+  profile: safari_mobile
+
+toc_sources:
+  - source: selector
+    selector: "div.p-eplist__sublist, .p-eplist__sublist"
+    priority: 10
+    extract: "list"
+    description: "小説家になろう系エピソードリスト（2024年現在）"
+    item_selectors:
+      chapter: "div.p-eplist__chapter-title"
+      subtitle: "a.p-eplist__subtitle"
+      href: "a.p-eplist__subtitle::attr(href)"
+      subupdate: "div.p-eplist__update"
+
+  - source: page
+    mode: all_links
+    selector: ".c-pager a[href*='?p='], .c-pager a[href*='?page='], a.c-pager__item[href*='?p='], a.c-pager__item[href*='?page=']"
+    href: ":self::attr(href)"
+    href_pattern: "^(?:/n[a-z0-9]+/?)?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)|^/n[a-z0-9]+/?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)"
+    description: "なろう系: ページャ上の全目次ページリンクをYAML定義で列挙"
+  - source: page
+    mode: next_link
+    selector: ".c-pager__item--next a, a.c-pager__item--next"
+    href: ":self::attr(href)"
+    description: "フォールバック: 次ページリンクを順次辿る"
+  - source: page
+    mode: next_link
+    selector: "a[href*='?p='], a[href*='?page=']"
+    href: ":self::attr(href)"
+    href_pattern: "^(?:/n[a-z0-9]+/?)?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)|^/n[a-z0-9]+/?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)"
+    text_pattern: "(?i)^(次へ|next|>|＞)$"
+    description: "フォールバック: ラベル付きクエリリンク"
+
+body_selectors:
+  - selector: ".p-novel__body"
+    priority: 10
+    extract: "inner_html"
+    description: "小説家になろう系本文（現行デザイン）"
+  - selector: "div.js-novel-text.p-novel__text, .js-novel-text.p-novel__text"
+    priority: 9
+    extract: "inner_html"
+  - selector: "div.p-novel__text, .p-novel__text"
+    priority: 8
+    extract: "inner_html"
+  - selector: "div#novel_honbun"
+    priority: 5
+    extract: "inner_html"
+
+introduction_selectors:
+  - selector: "div.js-novel-text.p-novel__text--preface, .p-novel__text--preface"
+    priority: 10
+    extract: "inner_html"
+
+postscript_selectors:
+  - selector: "div.js-novel-text.p-novel__text--afterword, .p-novel__text--afterword"
+    priority: 10
+    extract: "inner_html"
+# ------------------------------------------------------------
+# 横断検索メタ情報（小説家になろう系で共通）
+append_title_to_folder_name: yes
+title_strip_pattern: null
+webnovels_site: narou
+version: 2.2

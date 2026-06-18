@@ -1,0 +1,53 @@
+<%# -*- coding: utf-8 -*- -%>
+<% Template.target_binary_version(1.1) -%>
+<% unless is_hotentry %>
+<%= processed_title %>
+<%= toc["author"] %>
+<%= cover_chuki %>
+――――――――――――――――――――――――
+あらすじ：
+<%= toc["story"] %>
+
+掲載ページ:
+<%= toc["toc_url"] %>
+――――――――――――――――――――――――
+
+<%- end -%>
+<% sections.each_with_index do |section, i| -%>
+［＃改ページ］
+<% if section["chapter"] != "" -%>
+［＃ページの左右中央］
+
+
+［＃３字下げ］［＃大見出し］<%= section["chapter"] %>［＃大見出し終わり］
+
+
+［＃改ページ］
+<% end -%>
+<% if section["subchapter"].to_s != "" -%>
+［＃１字下げ］［＃１段階大きな文字］<%= section["subchapter"].rstrip %>［＃大きな文字終わり］
+<% end -%>
+
+<% if @setting.enable_yokogaki -%>
+［＃１字下げ］<% else -%>
+［＃３字下げ］<% end -%>
+［＃中見出し］<%= section["subtitle"].rstrip %>［＃中見出し終わり］
+
+<% if section["element"]["introduction"] != "" -%>
+［＃ここから６字下げ］
+<%= section["element"]["introduction"] %>
+［＃ここで字下げ終わり］
+<% end -%>
+
+
+<%= section["element"]["body"] %>
+
+<% if section["element"]["postscript"] != "" -%>
+［＃ここから６字下げ］
+<%= section["element"]["postscript"] %>
+［＃ここで字下げ終わり］
+<% end -%>
+<% end -%>
+<% if setting.enable_display_end_of_book && !is_hotentry -%>
+［＃ここから地付き］［＃小書き］（本を読み終わりました）［＃小書き終わり］［＃ここで地付き終わり］
+<% end -%>

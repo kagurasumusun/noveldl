@@ -1,0 +1,8 @@
+# Common Nokogiri access fallback settings for CDN/WAF/JS challenge pages.
+# Platform code (iOS WKWebView, desktop browser helper, etc.) supplies cookies
+# and/or a browser fetch command; this preset only opts a site into that fallback.
+access:
+  browser_fallback: true
+  fallback:
+    on_challenge: browser_fetch_command
+    reuse_browser_cookies: true

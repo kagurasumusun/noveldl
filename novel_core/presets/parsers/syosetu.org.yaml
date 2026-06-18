@@ -1,0 +1,77 @@
+name: ハーメルン
+domain: syosetu.org
+encoding: UTF-8
+top_url: https://syosetu.org
+sitename: ハーメルン
+
+# ドメイン単位のアクセス設定。novel ID は URL から都度解決するため、
+# 特定作品に限定されない。
+access:
+  profile: chrome_desktop
+  referer: toc_parent
+  browser_fallback: true
+  fallback:
+    on_challenge: browser_fetch_command
+  headers:
+    sec-fetch-site: same-origin
+    sec-fetch-mode: navigate
+    sec-fetch-dest: document
+    sec-fetch-user: "?1"
+  cookies:
+    - over18=off
+    - _ga=1
+
+# 専用 HamelnParser と同等に table tr を順走査して章見出し・改稿フラグを保持する。
+toc_url_pattern: "https://syosetu.org/novel/{ncode}/"
+toc_sources:
+  - source: selector
+    selector: "#maind table tr, table tr"
+    priority: 10
+    extract: "list"
+    chapter_header_selector: "td[colspan] strong"
+    index_from_href_regex: "(?:^|/)(\\d+)\\.html(?:$|[?#])"
+    trim_html_tail: true
+    hameln_dot_normalize: true
+    subupdate_if_html_contains: "改稿"
+    subupdate_value: "revised"
+    description: "ハーメルン目次行"
+    item_selectors:
+      index: "span[id]::attr(id)"
+      subtitle: "a[href]"
+      href: "a[href]::attr(href)"
+
+body_selectors:
+  - selector: "div#honbun"
+    priority: 10
+    extract: "inner_html"
+  - selector: "div#novel_honbun"
+    priority: 8
+    extract: "inner_html"
+  - selector: "#main"
+    priority: 6
+    extract: "inner_html"
+  - selector: ".honbun"
+    priority: 5
+    extract: "inner_html"
+
+introduction_selectors:
+  - selector: "div#maegaki, .maegaki"
+    priority: 10
+    extract: "inner_html"
+
+postscript_selectors:
+  - selector: "div#atogaki, .atogaki"
+    priority: 10
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "div#maind [itemprop='name'], [itemprop='name']"
+  author: "div#maind [itemprop='author'], [itemprop='author'] a, [itemprop='author']"
+  story: "div#maind div.ss:nth-of-type(2)"
+# ------------------------------------------------------------
+# 横断検索メタ情報
+confirm_over18: no
+append_title_to_folder_name: yes
+title_strip_pattern: null
+webnovels_site: hameln
+version: 1.3

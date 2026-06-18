@@ -1,0 +1,36 @@
+[package]
+name = "novel_core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+
+[lib]
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+regex = "1"
+wreq = { version = "6.0.0-rc.28", features = ["brotli", "cookies", "deflate", "gzip", "hickory-dns", "json", "query", "zstd"] }
+wreq-util = "3.0.0-rc.11"
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+url = "2"
+percent-encoding = "2"
+aho-corasick = "1"
+encoding_rs = "0.8"
+scraper = "0.27"
+flate2 = "1"
+walkdir = "2"
+chrono = { version = "0.4", features = ["serde"] }
+fs2 = "0.4"
+sha2 = "0.10"
+rusqlite = { version = "0.40", features = ["bundled", "modern_sqlite"] }
+zstd = "0.13"
+
+thiserror = "1"
+uniffi = { version = "0.31.1", features = ["cli"] }
+
+[build-dependencies]
+uniffi = { version = "0.31.1", features = ["build"] }

@@ -1,0 +1,20 @@
+:javascript
+  local_initialize_functions.push(function($) {
+    $("[data-toggle=tooltip]").tooltip({
+      animation: false,
+      container: "body",
+    });
+
+    Narou.Notepad.replace("notepad");
+  });
+
+= partial :header
+
+.container.theme-showcase(role="main")
+  %h1 メモ帳
+  %ul.text-muted
+    %li 編集したら自動でサーバに保存されます
+    %li 別のブラウザで開いていても内容をリアルタイムに同期します
+  .row
+    .col-sm-9
+      #notepad

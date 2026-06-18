@@ -1,0 +1,103 @@
+-# リンクのドラッグ＆ドロップでダウンロードできるウィンドウ
+!!! 5
+%html{:lang => "ja"}
+  %head
+    %meta{:charset => "utf-8"}/
+    %meta{:content => "IE=edge", "http-equiv" => "X-UA-Compatible"}/
+    %meta{:content => "width=device-width, initial-scale=1", :name => "viewport"}/
+    %meta{:content => "whiteleaf", :name => "author"}/
+    %meta{:content => "none", :name => "robots"}/
+    %title Narou.rb MOD DnD Window
+    %link{:href => "//cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/css/bootstrap.min.css", :rel => "stylesheet"}/
+    %link{:href => "//cdn.jsdelivr.net/npm/perfect-scrollbar@1.5.6/css/perfect-scrollbar.min.css", :rel => "stylesheet"}/
+    %link{:href => "/style.css?_=#{Narou::VERSION}.#{Narou::COMMIT}", :rel => "stylesheet"}/
+    %link{:href => "/resources/css/default-style.css?_=#{Narou::VERSION}.#{Narou::COMMIT}", :rel => "stylesheet"}/
+  %body
+    :css
+      html, body, .console {
+        position: relative;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      #information {
+        position: absolute;
+        width: 100%;
+        top: 50%;
+        margin-top: -1em;
+        text-align: center;
+        color: white;
+        font-size: 20px;
+        font-weight: bold;
+        opacity: 0.17;
+        filter: alpha(opacity=17);
+      }
+      .queue {
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        color: white;
+        margin: 0;
+        padding: 0;
+      }
+
+    = embed_concurrency_enabled
+
+    #console.console.fullscreen
+    #information
+      このウィンドウ内にダウンロードしたい<br>
+      小説のリンクをドラッグ＆ドロップ
+    .queue.navbar-text.navbar-right
+      %span.glyphicon.glyphicon-inbox
+      %span.queue__sizes
+        %span.queue__size.queue__size--default> 0
+        - if Narou.concurrency_enabled?
+          %span.queue__size.queue__size--divider
+          %span.queue__size.queue__size--convert> 0
+
+    #link-drop-here
+      .inner
+        .glyphicon.glyphicon-download-alt
+      #link-drop-cover.drop-cover(effectAllowed="all")
+
+    %script{:src => "//cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"}
+    %script{:src => "//cdn.jsdelivr.net/npm/jquery-migrate@3.5.2/dist/jquery-migrate.js"}
+    %script{:src => "//cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/js/bootstrap.min.js"}
+    %script{:src => "//cdn.jsdelivr.net/npm/perfect-scrollbar@0.8.1/dist/js/perfect-scrollbar.jquery.min.js"}
+    %script{:src => "//cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"}
+    %script{:src => "/resources/js/sprintf.js?_=#{Narou::VERSION}.#{Narou::COMMIT}"}
+    %script{:src => "/resources/js/narou.library.js?_=#{Narou::VERSION}.#{Narou::COMMIT}"}
+    %script{:src => "/resources/js/narou.queue.js?_=#{Narou::VERSION}.#{Narou::COMMIT}"}
+    :javascript
+      $(document).ready(function($) {
+        $("#link-drop-here").hide();
+
+        var action = new Narou.Action(null);
+        var stream_console = new Narou.Console({
+          restore: false, buttons: false
+        });
+        var dnd = new Narou.DragDrop;
+
+        $(window).on("dragenter", function(e) {
+          $("#link-drop-here").show();
+        });
+
+        $("#link-drop-cover")
+          .on("dragover", function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            return false;
+          })
+          .on("dragleave", function(e) {
+            $("#link-drop-here").hide();
+          })
+          .on("drop", function(e) {
+            e.preventDefault();
+            dnd.getLinkText(e, function(link) {
+              action.download(link);
+            });
+            $("#link-drop-here").hide();
+          });
+      });
+
+

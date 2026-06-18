@@ -1,0 +1,80 @@
+<%# vim: set ft=javascript : -%>
+var insertButtonBookmarklet = (function() {
+  "DLボタン設置ブックマークレット v2.0";
+  var site_settings = [
+    <%- SiteSetting.settings.each_value.with_index do |s, i| -%>
+      <% setting = s.clone %>
+      {
+        <%- case setting["domain"] -%>
+        <%- when "www.mai-net.net" -%>
+          add_tail: "&n=0&count=1",
+        <%- when "ncode.syosetu.com", "novel18.syosetu.com", "syosetu.org" -%>
+          add_tail: "/",
+        <%- when "www.akatsuki-novels.com" -%>
+          add_tail: "",
+        <%- end -%>
+        url: [<%= Array(setting["url"]).map do |url|
+          %!new RegExp("^(#{url.gsub(/\?<.+?>/, "?:").gsub("\\", "\\\\\\\\")})")!
+        end.join(",") -%>]
+      }<%= i == SiteSetting.settings.length - 1 ? "" : "," %>
+    <%- end -%>
+  ];
+
+  function encodeHTMLForm(data) {
+    var params = [];
+    for (var name in data) {
+      var value = data[name];
+      var param = encodeURIComponent(name) + '=' + encodeURIComponent(value);
+      params.push(param);
+    }
+    return params.join("&").replace(/%20/g, "+");
+  }
+
+  var server_origin = '<%= "#{request.scheme}://#{env["SERVER_NAME"]}:#{env["SERVER_PORT"]}" %>';
+
+  function createButtonElement(href) {
+    var span = document.createElement("span");
+    var img = document.createElement("img");
+    var space = span.cloneNode();
+    span.appendChild(img);
+    span.appendChild(space);
+    img.style.height = "1.15em";
+    img.style.cursor = "pointer";
+    space.textContent = " ";
+
+    var dl_listener = function(e) {
+      img.src = server_origin + "/api/download4ssl?target=" + encodeURIComponent(href);
+      img.onclick = null;
+      img.style.cursor = "default";
+      return false;
+    };
+
+    img.src = server_origin + "/api/downloadable.gif?target=" + encodeURIComponent(href);
+    img.onclick = dl_listener;
+    return span;
+  };
+
+  function matchLink(link, setting) {
+    var matched = false;
+    for (var x in setting.url) {
+      var url = setting.url[x];
+      if (link.href && link.href.toLowerCase().match(url)) {
+        var download_button = createButtonElement(RegExp.$1 + setting.add_tail);
+        link.parentNode.insertBefore(download_button, link);
+        matched = true;
+        break;
+      }
+    }
+    return matched;
+  }
+
+  var links = document.getElementsByTagName("a");
+
+  for (var i in links) {
+    var link = links[i];
+    for (var y in site_settings) {
+      var setting = site_settings[y];
+      if (matchLink(link, setting)) break;
+    }
+  }
+});

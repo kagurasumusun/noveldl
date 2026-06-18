@@ -1,0 +1,386 @@
+:ruby
+  bootsnap_on = !!$bootsnap_enable
+
+%nav#header-navbar.navbar.navbar-default.navbar-fixed-top(role="navigation")
+  .container
+    .navbar-header
+      %button.navbar-toggle(type="button")
+        %span.sr-only Toggle navigation
+        %span.icon-bar
+        %span.icon-bar
+        %span.icon-bar
+      %a.navbar-brand(href="#" data-move-to="top")
+        Narou.rb M
+        %span#bootsnap-indicator.zap{
+          class: (bootsnap_on ? 'on glow' : 'off'),
+          title: (bootsnap_on ? 'Bootsnap!' : 'Normal'),
+          'data-toggle' => 'tooltip',
+          'data-placement' => 'bottom',
+          role: 'img',
+          'aria-label' => (bootsnap_on ? 'Bootsnap enabled' : 'Bootsnap disabled')
+        } ⚡︎
+        D WEB UI
+    .navbar-collapse.collapse
+      %ul.nav.navbar-nav
+        %li.dropdown
+          %a.dropdown-toggle(data-toggle="dropdown" href="#")
+            表示
+            %span.caret
+          %ul.dropdown-menu(role="menu")
+            %li#action-view-all
+              %a(href="#") 全ての項目を表示
+            %li#action-view-setting
+              %a(href="#") 表示する項目を設定
+            %li.divider
+            %li#action-view-novel-list-wide
+              %a(href="#")
+                %span
+                  %span.active-ok.glyphicon.glyphicon-ok
+                  小説リストの幅を広げる
+                %span.shortcut W
+            %li.divider
+            %li#action-view-nonfrozen
+              %a(href="#")
+                %span
+                  %span.active-ok.glyphicon.glyphicon-ok
+                  凍結中以外を表示
+                %span.shortcut Shift+F
+            %li#action-view-frozen
+              %a(href="#")
+                %span
+                  %span.active-ok.glyphicon.glyphicon-ok
+                  凍結中を表示
+                %span.shortcut F
+            %li.divider
+            %li#action-view-toggle-setting-page-open-new-tab
+              %a(href="#")
+                %span
+                  %span.active-ok.glyphicon.glyphicon-ok
+                  変換設定ページは新規タブで開く
+            %li.divider
+            %li#action-view-toggle-buttons-show-page-top
+              %a(href="#")
+                %span
+                  %span.active-ok.glyphicon.glyphicon-ok
+                  ボタンをページ上部に表示
+            %li#action-view-toggle-buttons-fix-footer
+              %a(href="#")
+                %span
+                  %span.active-ok.glyphicon.glyphicon-ok
+                  ボタンを画面下部に表示
+            %li.divider
+            %li#action-view-link-to-edit-menu
+              %a(href="/edit_menu")
+                %span
+                  個別メニューを編集...
+            %li#action-view-select-menu-style
+              %a(href="#")
+                %span
+                  個別メニューの表示スタイルを選択
+            %li.divider
+            %li#action-view-reset
+              %a(href="/") 表示設定を全てリセット
+        %li.dropdown
+          %a.dropdown-toggle(data-toggle="dropdown" href="#")
+            選択
+            %span#badge-number-of-selecting.badge 0
+            %span.caret
+          %ul.dropdown-menu-wide.dropdown-menu(role="menu")
+            %li#action-select-view
+              %a(href="#")
+                %span 表示されている小説を選択
+                %span.shortcut Ctrl+A
+            %li#action-select-all
+              %a(href="#")
+                %span 全ての小説を選択
+                %span.shortcut Shift+A
+            %li#action-select-clear
+              %a(href="#")
+                %span 選択を全て解除
+                %span.shortcut ESC
+            %li.divider
+            %li#action-select-mode-single
+              %a(href="#")
+                %span
+                  %span.active-ok.glyphicon.glyphicon-ok
+                  シングル選択モード
+                %span.shortcut S
+            %li#action-select-mode-rect
+              %a(href="#")
+                %span
+                  %span.active-ok.glyphicon.glyphicon-ok
+                  範囲選択モード
+                %span.shortcut R
+            %li#action-select-mode-hybrid
+              %a(href="#")
+                %span
+                  %span.active-ok.glyphicon.glyphicon-ok
+                  ハイブリッド選択モード
+                %span.shortcut H
+        %li.dropdown
+          %a.dropdown-toggle(data-toggle="dropdown" href="#")
+            タグ
+            %span.caret
+          %ul.dropdown-menu(role="menu")
+            %li
+              #tag-list-canvas
+            %li.divider
+            %li#action-tag-edit.enable-selected
+              %a(href="#")
+                %span
+                  %span
+                    選択した小説のタグを編集
+                %span.shortcut T
+        %li.dropdown
+          %a.dropdown-toggle(data-toggle="dropdown" href="#")
+            ツール
+            %span.caret
+          %ul.dropdown-menu(role="menu")
+            %li#action-tool-open-dnd-window
+              %a(href="#")
+                %span
+                  D&amp;Dウィンドウを開く
+            %li.divider
+            %li#action-tool-csv-download
+              %a(href="#")
+                %span
+                  CSV形式でリストをダウンロード
+            %li#action-tool-csv-import
+              %a(href="#")
+                %span
+                  CSVファイルからインポート
+            %li.divider
+            %li#action-tool-notepad
+              %a(href="/notepad")
+                %span
+                  メモ帳（別ページ）
+            %li#action-tool-notepad-window
+              %a(href="#")
+                %span
+                  メモ帳（ポップアップ）
+      %ul.nav.navbar-nav.navbar-right
+        %li.dropdown
+          %a.dropdown-toggle(data-toggle="dropdown" href="#")
+            %span.glyphicon.glyphicon-cog.hidden-xs
+            %span.visible-xs-inline
+              オプション
+            %span.caret
+          %ul.dropdown-menu(role="menu")
+            %li#action-option-settings
+              %a(href="/settings")
+                %span
+                  %span.glyphicon.glyphicon-wrench
+                  環境設定...
+            %li.divider
+            %li#action-option-help
+              %a(href="/help")
+                %span
+                  %span.glyphicon.glyphicon-question-sign
+                  ヘルプ...
+            %li#action-option-about
+              %a(href="#")
+                %span
+                  %span.glyphicon.glyphicon-info-sign
+                  Narou.rb について
+            %li.divider
+            %li#action-option-server-reboot
+              %a(href="#")
+                %span
+                  %span.glyphicon.glyphicon-refresh
+                  サーバを再起動
+            %li#action-option-server-shutdown
+              %a(href="#")
+                %span
+                  %span.glyphicon.glyphicon-off
+                  サーバをシャットダウン
+      = partial :queue
+      .navbar-form.navbar-right(role="search")
+        .form-group
+          .input-group
+            %span#myFilter-search-icon.glyphicon.glyphicon-search
+            %input#myFilter.form-control(placeholder="Filter" type="text" autocomplete="off")/
+            %span#myFilter-clear.glyphicon.glyphicon-remove-circle
+
+%nav#footer-navbar.navbar.navbar-default.navbar-fixed-bottom.hide
+  .container
+
+.container.container-main.theme-showcase(role="main")
+  -# 初めて表示した時のメッセージ
+  - if @is_first_access
+    .alert.alert-info.fade.in(role="alert")
+      %button.close(type="button" data-dismiss="alert")
+        %span(aria-hidden="true") &times;
+        %span.sr-only Close
+      %h2 Welcome to Narou.rb MOD WEB UI
+      %p 最初に簡単な操作説明があるヘルプをご覧下さい。なお、このメッセージは今回のみ表示されます。
+      %p(style="margin-top:20px")
+        %a.btn.btn-primary(href="/help" role="button") ヘルプを見る &raquo;
+
+  -# コンソール
+  #console-container
+    - console_stdout = capture_haml do
+      #console.console
+      #console-buttons.console-buttons
+        %span.queue-cancel.glyphicon.glyphicon-remove-circle(data-toggle="tooltip" title="処理を中断")
+        %span.console-history.glyphicon.glyphicon-cloud-download(data-toggle="tooltip" title="全ての履歴を取得")
+        %span.console-trash.glyphicon.glyphicon-trash(data-toggle="tooltip" title="表示と履歴を削除")
+        %span.console-expand
+          %span.glyphicon.glyphicon-resize-full(data-toggle="tooltip" title="拡大")
+          %span.glyphicon.glyphicon-resize-small.hide(data-toggle="tooltip" title="縮小")
+    - if Narou.concurrency_enabled?
+      .row
+        .col-xs-7.console-col-left
+          = console_stdout
+        .col-xs-5.console-col-right
+          #console-stdout2.console
+    - else
+      = console_stdout
+
+  -# 操作パネル
+  #control-panel
+    .control-panel-inner
+      .btn-group
+        %button.button-download.btn.btn-primary(type="button" data-toggle="tooltip" |
+                                title="新規ダウンロード") Download |
+        %button.btn.btn-primary.dropdown-toggle(type="button" data-toggle="dropdown")
+          %span.caret
+          %span.sr-only Toggle Dropdown
+        %ul.dropdown-menu(role="menu")
+          %li
+            %a.button-download-force(href="#") 選択した小説を強制再ダウンロード
+      .btn-group
+        %button.button-update.btn.btn-success(type="button" data-toggle="tooltip") Update
+        %button.btn.btn-success.dropdown-toggle(type="button" data-toggle="dropdown")
+          %span.caret
+          %span.sr-only Toggle Dropdown
+        %ul.dropdown-menu(role="menu")
+          %li
+            %a.button-update-general-lastup(href="#") 最新話掲載日を確認
+          %li
+            %a.button-update-by-tag(href="#") タグを指定して更新
+          %li
+            %a.button-update-view(href="#") 表示されている小説を更新
+          %li
+            %a.button-update-force(href="#") 凍結済みでも更新
+      .btn-group
+        %button.button-update-general-lastup-narou.btn.btn-success(type="button" data-toggle="tooltip" title="最新話掲載日をなろうAPIで確認")
+          な
+        %button.button-update-general-lastup-other.btn.btn-success(type="button" data-toggle="tooltip" title="その他の小説の最新話掲載日を確認")
+          他
+        %button.button-update-general-lastup-update-modified.btn.btn-success(type="button" data-toggle="tooltip" title="modifiedタグが付いた小説を更新")
+          %span.glyphicon.glyphicon-refresh
+      .btn-group
+        %button.button-send.btn.btn-warning(type="button" data-toggle="tooltip") Send
+        :ruby
+          menus = []
+          if Inventory.load["hotentry"]
+            menus << ["button-send-hotentry", "hotentry を送信"]
+          end
+          if Inventory.load["device"] == "kindle"
+            menus << ["button-send-backup-bookmark", "端末の栞データをバックアップ"]
+          end
+        - unless menus.empty?
+          %button.btn.btn-warning.dropdown-toggle(type="button" data-toggle="dropdown")
+            %span.caret
+            %span.sr-only Toggle Dropdown
+          %ul.dropdown-menu(role="menu")
+            - menus.each do |klass, label|
+              %li
+                %a{ href: "#", class: klass }= label
+      .btn-group
+        %button.btn.btn-info.dropdown-toggle.enable-selected(type="button" data-toggle="dropdown")
+          Freeze
+          %span.caret
+          %span.sr-only Toggle Dropdown
+        %ul.dropdown-menu(role="menu")
+          %li
+            %a.button-freeze-on(href="#") 選択した小説を凍結
+          %li
+            %a.button-freeze-off(href="#") 選択した小説の凍結を解除
+      .btn-group
+        %button.button-remove.btn.btn-danger.enable-selected(type="button" data-toggle="tooltip" |
+                              title="選択した小説を削除") Remove |
+      .btn-group
+        %button.button-convert.btn.btn-default.enable-selected(type="button" data-toggle="tooltip" |
+                              title="選択した小説を変換") Convert |
+      .btn-group
+        %button.btn.btn-default.dropdown-toggle.enable-selected(type="button" data-toggle="dropdown")
+          Other
+          %span.caret
+          %span.sr-only Toggle Dropdown
+        %ul.dropdown-menu(role="menu")
+          %li
+            %a.button-diff(href="#") 選択した小説の最新の差分を表示
+          %li
+            %a.button-inspect(href="#") 選択した小説の調査状況ログを表示
+          %li
+            %a.button-folder(href="#") 選択した小説の保存フォルダを開く
+          %li
+            %a.button-backup(href="#") 選択した小説のバックアップを作成
+          %li
+            %a.button-setting-burn(href="#") 選択した小説の設定の未設定項目に共通設定を焼付ける
+          %li
+            %a.button-mail(href="#") 選択した小説をメールで送信
+      .btn-group.eject-group.hide
+        %button.button-eject.btn.btn-default(type="button" data-toggle="tooltip" title="端末を取り出す")
+          Eject
+        %button.btn.btn-default.dropdown-toggle(type="button" data-toggle="dropdown")
+          %span.caret
+          %span.sr-only Toggle Dropdown
+        %ul.dropdown-menu(role="menu")
+          %li
+            %a.button-eject-now(href="#") 今すぐ端末を取り出す
+
+.container.container-main.theme-showcase#novel-list-container(role="main")
+  -# 小説の一覧テーブル
+  %div
+    %input#total-novels-count(type="hidden" value="0")
+    #performance-info.alert.alert-info.hide(style="margin-bottom: 10px;")
+      %strong パフォーマンスモード:
+      大量のデータが検出されたため、軽量表示モードで動作しています。タグ表示が簡素化されています。
+    #show-all-warning.alert.alert-warning.hide(style="margin-bottom: 10px;")
+      %strong 注意:
+      「全」表示モードが選択されています。大量のデータを表示中のため、ブラウザの動作が重くなる可能性があります。
+    %table#novel-list.dataTable.table.table-bordered(cellspacing="0" width="100%")
+      %thead
+
+-# 範囲選択後に表示するメニュー
+%ul#rect-select-menu.dropdown-menu(role="menu")
+  %li#rect-select-menu-select
+    %a(href="#") 選択
+  %li#rect-select-menu-clear
+    %a(href="#") 解除
+  %li#rect-select-menu-reverse
+    %a(href="#") 反転
+  %li#rect-select-menu-cancel
+    %a(href="#") キャンセル
+
+%ul#select-color-menu.dropdown-menu(role="menu")
+  %li
+    %a#select-color-menu-green(href="#")
+      %big
+        %span.label.label-green.label-fixed-width Green
+  %li
+    %a#select-color-menu-yellow(href="#")
+      %big
+        %span.label.label-yellow.label-fixed-width Yellow
+  %li
+    %a#select-color-menu-blue(href="#")
+      %big
+        %span.label.label-blue.label-fixed-width Blue
+  %li
+    %a#select-color-menu-magenta(href="#")
+      %big
+        %span.label.label-magenta.label-fixed-width Magenta
+  %li
+    %a#select-color-menu-cyan(href="#")
+      %big
+        %span.label.label-cyan.label-fixed-width Cyan
+  %li
+    %a#select-color-menu-red(href="#")
+      %big
+        %span.label.label-red.label-fixed-width Red
+  %li
+    %a#select-color-menu-white(href="#")
+      %big
+        %span.label.label-white.label-fixed-width White

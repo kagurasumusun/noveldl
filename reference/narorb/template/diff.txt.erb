@@ -1,0 +1,34 @@
+<%# -*- coding: utf-8 -*- -%>
+<% Template.target_binary_version(1.0) -%>
+<%= novel_info["title"] %>
+
+(この差分データに含まれる話数一覧)
+<% sections.each_with_index do |section, i| -%>
+<% if section["chapter"] != "" -%>
+<%= section["chapter"] %>
+<% end -%>
+・<%= section["subtitle"].rstrip %> <% if !section["subupdate"] || section["subupdate"] == "" -%>
+<%= section["subdate"] %>
+<% else -%>
+<%= section["subupdate"] %>
+<% end -%>
+<% end -%>
+―――――――――――――――――――――――――――――
+
+<% sections.each do |section| -%>
+　　　<%= section["subtitle"].rstrip %>
+<% if section["element"]["introduction"] != "" -%>
+(前書き)
+<%= section["element"]["introduction"] %>
+**********************************************************
+<% end -%>
+
+<%= section["element"]["body"] %>
+<% if section["element"]["postscript"] != "" -%>
+**********************************************************
+(後書き)
+<%= section["element"]["postscript"] %>
+<% end -%>
+―――――――――――――――――――――――――――――
+
+<% end -%>
