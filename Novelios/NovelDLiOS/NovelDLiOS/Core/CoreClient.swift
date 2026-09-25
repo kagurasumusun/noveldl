@@ -10,7 +10,11 @@ final class CoreClient: @unchecked Sendable {
     var progress = ProgressSnapshot(total: 0, done: 0, skipped: 0, failed: 0, running: false, current: "")
     var library: [LibraryNovelItem] = []
 
-    private let decoder = JSONDecoder()
+    private let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        return d
+    }()
     private let encoder = JSONEncoder()
     private var bootstrapped = false
 
@@ -40,7 +44,9 @@ final class CoreClient: @unchecked Sendable {
     private func installProgressCallback() {
         novel_core_set_progress_callback({ json, _ in
             guard let json, let data = String(cString: json).data(using: .utf8) else { return }
-            let snapshot = try? JSONDecoder().decode(CoreEnvelope<ProgressSnapshot>.self, from: data)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let snapshot = try? decoder.decode(CoreEnvelope<ProgressSnapshot>.self, from: data)
             guard let p = snapshot?.result else { return }
             Task { @MainActor in
                 CoreClient.shared.progress = p
