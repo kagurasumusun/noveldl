@@ -171,6 +171,21 @@ final class CoreClient: Observable, @unchecked Sendable {
         }
     }
 
+    /// 改稿で保存した旧版の本文(offset 0 = 直前の版)。
+    func sectionVersion(novelId: String, index: String, offset: Int) async throws -> SectionVersionResult {
+        return try await decode(SectionVersionResult.self) {
+            novel_core_section_version_get(Self.libraryRoot().path, novelId, index, Int32(offset))
+        }
+    }
+
+    /// og:image の URL から表紙を取得して保存する(既定の表紙として使う)。
+    static func downloadCover(from urlString: String?, storagePath: String?) async {
+        guard let urlString, !urlString.isEmpty, let url = URL(string: urlString) else { return }
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let img = UIImage(data: data) else { return }
+        CoverStore.save(img, storagePath: storagePath)
+    }
+
     // MARK: downloads
 
     struct DownloadOptions: Sendable {

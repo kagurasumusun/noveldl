@@ -83,6 +83,9 @@ struct FetchTocResult: Decodable, Sendable {
     let author: String
     let episodes: Int
     let chapters: [ChapterMeta]
+    /// 表紙画像のURL(og:image。無ければ nil)
+    let cover: String?
+    var coverUrl: String? { (cover ?? "").isEmpty ? nil : cover }
 }
 
 struct NovelInfoResult: Decodable, Sendable {
@@ -91,6 +94,9 @@ struct NovelInfoResult: Decodable, Sendable {
     let story: String?
     let episodes: Int
     let tocUrl: String?
+    /// 表紙画像のURL(og:image。無ければ nil)
+    let cover: String?
+    var coverUrl: String? { (cover ?? "").isEmpty ? nil : cover }
 }
 
 struct ProgressSnapshot: Decodable, Sendable {
@@ -113,6 +119,19 @@ struct SectionResult: Decodable, Sendable {
     let sourceUrl: String?
     let bodyDownloaded: Bool?
     let updatedAt: String?
+    /// 改稿で保存された旧版の数
+    let versions: Int?
+}
+
+/// 改稿バージョン(旧版)の本文。
+struct SectionVersionResult: Decodable, Sendable {
+    let index: String
+    let subtitle: String
+    let introXhtml: String?
+    let bodyXhtml: String?
+    let postXhtml: String?
+    let updatedAt: String?
+    let versions: Int?
 }
 
 // MARK: - Search

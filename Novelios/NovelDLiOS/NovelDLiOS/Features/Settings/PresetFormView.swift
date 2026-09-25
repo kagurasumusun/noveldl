@@ -74,6 +74,9 @@ struct PresetFormView: View {
     @State private var rawText = ""
     @State private var r18Mode = 0
     @State private var message: String?
+    /// 内蔵の構造化プリセット(toc_sources / body_selectors を持つネスト YAML)。
+    /// 旧来のフラットなフォーム項目は一部しか対応しないため、全文 YAML 編集を主体にする。
+    @State private var isModernPreset = false
 
     private static let order: [String] = [
         "site_name", "site_id", "scheme", "fetch_url_template",
@@ -86,6 +89,20 @@ struct PresetFormView: View {
     var body: some View {
         ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.xl) {
+                    if isModernPreset {
+                        VStack(alignment: .leading, spacing: Spacing.s) {
+                            Label("このサイトは内蔵の詳細な定義を持っています", systemImage: "info.circle")
+                                .font(AppFont.ui(13.5, weight: .semibold))
+                                .foregroundStyle(AppPalette.ink)
+                            Text("抽出ルールは構造化 YAML で管理されているため、下の全文 YAML で編集してください。フォーム項目(従来形式)は保存すると上書き元になるため無効化しています。")
+                                .font(AppFont.ui(11.5))
+                                .foregroundStyle(AppPalette.inkFaint)
+                        }
+                        .padding(Spacing.m)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(PaperBackground())
+                    }
+                    if !isModernPreset {
                     section("基本") {
                         fieldRow("site_name", "サイト名", "例: 小説家になろう")
                         fieldRow("site_id", "識別子", "例: syosetu / kakuyomu")
@@ -122,14 +139,17 @@ struct PresetFormView: View {
                         fieldRow("over18_cookie", "年齢確認クッキー", "サイト側の仕組みに合わせた値(任意)")
                     }
 
-                    section("上級設定(全文 YAML)") {
+                    }
+                    section(isModernPreset ? "全文 YAML(抽出ルール)" : "上級設定(全文 YAML)") {
+                        if !isModernPreset {
                         Toggle(isOn: $showRaw) {
                             Text("全文を直接編集する")
                                 .font(AppFont.ui(14))
                                 .foregroundStyle(AppPalette.ink)
                         }
                         .tint(AppPalette.ember)
-                        if showRaw {
+                        }
+                        if showRaw || isModernPreset {
                             TextEditor(text: $rawText)
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(AppPalette.ink)
@@ -140,8 +160,12 @@ struct PresetFormView: View {
                                     RoundedRectangle(cornerRadius: 8)
                                         .strokeBorder(AppPalette.hairline, lineWidth: 1)
                                 )
-                                .onChange(of: rawText) { fields = PresetYAML.parse(rawText) }
-                            Text("保存時、フォームの内容と本文のどちらか新しい内容が使われます。普段はフォームだけで完結します。")
+                                .onChange(of: rawText) {
+                                    if !isModernPreset { fields = PresetYAML.parse(rawText) }
+                                }
+                            Text(isModernPreset
+                                 ? "内蔵定義の全文です。YAML の構造(インデント)を崩さないよう注意してください。"
+                                 : "保存時、フォームの内容と本文のどちらか新しい内容が使われます。普段はフォームだけで完結します。")
                                 .font(AppFont.ui(11))
                                 .foregroundStyle(AppPalette.inkFaint)
                         }
@@ -254,8 +278,23 @@ struct PresetFormView: View {
             rawText = imported
             message = "読み込みました。内容を確認して保存してください"
         } else if let domain, let yaml = try? await core.loadPreset(domain: domain) {
-            fields = PresetYAML.parse(yaml)
             rawText = yaml
+            // 構造化(ネスト)YAML かどうか。この場合フラットフォームには載らない項目が大半。
+            isModernPreset = yaml.contains("toc_sources:")
+                || yaml.contains("body_selectors:")
+                || yaml.contains("info:")
+                || yaml.contains("access:")
+            if isModernPreset {
+                showRaw = true
+                // 表示用に対応するものだけフォームへ写す(保存は全文 YAML が正となる)。
+                var parsed = PresetYAML.parse(yaml)
+                if let name = parsed["name"], (parsed["site_name"] ?? "").isEmpty {
+                    parsed["site_name"] = name
+                }
+                fields = parsed
+            } else {
+                fields = PresetYAML.parse(yaml)
+            }
         } else {
             fields = PresetYAML.template()
             rawText = PresetYAML.serialize(fields, order: Self.order)
@@ -268,6 +307,22 @@ struct PresetFormView: View {
 
     private func save() {
         Task {
+            // 構造化プリセットは全文 YAML をそのまま保存する(フラット化すると
+            // toc_sources / body_selectors が失われ、サイトの取得が壊れるため)。
+            if isModernPreset {
+                let parsed = PresetYAML.parse(rawText)
+                let target = ((parsed["webnovel_site"] ?? parsed["site_id"]) ?? domain ?? "new-site")
+                    .replacingOccurrences(of: " ", with: "-")
+                    .lowercased()
+                do {
+                    try await core.savePreset(domain: target, yaml: rawText)
+                    message = "保存しました(適用にはアプリを再起動してください)"
+                    Haptics.success()
+                } catch {
+                    message = "保存に失敗: \(error.localizedDescription)"
+                }
+                return
+            }
             var store = fields
             if r18Mode == 2 {
                 store["confirm_over18"] = "true"

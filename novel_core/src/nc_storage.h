@@ -107,6 +107,17 @@ public:
     std::optional<StoredSection> get_section(const std::string& novel_id,
                                              const std::string& chapter_index);
 
+    // 改稿バージョン管理: 本文を差し替える前に旧本文を archive する。
+    // offset は 0 = 直前に保存された版。
+    long long archive_section_version(const std::string& novel_id,
+                                      const std::string& chapter_index,
+                                      const std::string& saved_at);
+    long long section_version_count(const std::string& novel_id,
+                                    const std::string& chapter_index);
+    std::optional<StoredSection> get_section_version(const std::string& novel_id,
+                                                     const std::string& chapter_index,
+                                                     long long offset);
+
     std::vector<NovelListItem> list_novels();
 
     static std::vector<NovelListItem> list_novels_in_existing_db(

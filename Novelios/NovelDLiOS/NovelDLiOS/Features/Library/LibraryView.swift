@@ -10,6 +10,9 @@ struct LibraryView: View {
     @State private var activeStatus: String?
     @State private var readerRoute: ReaderRoute?
 
+    /// 本棚の並び: "grid"(2列) / "list"(1列)。
+    @AppStorage("shelfLayout") private var shelfLayout = "grid"
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -60,7 +63,17 @@ struct LibraryView: View {
                 ReaderView(novelId: route.novelId, startAt: route.index, title: route.title, tocUrl: route.tocUrl)
             }
         }
-        .task { await core.reloadLibrary() }
+        .task {
+            await core.reloadLibrary()
+            // 表示のたびに全件取り直すと重いので、10分に1回だけメタを更新する。
+            let key = "lastMetaRefreshAt"
+            let last = UserDefaults.standard.double(forKey: key)
+            if Date().timeIntervalSince1970 - last > 600 {
+                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: key)
+                _ = try? await core.refreshLibrary()
+                await core.reloadLibrary()
+            }
+        }
     }
 
     // MARK: 見出し + 操作
@@ -79,6 +92,10 @@ struct LibraryView: View {
                 }
                 Spacer()
                 HStack(spacing: Spacing.s) {
+                    CircleIconButton(system: shelfLayout == "grid" ? "list.bullet" : "square.grid.2x2") {
+                        shelfLayout = shelfLayout == "grid" ? "list" : "grid"
+                        Haptics.tap()
+                    }
                     CircleIconButton(system: "arrow.clockwise") {
                         // 取得はリーダー開始時に行うモデル。更新確認は
                         // 目次・話数・更新日の取り直しのみ(速い)。
@@ -108,6 +125,45 @@ struct LibraryView: View {
     // MARK: 本棚 = 横広の表紙を 1 列に
 
     private var bookshelf: some View {
+        if shelfLayout == "grid" {
+            bookshelfGrid
+        } else {
+            bookshelfList
+        }
+    }
+
+    /// 2列のグリッド(表紙主導)。
+    private var bookshelfGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: Spacing.m),
+                            GridItem(.flexible(), spacing: Spacing.m)],
+                  spacing: Spacing.l) {
+            ForEach(core.library, id: \.novelId) { item in
+                NavigationLink(value: item) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        CoverTile(
+                            title: item.title,
+                            author: item.author,
+                            progress: Double(item.downloadedCount ?? 0)
+                                / Double(max(item.episodeCount, 1)),
+                            image: CoverStore.customImage(item.storagePath) ?? core.covers[item.novelId]
+                        )
+                        Text(item.title)
+                            .font(AppFont.ui(12.5, weight: .semibold))
+                            .foregroundStyle(AppPalette.ink)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Text("\(item.downloadedCount ?? 0)/\(max(item.episodeCount, 1)) 話")
+                            .font(AppFont.ui(10.5).monospacedDigit())
+                            .foregroundStyle(AppPalette.inkFaint)
+                    }
+                }
+                .buttonStyle(PressableButtonStyle())
+            }
+        }
+    }
+
+    /// 従来の1列リスト(横長表紙)。
+    private var bookshelfList: some View {
         VStack(spacing: Spacing.xl) {
             ForEach(core.library, id: \.novelId) { item in
                 NavigationLink(value: item) {
@@ -235,6 +291,12 @@ struct LibraryView: View {
                 .path
             let fetched = try await core.fetchToc(url: trimmed, outputDir: dir)
             await core.reloadLibrary()
+            // サイトに表紙(og:image)があれば保存して本棚に表示する。
+            if let coverUrl = fetched.coverUrl {
+                let storage = core.library.first { $0.novelId == fetched.novelId }?.storagePath
+                await CoreClient.downloadCover(from: coverUrl, storagePath: storage)
+                await core.reloadLibrary()
+            }
             activeStatus = nil
             showAddSheet = false
             importUrl = ""

@@ -27,6 +27,8 @@ Value op_library_novel(const std::string& root_dir, const std::string& novel_id)
 Value op_library_refresh(const std::string& root_dir);
 Value op_section_get(const std::string& root_dir, const std::string& novel_id,
                      const std::string& chapter_index);
+Value op_section_version_get(const std::string& root_dir, const std::string& novel_id,
+                             const std::string& chapter_index, long long offset);
 Value op_export_txt_zip(const Value& options);
 
 // progress state (shared with C API)

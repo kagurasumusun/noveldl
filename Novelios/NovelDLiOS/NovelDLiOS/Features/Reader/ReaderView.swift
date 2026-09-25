@@ -52,6 +52,22 @@ struct ReaderView: View {
     @State private var pageCount = 1
     /// 目次シートの段階読み込み位置。
     @State private var tocLimit = 150
+    /// 自動めくり。
+    @AppStorage("readerAutoSeconds") private var autoSeconds = 8.0
+    @State private var autoPlaying = false
+    /// 保存された旧版(改稿バージョン)。
+    @State private var savedVersions = 0
+    @State private var viewingOldVersion = false
+    @State private var oldVersionDate = ""
+    @State private var backupHTML = ""
+    @State private var backupIntro = ""
+    @State private var backupPost = ""
+    /// 目次の折りたたみ済み章。
+    @State private var collapsedGroups: Set<String> = []
+    /// 目次で描画済みの行数(段階読み込み)。
+    @State private var renderedLimit = 150
+    /// 軽い通知(数秒で消えるピル)。
+    @State private var messagePillText: String?
 
     /// 目次/メニューは 1 つの sheet(item:) で出し分ける。
     /// 同じビューに .sheet(isPresented:) を 2 つ付けると環境によって
@@ -122,15 +138,41 @@ struct ReaderView: View {
                         .transition(.opacity)
                 }
                 Spacer()
-                if autoFetching {
-                    fetchPill
-                        .transition(.opacity)
-                }
                 if chromeVisible && showFooter {
                     bottomBar
                         .transition(.opacity)
                 }
             }
+
+            // 常時表示の控えめなピル(話数/頁 + 取得中表示)。
+            // バーの有無に関わらず読書位置をいつでも確認できる。
+            VStack {
+                Spacer()
+                VStack(spacing: 5) {
+                    if let msg = messagePillText {
+                        Text(msg)
+                            .font(AppFont.ui(11, weight: .medium))
+                            .foregroundStyle(theme.ink)
+                            .padding(.horizontal, Spacing.m)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(theme.background.opacity(0.92)))
+                            .overlay(Capsule().strokeBorder(theme.ink.opacity(0.12), lineWidth: 1))
+                            .task {
+                                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                                withAnimation { messagePillText = nil }
+                            }
+                    } else if autoFetching {
+                        fetchPill
+                    } else if core.progress.running {
+                        backgroundPill
+                    }
+                    if showFooter || !chromeVisible {
+                        pagePill
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+            .allowsHitTesting(false)
 
             if hintVisible {
                 hintPill
@@ -181,7 +223,8 @@ struct ReaderView: View {
             }
         }
         .onDisappear {
-            // 離脱時に自動ロックを戻す(つけっぱなしを避ける)。
+            // 離脱時に自動めくりと自動ロックを戻す。
+            autoPlaying = false
             UIApplication.shared.isIdleTimerDisabled = false
             // 取得はリーダーが開いている間だけ行う(閉じたら中止)。
             // 再開は次に読んだとき(取得済み話はスキップされる)。
@@ -193,7 +236,8 @@ struct ReaderView: View {
 
     private var topBar: some View {
         HStack(spacing: Spacing.s) {
-            chromeButton("list.bullet", "一覧") { sheet = .toc }
+            chromeButton("chevron.left", "詳細へ戻る") { dismiss() }
+            chromeButton("list.bullet", "目次") { sheet = .toc }
             Spacer(minLength: 0)
             VStack(spacing: 1) {
                 Text(title)
@@ -226,23 +270,19 @@ struct ReaderView: View {
 
     private var bottomBar: some View {
         HStack(spacing: 2) {
+            chromeCaptioned(autoPlaying ? "pause.fill" : "play.fill",
+                            autoPlaying ? "停止" : "自動", hidesChrome: false) {
+                toggleAuto()
+            }
             chromeCaptioned("chevron.left", "前話", enabled: canGoPrev) {
                 goChapter(delta: -1)
             }
             chromeCaptioned("chevron.up", "前頁") {
                 _ = readerBox.pageUp()
             }
-            VStack(spacing: 2) {
-                Text(chapterLabel)
-                    .font(AppFont.ui(10.5, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(theme.ink)
-                ReadingRibbon(value: chapterProgress)
-                    .frame(maxWidth: 88)
-                Text(pageCount > 1 ? "\(currentPage + 1)/\(pageCount)頁" : " ")
-                    .font(AppFont.ui(8.5, weight: .medium).monospacedDigit())
-                    .foregroundStyle(theme.ink.opacity(0.6))
+            chromeCaptioned("list.bullet", "目次", hidesChrome: false) {
+                sheet = .toc
             }
-            .frame(maxWidth: .infinity)
             chromeCaptioned("chevron.down", "次頁") {
                 _ = readerBox.pageDown()
             }
@@ -271,12 +311,13 @@ struct ReaderView: View {
         .accessibilityLabel(accessibility)
     }
 
-    private func chromeCaptioned(_ system: String, _ caption: String, enabled: Bool = true, act: @escaping () -> Void) -> some View {
+    private func chromeCaptioned(_ system: String, _ caption: String, enabled: Bool = true,
+                                 hidesChrome: Bool = true, act: @escaping () -> Void) -> some View {
         Button {
             act()
             Haptics.tap()
-            // ボタン操作でもバーは自動で引っ込む
-            if chromeVisible {
+            // ボタン操作でもバーは自動で引っ込む(シート/トグル系は除く)
+            if hidesChrome, chromeVisible {
                 withAnimation(.easeInOut(duration: 0.25)) { chromeVisible = false }
             }
         } label: {
@@ -318,6 +359,42 @@ struct ReaderView: View {
         .padding(.vertical, Spacing.s)
         .background(Capsule().fill(theme.background.opacity(0.97)))
         .overlay(Capsule().strokeBorder(theme.ink.opacity(0.15), lineWidth: 1))
+    }
+
+    /// 背景でこの作品の続きを取得しているときの表示。
+    private var backgroundPill: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .scaleEffect(0.7)
+            Text(core.progress.total > 0
+                 ? "背景で取得中 \(core.progress.done + core.progress.skipped)/\(core.progress.total)"
+                 : "背景で取得中…")
+                .font(AppFont.ui(11, weight: .medium).monospacedDigit())
+                .foregroundStyle(theme.ink)
+        }
+        .padding(.horizontal, Spacing.m)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(theme.background.opacity(0.9)))
+        .overlay(Capsule().strokeBorder(theme.ink.opacity(0.12), lineWidth: 1))
+    }
+
+    /// 話数と頁の小さな常時ピル。
+    private var pagePill: some View {
+        HStack(spacing: 6) {
+            Text(chapterLabel)
+                .font(AppFont.ui(10, weight: .semibold).monospacedDigit())
+                .foregroundStyle(theme.ink.opacity(0.75))
+            Text("・")
+                .font(AppFont.ui(10))
+                .foregroundStyle(theme.ink.opacity(0.35))
+            Text(pageCount > 1 ? "\(currentPage + 1)/\(pageCount)頁" : "1/1頁")
+                .font(AppFont.ui(10, weight: .medium).monospacedDigit())
+                .foregroundStyle(theme.ink.opacity(0.75))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(theme.background.opacity(0.72)))
+        .overlay(Capsule().strokeBorder(theme.ink.opacity(0.10), lineWidth: 1))
     }
 
     // MARK: 読書メニュー(読書時専用)
@@ -401,10 +478,48 @@ struct ReaderView: View {
                     }
                     RowDivider()
                     toggleRow("左右スワイプで送り", swipePaging) { swipePaging.toggle() }
+                    RowDivider()
+                    toggleRow("自動めくり", autoPlaying) {
+                        toggleAuto()
+                    }
+                    if autoPlaying {
+                        RowDivider()
+                        StepperRow(label: "めくる間隔",
+                                   value: Binding(get: { Int(autoSeconds) },
+                                                  set: { autoSeconds = Double($0) }),
+                                   range: 3...30, step: 1, suffix: "秒")
+                    }
                 }
                 .background(PaperBackground())
 
                 menuSectionHeader("移動", "GO")
+                if savedVersions > 0 {
+                    VStack(spacing: 0) {
+                        SettingRow(label: viewingOldVersion
+                                   ? "旧版を表示中\(oldVersionDate.isEmpty ? "" : "(\(oldVersionDate))")"
+                                   : "この話の改稿前の本文") {
+                            HStack(spacing: Spacing.s) {
+                                if viewingOldVersion {
+                                    QuietButton(title: "戻す", systemImage: "arrow.uturn.backward") {
+                                        restoreCurrentVersion()
+                                    }
+                                } else {
+                                    QuietButton(title: "旧版を見る", systemImage: "clock.arrow.circlepath") {
+                                        Task { await showOldVersion() }
+                                    }
+                                }
+                            }
+                        }
+                        RowDivider()
+                        Text("改稿時に自動で保存した直前の本文です(最大8版)。")
+                            .font(AppFont.ui(11))
+                            .foregroundStyle(AppPalette.inkFaint)
+                            .padding(.horizontal, Spacing.m)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .background(PaperBackground())
+                }
                 HStack(spacing: Spacing.s) {
                     QuietButton(title: "目次", systemImage: "list.bullet") {
                         sheet = .toc
@@ -431,59 +546,69 @@ struct ReaderView: View {
     }
 
     private var tocSheet: some View {
-        // 長編(数百〜千話)で全行を一気に構築するとシートが開くまで
-        // 数秒固まるため、150話ずつ段階的に読み込む。
+        // 開くたびに取得状況を取り直す(背景取得の結果を即時反映)。
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("目次")
-                    .font(AppFont.serif(20, weight: .semibold))
-                    .foregroundStyle(AppPalette.ink)
-                    .padding(Spacing.l)
-                ForEach(Array((detail?.chapters ?? []).prefix(tocLimit).enumerated()), id: \.element.index) { _, ch in
-                    Button {
-                        sheet = nil
-                        if ch.index != chapterIndex {
-                            chapterIndex = ch.index
-                        }
-                    } label: {
-                        HStack(spacing: Spacing.m) {
-                            Text("\(ch.index)")
-                                .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
-                                .foregroundStyle(AppPalette.inkFaint)
-                                .frame(width: 36, alignment: .trailing)
-                            Text(ch.subtitle)
-                                .font(AppFont.serif(15))
-                                .foregroundStyle(AppPalette.ink)
-                                .lineLimit(2)
-                            Spacer(minLength: Spacing.s)
-                            if ch.index == chapterIndex {
-                                Image(systemName: "book.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(AppPalette.ember)
-                            }
-                            if let mark = ch.subupdate, !mark.isEmpty {
-                                Text(mark == "revised" ? "改" : mark)
-                                    .font(AppFont.ui(10, weight: .bold))
-                                    .foregroundStyle(AppPalette.ember)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 3)
-                                            .strokeBorder(AppPalette.ember.opacity(0.5), lineWidth: 1)
-                                    )
-                            }
-                        }
-                        .padding(.horizontal, Spacing.l)
-                        .padding(.vertical, 12)
-                        .contentShape(Rectangle())
+                HStack(alignment: .firstTextBaseline) {
+                    Text("目次")
+                        .font(AppFont.serif(20, weight: .semibold))
+                        .foregroundStyle(AppPalette.ink)
+                    Spacer()
+                    if let d = detail {
+                        Text("取得済み \(d.downloadedCount)/\(d.novel.episodeCount)")
+                            .font(AppFont.ui(12).monospacedDigit())
+                            .foregroundStyle(AppPalette.inkSoft)
                     }
-                    .buttonStyle(PressableButtonStyle())
-                    RowDivider(leading: Spacing.l)
                 }
-                if let total = detail?.chapters.count, total > tocLimit {
+                .padding(Spacing.l)
+
+                let all = detail?.chapters ?? []
+                let groups = tocGroups(all)
+                ForEach(groups, id: \.name) { group in
+                    if let name = group.name {
+                        Button {
+                            Haptics.tap()
+                            if collapsedGroups.contains(name) {
+                                collapsedGroups.remove(name)
+                            } else {
+                                collapsedGroups.insert(name)
+                            }
+                        } label: {
+                            HStack(spacing: Spacing.s) {
+                                Image(systemName: collapsedGroups.contains(name)
+                                      ? "chevron.right" : "chevron.down")
+                                    .font(AppFont.ui(10, weight: .semibold))
+                                    .foregroundStyle(AppPalette.inkFaint)
+                                Text(name)
+                                    .font(AppFont.ui(13, weight: .semibold))
+                                    .foregroundStyle(AppPalette.ink)
+                                Text("\(group.chapters.count)話")
+                                    .font(AppFont.ui(11).monospacedDigit())
+                                    .foregroundStyle(AppPalette.inkFaint)
+                                Spacer()
+                                let done = group.chapters.filter { $0.bodyDownloaded == true }.count
+                                Text("\(done)/\(group.chapters.count)")
+                                    .font(AppFont.ui(11).monospacedDigit())
+                                    .foregroundStyle(done == group.chapters.count ? AppPalette.gold : AppPalette.inkFaint)
+                            }
+                            .padding(.horizontal, Spacing.l)
+                            .padding(.vertical, 10)
+                            .background(AppPalette.canvas)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PressableButtonStyle(haptic: false))
+                    }
+                    if group.name == nil || !collapsedGroups.contains(group.name ?? "") {
+                        ForEach(Array(group.chapters.prefix(renderedLimit)), id: \.index) { ch in
+                            tocRow(ch)
+                            RowDivider(leading: Spacing.l)
+                        }
+                    }
+                }
+                if tocRowsTotal > renderedLimit {
                     HStack(spacing: Spacing.s) {
                         ProgressView().scaleEffect(0.7)
-                        Text("残り \(total - tocLimit) 話…")
+                        Text("残り \(tocRowsTotal - renderedLimit) 話…")
                             .font(AppFont.ui(11))
                             .foregroundStyle(AppPalette.inkFaint)
                     }
@@ -492,10 +617,21 @@ struct ReaderView: View {
                     .onAppear {
                         Task { @MainActor in
                             try? await Task.sleep(nanoseconds: 60_000_000)
-                            if tocLimit < total {
-                                tocLimit += 150
-                            }
+                            renderedLimit += 150
                         }
+                    }
+                }
+            }
+        }
+        .task {
+            // 取得状況(✔)を開くたびに更新する
+            if let fresh = try? await core.novelDetail(novelId) {
+                detail = fresh
+                // 長編では現在の章の章だけ開き、他は折りたたむ
+                if collapsedGroups.isEmpty && (fresh.chapters.count > 120) {
+                    for g in tocGroups(fresh.chapters) where g.name != nil {
+                        let hasCurrent = g.chapters.contains { $0.index == chapterIndex }
+                        if !hasCurrent { collapsedGroups.insert(g.name!) }
                     }
                 }
             }
@@ -503,7 +639,89 @@ struct ReaderView: View {
         .presentationDetents([.medium, .large])
     }
 
+    private struct TocGroup {
+        let name: String?
+        let chapters: [ChapterMeta]
+    }
+
+    /// chapter(章名)でグループ化。章が無い話は name = nil の一つの束に。
+    private func tocGroups(_ chapters: [ChapterMeta]) -> [TocGroup] {
+        var out: [TocGroup] = []
+        var currentName: String? = nil
+        var bucket: [ChapterMeta] = []
+        func flush() {
+            if !bucket.isEmpty {
+                out.append(TocGroup(name: currentName, chapters: bucket))
+                bucket = []
+            }
+        }
+        for ch in chapters {
+            let trimmed = (ch.chapter ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let nm: String? = trimmed.isEmpty ? nil : trimmed
+            if out.isEmpty && bucket.isEmpty { currentName = nm }
+            if nm != currentName {
+                flush()
+                currentName = nm
+            }
+            bucket.append(ch)
+        }
+        flush()
+        return out
+    }
+
+    private var tocRowsTotal: Int {
+        (detail?.chapters ?? []).count
+    }
+
+    /// 目次行(取得済み ✔ / 改稿マーク / 現在話)。
+    private func tocRow(_ ch: ChapterMeta) -> some View {
+        Button {
+            sheet = nil
+            if ch.index != chapterIndex {
+                chapterIndex = ch.index
+            }
+        } label: {
+            HStack(spacing: Spacing.m) {
+                Text("\(ch.index)")
+                    .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(AppPalette.inkFaint)
+                    .frame(width: 36, alignment: .trailing)
+                Text(ch.subtitle)
+                    .font(AppFont.serif(15))
+                    .foregroundStyle(AppPalette.ink)
+                    .lineLimit(2)
+                Spacer(minLength: Spacing.s)
+                if ch.bodyDownloaded == true {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(AppPalette.gold)
+                }
+                if ch.index == chapterIndex {
+                    Image(systemName: "book.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AppPalette.ember)
+                }
+                if let mark = ch.subupdate, !mark.isEmpty {
+                    Text(mark == "revised" ? "改" : mark)
+                        .font(AppFont.ui(10, weight: .bold))
+                        .foregroundStyle(AppPalette.ember)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(AppPalette.ember.opacity(0.5), lineWidth: 1)
+                        )
+                }
+            }
+            .padding(.horizontal, Spacing.l)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+
     // MARK: 操作
+
 
     private func stepBinding(_ base: Binding<Double>) -> Binding<Double> {
         Binding(
@@ -532,19 +750,21 @@ struct ReaderView: View {
         }
     }
 
+    /// セクション見出し: 日本語を主体に、英語は小さく補助として添える。
     private func menuSectionHeader(_ title: String, _ en: String) -> some View {
-        HStack(spacing: Spacing.s) {
-            Text(en)
-                .font(AppFont.ui(11.5, weight: .semibold))
-                .foregroundStyle(AppPalette.ink)
-                .tracking(2)
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
             Text(title)
-                .font(AppFont.ui(9.5))
+                .font(AppFont.serif(16, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+            Text(en)
+                .font(AppFont.ui(9.5, weight: .semibold))
                 .foregroundStyle(AppPalette.inkFaint)
+                .tracking(1.5)
             Rectangle()
                 .fill(AppPalette.hairline)
                 .frame(height: 1)
         }
+        .padding(.top, Spacing.xs)
     }
 
     private func goChapter(delta: Int) {
@@ -601,6 +821,58 @@ struct ReaderView: View {
         rebuild()
     }
 
+    /// 自動めくりのON/OFF。一定間隔で次頁、最終頁では次の話へ。
+    private func toggleAuto() {
+        if autoPlaying {
+            autoPlaying = false
+            return
+        }
+        autoPlaying = true
+        UIApplication.shared.isIdleTimerDisabled = true
+        Task {
+            while autoPlaying {
+                try? await Task.sleep(nanoseconds: UInt64(max(autoSeconds, 2) * 1_000_000_000))
+                guard autoPlaying else { break }
+                if !readerBox.pageDown() {
+                    if canGoNext {
+                        goChapter(delta: 1)
+                    } else {
+                        autoPlaying = false
+                        UIApplication.shared.isIdleTimerDisabled = false
+                    }
+                }
+            }
+        }
+    }
+
+    /// 改稿で保存された直前の版を表示する。
+    private func showOldVersion() async {
+        guard !viewingOldVersion else { return }
+        guard let ver = try? await core.sectionVersion(novelId: novelId, index: chapterIndex, offset: 0),
+              !(ver.bodyXhtml ?? "").isEmpty else {
+            messagePillText = "旧版が見つかりませんでした"
+            return
+        }
+        backupHTML = lastHTML
+        backupIntro = lastIntro
+        backupPost = lastPost
+        lastHTML = ver.bodyXhtml ?? ""
+        lastIntro = ver.introXhtml ?? ""
+        lastPost = ver.postXhtml ?? ""
+        oldVersionDate = String((ver.updatedAt ?? "").prefix(10))
+        viewingOldVersion = true
+        rebuild()
+    }
+
+    private func restoreCurrentVersion() {
+        guard viewingOldVersion else { return }
+        lastHTML = backupHTML
+        lastIntro = backupIntro
+        lastPost = backupPost
+        viewingOldVersion = false
+        rebuild()
+    }
+
     /// 見出し/前書き/本文/後書きを組み立てて表示テキストを作る。
     /// 挿絵のレンジは結合後のテキスト位置へ補正する。
     private func rebuild() {
@@ -611,7 +883,26 @@ struct ReaderView: View {
         if showChapterTitle {
             combined.append(ReaderMarkup.chapterHeading(title: lastSubTitle, style: style))
         }
-        if showIntroPost, !lastIntro.isEmpty {
+        // 旧バージョンで保存した本文には前書き/後書きが混入していることがある。
+        // 混入済みなら二重表示を避けるため別ブロックの追加を省く。
+        func normalized(_ t: String) -> String {
+            t.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "[\\s\\u3000]", with: "", options: .regularExpression)
+        }
+        let bodyPlain = normalized(lastHTML)
+        var skipIntro = false
+        var skipPost = false
+        if showIntroPost {
+            let introPlain = normalized(lastIntro)
+            if !introPlain.isEmpty, bodyPlain.hasPrefix(String(introPlain.prefix(48))) {
+                skipIntro = true
+            }
+            let postPlain = normalized(lastPost)
+            if !postPlain.isEmpty, bodyPlain.hasSuffix(String(postPlain.suffix(48))) {
+                skipPost = true
+            }
+        }
+        if showIntroPost, !lastIntro.isEmpty, !skipIntro {
             let r = markup.parse(lastIntro, style: style)
             for im in r.images {
                 refs.append(ImageRef(
@@ -629,7 +920,7 @@ struct ReaderView: View {
                 src: im.src))
         }
         combined.append(body.text)
-        if showIntroPost, !lastPost.isEmpty {
+        if showIntroPost, !lastPost.isEmpty, !skipPost {
             combined.append(ReaderMarkup.dividerBlock(style: style))
             let r = markup.parse(lastPost, style: style)
             for im in r.images {
@@ -663,6 +954,10 @@ struct ReaderView: View {
             )
         )
         await core.reloadLibrary()
+        // 取得済み✔などが目次・操作面に即時反映されるように取り直す。
+        if let fresh = try? await core.novelDetail(novelId) {
+            detail = fresh
+        }
     }
 
     private func load() async {
@@ -720,6 +1015,8 @@ struct ReaderView: View {
             lastSubTitle = meta?.subtitle ?? ""
             lastIntro = sec.introXhtml ?? ""
             lastPost = sec.postXhtml ?? ""
+            savedVersions = sec.versions ?? 0
+            viewingOldVersion = false
             rebuild()
         } catch {
             loadError = "読めませんでした: \(error.localizedDescription)"

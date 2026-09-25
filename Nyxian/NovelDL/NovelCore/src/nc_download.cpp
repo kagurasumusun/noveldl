@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <regex>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -424,10 +425,22 @@ Value fetch_metadata_via_rules(const std::string& url, const Value& preset, Http
     std::string html = http.fetch(apply_fetch_url_template(preset, url), access, std::nullopt);
     RulesParser parser(preset);
     ParsedToc toc = parser.parse_toc(html);
+    // 表紙URL: og:image から汎用抽出する(サイト別ルールがあれば将来ここに追加)。
+    std::string cover;
+    {
+        static const std::regex og_re(
+            R"(property=["']og:image["'][^>]*content=["']([^"']+)["']|content=["']([^"']+)["'][^>]*property=["']og:image["'])",
+            std::regex::icase);
+        std::smatch m;
+        if (std::regex_search(html, m, og_re)) {
+            cover = m[1].matched ? m[1].str() : m[2].str();
+        }
+    }
     Value v = Value::map_();
     v.set("title", Value::string(toc.title.value_or("")));
     v.set("author", Value::string(toc.author.value_or("")));
     v.set("story", Value::string(toc.story.value_or("")));
+    v.set("cover", Value::string(cover));
     v.set("status", Value::string(toc.status.value_or("")));
     v.set("next_update", Value::string(toc.next_update.value_or("")));
     v.set("comment_count", Value::string(toc.comment_count.value_or("")));
@@ -733,6 +746,11 @@ Value op_download(const DownloadOptions& opts) {
                            : std::nullopt;
         up.source_signature = sig;
         up.updated_at = now_rfc3339();
+        // 改稿(既存話の差し替え)のとき、上書き前に旧本文を版として保存する。
+        if (was_done) {
+            try { storage.archive_section_version(novel_id, ch.index, now_rfc3339()); }
+            catch (const std::exception&) {}
+        }
         pending.push_back(std::move(up));
 
         bool should_flush =
@@ -830,10 +848,12 @@ Value op_fetch_toc(const DownloadOptions& opts) {
     // NOTE: story は try の外で宣言する(ブロック内宣言のまま out.set で参照すると
     // スコープ外参照でコンパイルエラーになり、アプリ全体がビルドできなくなる)。
     std::string story;
+    std::string cover_url;
     {
         try {
             Value meta = fetch_metadata_via_rules(active_url, preset, http);
             story = meta.get_str("story", "");
+            cover_url = meta.get_str("cover", "");
             NovelMetaExtra mx;
             mx.status = meta.get_str("status", "");
             mx.next_update = meta.get_str("next_update", "");
@@ -854,6 +874,7 @@ Value op_fetch_toc(const DownloadOptions& opts) {
     out.set("author", Value::string(author));
     out.set("episodes", Value::integer((long long)tr.chapters.size()));
     out.set("story", Value::string(story));
+    out.set("cover", Value::string(cover_url));
     out.set("chapters", std::move(chapters));
     return out;
 }
@@ -1029,6 +1050,28 @@ Value op_section_get(const std::string& root_dir, const std::string& novel_id,
     v.set("source_url", Value::string(sec->source_url));
     v.set("body_downloaded", Value::boolean(sec->body_downloaded));
     v.set("updated_at", Value::string(sec->updated_at));
+    try { v.set("versions", Value::integer(storage.section_version_count(novel_id, chapter_index))); }
+    catch (const std::exception&) { v.set("versions", Value::integer(0)); }
+    return v;
+}
+
+Value op_section_version_get(const std::string& root_dir, const std::string& novel_id,
+                             const std::string& chapter_index, long long offset) {
+    std::string master = root_dir + "/master.db";
+    std::error_code ec;
+    if (!fs::exists(master, ec)) master = root_dir + "/sections.sqlite3";
+    if (!fs::exists(master, ec)) throw Error("library not found at " + root_dir);
+    SectionStorage storage(master);
+    auto sec = storage.get_section_version(novel_id, chapter_index, offset);
+    if (!sec) throw Error("version not found: " + novel_id + " / " + chapter_index);
+    Value v = Value::map_();
+    v.set("index", Value::string(sec->index));
+    v.set("subtitle", Value::string(sec->subtitle));
+    v.set("intro_xhtml", Value::string(sec->intro_xhtml));
+    v.set("body_xhtml", Value::string(sec->body_xhtml));
+    v.set("post_xhtml", Value::string(sec->post_xhtml));
+    v.set("updated_at", Value::string(sec->updated_at));
+    v.set("versions", Value::integer(storage.section_version_count(novel_id, chapter_index)));
     return v;
 }
 

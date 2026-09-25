@@ -374,6 +374,13 @@ struct NovelDetailView: View {
         detail = try? await core.novelDetail(item.novelId)
         flatChapters = detail?.chapters ?? []
         customCover = CoverStore.customImage(item.storagePath)
+        // 表紙が無ければサイト(og:image)から一度だけ取得して保存する。
+        if customCover == nil && core.covers[item.novelId] == nil {
+            if let info = try? await core.novelInfo(url: item.tocUrl), let coverUrl = info.coverUrl {
+                await CoreClient.downloadCover(from: coverUrl, storagePath: item.storagePath)
+                customCover = CoverStore.customImage(item.storagePath)
+            }
+        }
         if synopsis == nil {
             // あらすじは追加時に保存したものを優先し、無ければ取りに行く
             if let stored = detail?.novel.description, !stored.isEmpty {

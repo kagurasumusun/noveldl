@@ -344,6 +344,12 @@ struct DiscoverView: View {
                 .path
             let toc = try await core.fetchToc(url: hit.url, outputDir: dir)
             await core.reloadLibrary()
+            // サイトに表紙(og:image)があれば保存して本棚に表示する。
+            if let coverUrl = toc.coverUrl {
+                let storage = core.library.first { $0.novelId == toc.novelId }?.storagePath
+                await CoreClient.downloadCover(from: coverUrl, storagePath: storage)
+                await core.reloadLibrary()
+            }
             Haptics.success()
             errorText = "「\(toc.title)」を本棚に追加しました(目次のみ)。\n読み始めると続きを自動で取得します。"
         } catch {

@@ -427,12 +427,16 @@ struct CoverTile: View {
     let author: String
     var progress: Double = 0
     var width: CGFloat? = nil
+    /// 実際の表紙(og:image)。nil なら布+活字の既定デザイン。
+    var image: UIImage? = nil
 
-    init(title: String, author: String, progress: Double = 0, width: CGFloat? = nil) {
+    init(title: String, author: String, progress: Double = 0, width: CGFloat? = nil,
+         image: UIImage? = nil) {
         self.title = title
         self.author = author
         self.progress = progress
         self.width = width
+        self.image = image
     }
 
     private static let cloths: [Color] = [
@@ -461,19 +465,30 @@ struct CoverTile: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [cloth.opacity(0.90), cloth],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .overlay(alignment: .leading) {
-                HStack(spacing: 0) {
-                    Rectangle().fill(cream.opacity(0.85)).frame(width: 3)
-                    Rectangle().fill(Color.black.opacity(0.22)).frame(width: 1.5)
-                    Spacer(minLength: 0)
+            if let image {
+                GeometryReader { geo in
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                }
+            } else {
+                LinearGradient(
+                    colors: [cloth.opacity(0.90), cloth],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .overlay(alignment: .leading) {
+                    HStack(spacing: 0) {
+                        Rectangle().fill(cream.opacity(0.85)).frame(width: 3)
+                        Rectangle().fill(Color.black.opacity(0.22)).frame(width: 1.5)
+                        Spacer(minLength: 0)
+                    }
                 }
             }
-            VStack {
+            if image == nil {
+                VStack {
                 doubleRule
                 Spacer(minLength: 0)
                 doubleRule
@@ -497,6 +512,7 @@ struct CoverTile: View {
                     .lineLimit(1)
             }
             .padding(.horizontal, 14)
+            }
 
             if progress > 0 {
                 VStack {

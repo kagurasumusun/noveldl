@@ -243,6 +243,15 @@ char* novel_core_save_parser_yaml(const char* domain, const char* yaml) {
     });
 }
 
+char* novel_core_section_version_get(const char* root_dir, const char* novel_id,
+                                     const char* chapter_index, int32_t offset) {
+    return guarded([&]() {
+        if (!root_dir || !novel_id || !chapter_index) throw Error("null argument");
+        std::string root = root_dir && *root_dir ? root_dir : config::root_dir();
+        return op_section_version_get(root, novel_id, chapter_index, offset);
+    });
+}
+
 char* novel_core_load_parser_yaml(const char* domain) {
     return guarded([&]() {
         if (!domain) throw Error("domain is null");

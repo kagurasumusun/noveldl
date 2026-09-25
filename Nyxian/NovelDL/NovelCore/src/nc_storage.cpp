@@ -199,6 +199,21 @@ void migrate_shard(Sqlite& db) {
             updated_at    TEXT NOT NULL,
             PRIMARY KEY (novel_id, image_key)
         );
+        CREATE TABLE IF NOT EXISTS section_versions (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            novel_id          TEXT NOT NULL,
+            chapter_index     TEXT NOT NULL,
+            saved_at          TEXT NOT NULL,
+            subtitle          TEXT NOT NULL DEFAULT '',
+            source_signature  TEXT NOT NULL DEFAULT '',
+            intro_xhtml_zstd  BLOB,
+            body_xhtml_zstd   BLOB,
+            post_xhtml_zstd   BLOB,
+            intro_zstd_dict_id TEXT,
+            body_zstd_dict_id  TEXT,
+            post_zstd_dict_id  TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_versions_novel ON section_versions(novel_id, chapter_index, id);
         CREATE INDEX IF NOT EXISTS idx_sections_novel_sort ON sections(novel_id, sort_key, chapter_index);
         CREATE INDEX IF NOT EXISTS idx_sections_novel_source_url ON sections(novel_id, source_url);
     )SQL");
@@ -748,6 +763,96 @@ std::optional<StoredSection> SectionStorage::get_section(const std::string& nove
     sec.body_downloaded = stmt.col_int64(10) != 0;
     sec.updated_at = stmt.col_text(11);
     sec.sort_key = stmt.col_double(12);
+    return sec;
+}
+
+// 差し替え前の本文を版として保存する(圧縮 blob を SQL 内で直接コピー)。
+long long SectionStorage::archive_section_version(const std::string& novel_id,
+                                                  const std::string& chapter_index,
+                                                  const std::string& saved_at) {
+    std::string path = impl_->shard_path_for_chapter(novel_id, chapter_index);
+    std::error_code ec;
+    if (!fs::exists(path, ec)) return 0;
+    Sqlite& db = impl_->shard(path);
+    {
+        Stmt stmt(db.prepare(R"SQL(
+            INSERT INTO section_versions
+                (novel_id, chapter_index, saved_at, subtitle, source_signature,
+                 intro_xhtml_zstd, body_xhtml_zstd, post_xhtml_zstd,
+                 intro_zstd_dict_id, body_zstd_dict_id, post_zstd_dict_id)
+            SELECT novel_id, chapter_index, ?3, subtitle, source_signature,
+                   intro_xhtml_zstd, body_xhtml_zstd, post_xhtml_zstd,
+                   intro_zstd_dict_id, body_zstd_dict_id, post_zstd_dict_id
+            FROM sections WHERE novel_id = ?1 AND chapter_index = ?2 AND body_downloaded = 1
+        )SQL"));
+        stmt.bind_text(1, novel_id);
+        stmt.bind_text(2, chapter_index);
+        stmt.bind_text(3, saved_at);
+        if (!stmt.step()) return 0;
+    }
+    // 履歴が際限なく増えないよう、話あたり直近8版だけを残す。
+    db.exec("DELETE FROM section_versions WHERE novel_id = '" + novel_id +
+            "' AND chapter_index = '" + chapter_index +
+            "' AND id NOT IN (SELECT id FROM section_versions WHERE novel_id = '" + novel_id +
+            "' AND chapter_index = '" + chapter_index + "' ORDER BY id DESC LIMIT 8)");
+    return 1;
+}
+
+long long SectionStorage::section_version_count(const std::string& novel_id,
+                                                const std::string& chapter_index) {
+    std::string path = impl_->shard_path_for_chapter(novel_id, chapter_index);
+    std::error_code ec;
+    if (!fs::exists(path, ec)) return 0;
+    Sqlite& db = impl_->shard(path);
+    Stmt stmt(db.prepare(
+        "SELECT COUNT(*) FROM section_versions WHERE novel_id = ?1 AND chapter_index = ?2"));
+    stmt.bind_text(1, novel_id);
+    stmt.bind_text(2, chapter_index);
+    return stmt.step() ? stmt.col_int64(0) : 0;
+}
+
+std::optional<StoredSection> SectionStorage::get_section_version(const std::string& novel_id,
+                                                                 const std::string& chapter_index,
+                                                                 long long offset) {
+    std::string path = impl_->shard_path_for_chapter(novel_id, chapter_index);
+    std::error_code ec;
+    if (!fs::exists(path, ec)) return std::nullopt;
+    Sqlite& db = impl_->shard(path);
+    Stmt stmt(db.prepare(R"SQL(
+        SELECT chapter_index, subtitle, '' ,
+               intro_xhtml_zstd, body_xhtml_zstd, post_xhtml_zstd,
+               intro_zstd_dict_id, body_zstd_dict_id, post_zstd_dict_id,
+               source_signature, 1, saved_at, 0
+        FROM section_versions WHERE novel_id = ?1 AND chapter_index = ?2
+        ORDER BY id DESC LIMIT 1 OFFSET ?3
+    )SQL"));
+    stmt.bind_text(1, novel_id);
+    stmt.bind_text(2, chapter_index);
+    stmt.bind_int64(3, offset < 0 ? 0 : offset);
+    if (!stmt.step()) return std::nullopt;
+    auto decode = [&](int blob_col, int dict_col) -> std::string {
+        if (stmt.col_null(blob_col)) return "";
+        std::string blob = stmt.col_blob(blob_col);
+        std::string dict;
+        if (!stmt.col_null(dict_col)) {
+            std::string dict_id = stmt.col_text(dict_col);
+            Stmt dstmt(db.prepare(
+                "SELECT dictionary FROM zstd_dictionaries WHERE novel_id = ?1 AND dict_id = ?2"));
+            dstmt.bind_text(1, novel_id);
+            dstmt.bind_text(2, dict_id);
+            if (dstmt.step()) dict = dstmt.col_blob(0);
+        }
+        return dict.empty() ? decompress_zstd_str(blob) : decompress_zstd_dict(blob, dict);
+    };
+    StoredSection sec;
+    sec.index = stmt.col_text(0);
+    sec.subtitle = stmt.col_text(1);
+    sec.intro_xhtml = decode(3, 6);
+    sec.body_xhtml = decode(4, 7);
+    sec.post_xhtml = decode(5, 8);
+    sec.source_signature = stmt.col_text(9);
+    sec.body_downloaded = true;
+    sec.updated_at = stmt.col_text(11);
     return sec;
 }
 
