@@ -951,7 +951,11 @@ std::vector<std::string> generic_next_page_hrefs(const std::string& html) {
             is_next = v.find("next") != std::string::npos;
         }
         std::string text = trim(tag.replace_all(m.get_or(2, ""), ""));
-        if (!is_next && !next_text.is_match(text)) continue;
+        bool numbered = !text.empty() && text.find_first_not_of("0123456789") == std::string::npos &&
+                        (href.find("p=") != std::string::npos ||
+                         href.find("page=") != std::string::npos ||
+                         href.find("pg=") != std::string::npos);
+        if (!is_next && !numbered && !next_text.is_match(text)) continue;
         if (seen.insert(href).second) out.push_back(href);
     }
     return out;
@@ -977,7 +981,18 @@ std::vector<std::string> RulesParser::parse_image_srcs(const std::string& html) 
 std::vector<std::string> RulesParser::parse_toc_page_hrefs(const std::string& html) const {
     Engine e{compile_rules(preset_)};
     auto hrefs = e.parse_toc_page_hrefs(html);
-    if (hrefs.empty()) hrefs = generic_next_page_hrefs(html);
+    // ルールで拾えなくても取りこぼさないよう、汎用(次へ/番号リンク)と合流する。
+    // 絶対/相対の表記ゆれで同一リンクが二重に載らないよう包含チェックする。
+    for (auto& g : generic_next_page_hrefs(html)) {
+        bool dup = false;
+        for (auto& h : hrefs) {
+            if (h == g || h.find(g) != std::string::npos || g.find(h) != std::string::npos) {
+                dup = true;
+                break;
+            }
+        }
+        if (!dup) hrefs.push_back(g);
+    }
     return hrefs;
 }
 

@@ -52,7 +52,9 @@ struct DiscoverView: View {
                         scopeRow
                     }
 
-                    searchServices
+                    if results.isEmpty && !searching {
+                        searchServices
+                    }
 
                     if results.isEmpty && !searching {
                         VStack(spacing: Spacing.m) {

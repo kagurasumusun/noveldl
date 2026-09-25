@@ -256,6 +256,7 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
         pages.queue.emplace_back(toc_url, std::nullopt);
 
     TocResult result;
+    std::set<std::string> seen_chapters;
     AccessSettings access = AccessSettings::from_preset(preset);
     int fetched_pages = 0;
     while (!pages.queue.empty()) {
@@ -269,7 +270,8 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
         ParsedToc toc = parser.parse_toc(body);
         if (result.title.empty() && toc.title) result.title = *toc.title;
         if (result.author.empty() && toc.author) result.author = *toc.author;
-        for (auto& ch : toc.chapters) result.chapters.push_back(ch);
+        for (auto& ch : toc.chapters)
+            if (seen_chapters.insert(ch.href).second) result.chapters.push_back(ch);
         if (on_page) on_page(result);
         for (auto& href : parser.parse_toc_page_hrefs(body)) pages.schedule(url, href);
     }
@@ -399,6 +401,50 @@ DownloadOptions DownloadOptions::from_json(const Value& v) {
     return o;
 }
 
+// なろう系は同じ ncode が複数ホストに分散(R-18 は novel18 専用など)。
+// 取得に失敗したら族ホストを同じパスで順に試す。
+std::vector<std::string> family_url_candidates(const std::string& url) {
+    static const char* kFamily[] = {"ncode.syosetu.com", "novel18.syosetu.com",
+                                    "noc.syosetu.com", "mid.syosetu.com",
+                                    "mnlt.syosetu.com"};
+    std::string host = lower(url_host(url));
+    std::string path = url_path(url);
+    bool in_family = false;
+    for (auto h : kFamily)
+        if (host == h) in_family = true;
+    std::vector<std::string> out;
+    if (!in_family || path.empty()) {
+        out.push_back(url);
+        return out;
+    }
+    out.push_back(url);
+    for (auto h : kFamily) {
+        std::string cand = std::string("https://") + h + path;
+        if (cand != url) out.push_back(cand);
+    }
+    return out;
+}
+
+// 族フォールバック付きの目次取得(op_download 用・ページ解決は追跡しない)。
+TocResult fetch_toc_pages_family(HttpClient& http, const std::string& url,
+                                 const std::string& toc_html,
+                                 std::string* resolved_url, Value* resolved_preset) {
+    std::string first_error;
+    for (auto& cand : family_url_candidates(url)) {
+        try {
+            Value p = config::load_effective_preset(url_host(cand));
+            TocResult t = fetch_toc_pages(http, cand, url_host(cand), p, toc_html, nullptr);
+            if (t.chapters.empty()) throw Error("目次が空でした");
+            if (resolved_url) *resolved_url = cand;
+            if (resolved_preset) *resolved_preset = p;
+            return t;
+        } catch (const std::exception& e) {
+            if (first_error.empty()) first_error = e.what();
+        }
+    }
+    throw Error(first_error.empty() ? "目次を取得できませんでした" : first_error);
+}
+
 Value op_download(const DownloadOptions& opts) {
     if (opts.url.empty()) throw Error("url is required");
     if (opts.output_dir.empty()) throw Error("output_dir is required");
@@ -407,6 +453,7 @@ Value op_download(const DownloadOptions& opts) {
 
     std::string domain = url_host(opts.url);
     if (domain.empty()) throw Error("invalid url: " + opts.url);
+    std::string toc_url_used = opts.url;
     Value preset = config::load_effective_preset(domain);
     AccessSettings access = AccessSettings::from_preset(preset);
     HttpClient http;
@@ -467,7 +514,14 @@ Value op_download(const DownloadOptions& opts) {
                              "保存済み目次を使用", true);
             }
             if (toc.empty()) {
-                tr = fetch_toc_pages(http, opts.url, domain, preset, "", nullptr);
+                Value resolved_preset;
+                tr = fetch_toc_pages_family(http, opts.url, "", &toc_url_used, &resolved_preset);
+                if (!resolved_preset.is_null()) {
+                    preset = resolved_preset;
+                    domain = url_host(toc_url_used);
+                    novel_id = novel_id_from_toc_url(toc_url_used);
+                    access = AccessSettings::from_preset(preset);
+                }
             }
         }
         if (toc.empty()) {
@@ -548,7 +602,7 @@ Value op_download(const DownloadOptions& opts) {
         }
         std::string body_html;
         try {
-            std::string join_base = opts.url;
+            std::string join_base = toc_url_used.empty() ? opts.url : toc_url_used;
         {
             std::string path = url_path(join_base);
             auto sl = path.rfind('/');
@@ -651,26 +705,44 @@ Value op_fetch_toc(const DownloadOptions& opts) {
 
     std::string title, author;
     Value chapters = Value::array();
-    TocResult tr = fetch_toc_pages(
-        http, opts.url, domain, preset, opts.toc_html,
-        [&](const TocResult& partial) {
-            std::vector<StoredTocChapter> stored;
-            Value arr = Value::array();
-            for (auto& ch : partial.chapters) {
-                stored.push_back({ch.index, ch.href, ch.subtitle});
-                Value c = Value::map_();
-                c.set("index", Value::string(ch.index));
-                c.set("href", Value::string(ch.href));
-                c.set("subtitle", Value::string(ch.subtitle));
-                arr.push(std::move(c));
-            }
-            storage.upsert_novel(novel_id, partial.title, partial.author, opts.url, domain,
-                                 opts.output_dir, (long long)partial.chapters.size(),
+    TocResult tr;
+    std::string active_url = opts.url;
+    std::string active_domain = domain;
+    std::string active_id = novel_id;
+    std::string first_error;
+    for (auto& cand : family_url_candidates(opts.url)) {
+        active_url = cand;
+        active_domain = url_host(cand);
+        active_id = novel_id_from_toc_url(cand);
+        try {
+            Value cand_preset = config::load_effective_preset(url_host(cand));
+            TocResult t = fetch_toc_pages(
+                http, cand, url_host(cand), cand_preset, opts.toc_html,
+                [&](const TocResult& partial) {
+                    std::vector<StoredTocChapter> stored;
+                    for (auto& ch : partial.chapters)
+                        stored.push_back({ch.index, ch.href, ch.subtitle});
+                    storage.upsert_novel(active_id, partial.title, partial.author,
+                                         active_url, active_domain,
+                                         opts.output_dir, (long long)partial.chapters.size(),
                                  now_rfc3339());
-            storage.upsert_section_placeholders(novel_id, stored, now_rfc3339());
-            set_progress((long long)partial.chapters.size(), 0,
-                         (long long)partial.chapters.size(), 0, "目次を保存中", true);
-        });
+                    storage.upsert_section_placeholders(active_id, stored, now_rfc3339());
+                    set_progress((long long)partial.chapters.size(), 0,
+                                 (long long)partial.chapters.size(), 0, "目次を保存中", true);
+                });
+            if (t.chapters.empty()) throw Error("目次が空でした");
+            tr = std::move(t);
+            preset = cand_preset;
+            domain = active_domain;
+            novel_id = active_id;
+            break;
+        } catch (const std::exception& e) {
+            if (first_error.empty()) first_error = e.what();
+            continue;
+        }
+    }
+    if (tr.chapters.empty())
+        throw Error(first_error.empty() ? "目次を取得できませんでした" : first_error);
     title = tr.title;
     author = tr.author;
     for (auto& ch : tr.chapters) {
@@ -687,7 +759,7 @@ Value op_fetch_toc(const DownloadOptions& opts) {
     {
         NovelMetaExtra mx;
         try {
-            Value meta = fetch_metadata_via_rules(opts.url, preset, http);
+            Value meta = fetch_metadata_via_rules(active_url, preset, http);
             story = meta.get_str("story", "");
             mx.status = meta.get_str("status", "");
             mx.next_update = meta.get_str("next_update", "");

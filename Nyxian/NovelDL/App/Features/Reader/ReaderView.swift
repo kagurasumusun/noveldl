@@ -119,9 +119,8 @@ struct ReaderView: View {
         .statusBarHidden(!chromeVisible)
         .task(id: chapterIndex) {
             await load()
+            // 話移動の直後に一度だけ表示。消しタイマーは持たない(手動出没のみ)。
             withAnimation(.easeOut(duration: 0.3)) { chromeVisible = true }
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
-            withAnimation(.easeInOut(duration: 0.4)) { chromeVisible = false }
         }
         .sheet(isPresented: $showToc) { tocSheet }
         .sheet(isPresented: $showMenu) { menuSheet }

@@ -287,8 +287,10 @@ static void test_rules_narou_pages() {
         </div>
         </body></html>)";
     auto next2 = parser.parse_toc_page_hrefs(query_only);
-    CHECK_EQ(next2.size(), (size_t)1);
-    CHECK_EQ(next2[0], std::string("?p=2"));
+    // 網羅取得: ページ番号リンク(p=1 も)を漏らさず列挙する。
+    CHECK_EQ(next2.size(), (size_t)2);
+    CHECK_EQ(next2[0], std::string("?p=1"));
+    CHECK_EQ(next2[1], std::string("?p=2"));
 }
 
 static void test_rules_kakuyomu() {

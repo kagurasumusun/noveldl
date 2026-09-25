@@ -1,7 +1,5 @@
 import SwiftUI
-#if canImport(PhotosUI)
-import PhotosUI
-#endif
+import UIKit
 
 struct ReaderRoute: Hashable, Identifiable {
     let novelId: String
@@ -31,10 +29,7 @@ struct NovelDetailView: View {
     @State private var chapterLimit = 60
     @State private var readerRoute: ReaderRoute?
     @State private var customCover: UIImage?
-#if canImport(PhotosUI)
-    @State private var coverPick: PhotosPickerItem?
-#endif
-    @State private var showLegacyPicker = false
+    @State private var showCoverPicker = false
 
     private var downloaded: Int { detail?.downloadedCount ?? item.downloadedCount ?? 0 }
     private var total: Int { max(detail?.novel.episodeCount ?? item.episodeCount, 1) }
@@ -82,38 +77,17 @@ struct NovelDetailView: View {
             image: customCover ?? core.covers[item.novelId]
         )
         .overlay(alignment: .topTrailing) {
-            #if canImport(PhotosUI)
-            PhotosPicker(selection: $coverPick, matching: .images) {
-                coverPickGlyph
-            }
-            .padding(Spacing.s)
-            #else
-            Button { showLegacyPicker = true } label: { coverPickGlyph }
+            Button { showCoverPicker = true } label: { coverPickGlyph }
                 .padding(Spacing.s)
-            #endif
         }
-        #if canImport(PhotosUI)
-        .onChange(of: coverPick) {
-            guard let pick = coverPick else { return }
-            Task {
-                if let data = try? await pick.loadTransferable(type: Data.self),
-                   let img = UIImage(data: data) {
-                    CoverStore.save(img, storagePath: item.storagePath)
-                    customCover = CoverStore.customImage(item.storagePath)
-                    Haptics.success()
-                }
-            }
-        }
-        #else
-        .sheet(isPresented: $showLegacyPicker) {
-            LegacyImagePicker { img in
+        .sheet(isPresented: $showCoverPicker) {
+            CoverImagePicker { img in
                 CoverStore.save(img, storagePath: item.storagePath)
                 customCover = CoverStore.customImage(item.storagePath)
                 Haptics.success()
             }
             .ignoresSafeArea()
         }
-        #endif
     }
 
     private var coverPickGlyph: some View {
@@ -577,9 +551,8 @@ private struct OptionsSheetBody: View {
     }
 }
 
-#if !canImport(PhotosUI)
-/// PhotosUI が使えない環境向けのフォールバック(UIKit のみで完結)。
-struct LegacyImagePicker: UIViewControllerRepresentable {
+/// 表紙ピッカー(PhotosUI 不使用 — UIKit 標準のみで完結)。
+struct CoverImagePicker: UIViewControllerRepresentable {
     var onPick: (UIImage) -> Void
     final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
         let onPick: (UIImage) -> Void
@@ -602,4 +575,3 @@ struct LegacyImagePicker: UIViewControllerRepresentable {
     }
     func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
 }
-#endif

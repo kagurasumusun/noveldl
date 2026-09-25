@@ -19,7 +19,7 @@ toc_sources:
     mode: all_links
     selector: ".c-pager a[href*='?p='], .c-pager a[href*='?page='], a.c-pager__item[href*='?p='], a.c-pager__item[href*='?page=']"
     href: ":self::attr(href)"
-    href_pattern: "^(?:/n[a-z0-9]+/?)?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)|^/n[a-z0-9]+/?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)"
+    href_pattern: "[?&](?:p|page)=[0-9]+"
     description: "なろう系: ページャ上の全目次ページリンクをYAML定義で列挙"
   - source: page
     mode: next_link
@@ -30,7 +30,7 @@ toc_sources:
     mode: next_link
     selector: "a[href*='?p='], a[href*='?page=']"
     href: ":self::attr(href)"
-    href_pattern: "^(?:/n[a-z0-9]+/?)?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)|^/n[a-z0-9]+/?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)"
+    href_pattern: "[?&](?:p|page)=[0-9]+"
     text_pattern: "(?i)^(次へ|next|>|＞)$"
     description: "フォールバック: ラベル付きクエリリンク"
 

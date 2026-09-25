@@ -137,6 +137,10 @@ struct ReaderTextView: UIViewRepresentable {
         tv.isPagingEnabled = false
         tv.alwaysBounceVertical = false
         tv.contentInsetAdjustmentBehavior = .never
+        // 本文全体をレイアウトさせる(しないと1画面で切れて「本文が出ない」)。
+        tv.layoutManager.allowsNonContiguousLayout = false
+        tv.textContainer.heightTracksTextView = false
+        tv.textContainer.size = CGSize(width: 0, height: .greatestFiniteMagnitude)
         tv.textContainerInset = UIEdgeInsets(top: 26, left: sideMargin, bottom: 40, right: sideMargin)
         tv.textContainer.lineFragmentPadding = 0
         tv.showsVerticalScrollIndicator = false
@@ -173,6 +177,8 @@ struct ReaderTextView: UIViewRepresentable {
 
         tv.backgroundColor = UIColor(theme.background)
         tv.textContainerInset = UIEdgeInsets(top: 26, left: sideMargin, bottom: 40, right: sideMargin)
+        tv.textContainer.heightTracksTextView = false
+        tv.textContainer.size = CGSize(width: 0, height: .greatestFiniteMagnitude)
         box.view = tv
         box.turn = turn
         context.coordinator.box = box
@@ -226,10 +232,11 @@ struct ReaderTextView: UIViewRepresentable {
             guard let tv = gesture.view as? UITextView else { return }
             let p = gesture.location(in: tv)
             let w = tv.bounds.width
-            if p.x < w * 0.28 {
+            // 端(外側2割)だけが送り。中央はメニュー出没に充てる(反応しすぎの是正)。
+            if p.x < w * 0.20 {
                 onTurn()
                 if !(box?.pageUp() ?? false) { onReachStart() }
-            } else if p.x > w * 0.72 {
+            } else if p.x > w * 0.80 {
                 onTurn()
                 if !(box?.pageDown() ?? false) { onReachEnd() }
             } else {
