@@ -15,7 +15,11 @@ extension Color {
 
 /// カード面 — 影は使わず「罫線と余白」で紙面を構成する(玩具っぽさの排除)。
 struct PaperCard<Content: View>: View {
-    @ViewBuilder var content: Content
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
 
     var body: some View {
         content
@@ -174,8 +178,14 @@ struct QuietButton: View {
 /// 丸いアイコンボタン(ツールバー用)。
 struct CircleIconButton: View {
     let system: String
-    var filled = false
+    let filled: Bool
     let action: () -> Void
+
+    init(system: String, filled: Bool = false, action: @escaping () -> Void) {
+        self.system = system
+        self.filled = filled
+        self.action = action
+    }
 
     var body: some View {
         Button {
@@ -269,8 +279,14 @@ struct StepperRow: View {
 /// 設定行 — ラベル + 値 + 任意の操作。
 struct SettingRow<Trailing: View>: View {
     let label: String
-    var detail: String? = nil
-    @ViewBuilder var trailing: Trailing
+    let detail: String?
+    let trailing: Trailing
+
+    init(label: String, detail: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+        self.label = label
+        self.detail = detail
+        self.trailing = trailing()
+    }
 
     var body: some View {
         HStack(spacing: Spacing.m) {

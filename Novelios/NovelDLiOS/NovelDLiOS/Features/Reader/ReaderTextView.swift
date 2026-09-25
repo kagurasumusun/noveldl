@@ -66,7 +66,8 @@ struct ReaderTextView: UIViewRepresentable {
     func updateUIView(_ tv: UITextView, context: Context) {
         tv.backgroundColor = background
         tv.textContainerInset = UIEdgeInsets(top: 28, left: sideMargin, bottom: 96, right: sideMargin)
-        if !tv.attributedText.isEqual(attributed) {
+        let current: NSAttributedString = tv.attributedText ?? NSAttributedString()
+        if !current.isEqual(attributed) {
             let offset = tv.contentOffset
             tv.attributedText = attributed
             // 同一話内の書体変更では読み位置を保つ

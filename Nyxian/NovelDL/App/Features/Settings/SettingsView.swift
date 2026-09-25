@@ -164,10 +164,10 @@ struct SettingsView: View {
         }
     }
 
-    private func sectionCard(
+    private func sectionCard<C: View>(
         title: String,
         footer: String? = nil,
-        @ViewBuilder content: () -> some View
+        @ViewBuilder content: () -> C
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title)

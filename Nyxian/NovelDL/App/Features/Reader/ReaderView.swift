@@ -59,7 +59,7 @@ struct ReaderView: View {
                         background: UIColor(theme.background),
                         sideMargin: CGFloat(sideMargin),
                         scroller: scroller,
-                        onZone: handleZone
+                        onZone: { handleZone($0) }
                     )
                     .ignoresSafeArea(edges: .bottom)
                 } else {

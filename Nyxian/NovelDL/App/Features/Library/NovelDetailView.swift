@@ -407,6 +407,18 @@ private struct OptionsSheetBody: View {
     let onBulk: () -> Void
     let onReader: () -> Void
 
+    init(
+        episodesLimit: Binding<Int>,
+        fromIndex: Binding<String>,
+        onBulk: @escaping () -> Void,
+        onReader: @escaping () -> Void
+    ) {
+        _episodesLimit = episodesLimit
+        _fromIndex = fromIndex
+        self.onBulk = onBulk
+        self.onReader = onReader
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.l) {
             HStack {
