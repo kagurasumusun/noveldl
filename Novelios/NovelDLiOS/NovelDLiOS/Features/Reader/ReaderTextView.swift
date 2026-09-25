@@ -89,7 +89,12 @@ final class ScrollBox {
 
     /// 全行の上下端を TextKit から収集(テキスト/幅/上インセットが変わらなければ再利用)。
     private func rebuildLinesIfNeeded() {
-        guard let v = view, let storage = v.textStorage, let lm = v.layoutManager else { return }
+        // NOTE: textStorage / layoutManager は UIKit では非 Optional。
+        // `guard let` で受けると「initializer for conditional binding must
+        // have Optional type」でビルドできない。
+        guard let v = view else { return }
+        let storage = v.textStorage
+        let lm = v.layoutManager
         if storage.length == lineCacheLength,
            v.textContainer.size.width == lineCacheWidth,
            v.textContainerInset.top == lineCacheInsetTop,
@@ -350,16 +355,18 @@ struct ReaderTextView: UIViewRepresentable {
 
         // サイズ/余白の確定。回転などで pageSize が変わったときは、
         // 変更前の先頭行を基準に読書位置を張り直す。
-        let sizeChanged = !pageSize.equalTo(tv.fixedSize)
-        let anchorTop = tv.contentOffset.y + box.padTop
-        if sizeChanged {
-            tv.fixedSize = pageSize
+        // fixedSize は PageTextView のメンバーなのでキャストして使う
+        // (updateUIView の引数型は UITextView のまま)。
+        var restoreAnchor: CGFloat? = nil
+        if let page = tv as? PageTextView, pageSize != page.fixedSize {
+            restoreAnchor = tv.contentOffset.y + box.padTop
+            page.fixedSize = pageSize
             box.invalidateLines()
         }
         box.refreshPads()
         tv.contentInset = UIEdgeInsets(top: box.padTop, left: 0, bottom: box.padBottom, right: 0)
-        if sizeChanged {
-            tv.contentOffset = CGPoint(x: 0, y: anchorTop - box.padTop)
+        if let anchor = restoreAnchor {
+            tv.contentOffset = CGPoint(x: 0, y: anchor - box.padTop)
         }
         tv.textContainerInset = UIEdgeInsets(top: 0, left: sideMargin, bottom: 0, right: sideMargin)
         tv.textContainer.widthTracksTextView = false
