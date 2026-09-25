@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 /// Swift 6 bridge over the novel_core C ABI.
 /// All core calls are synchronous + blocking → always hop through `run`.
@@ -10,8 +11,6 @@ import Observation
 /// Observation モジュールのみ（Combine も使わない）。
 final class CoreClient: Observable, @unchecked Sendable {
     static let shared = CoreClient()
-
-    // MARK: observation plumbing (@Observable マクロ展開と同一)
 
     private let _$observationRegistrar = ObservationRegistrar()
 
@@ -38,6 +37,12 @@ final class CoreClient: Observable, @unchecked Sendable {
         set { withMutation(keyPath: \.library) { _library = newValue } }
     }
 
+    private var _covers: [String: UIImage] = [:]
+    var covers: [String: UIImage] {
+        get { access(keyPath: \.covers); return _covers }
+        set { withMutation(keyPath: \.covers) { _covers = newValue } }
+    }
+
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -47,8 +52,6 @@ final class CoreClient: Observable, @unchecked Sendable {
     private var bootstrapped = false
 
     private init() {}
-
-    // MARK: bootstrap
 
     func bootstrap() {
         guard !bootstrapped else { return }
@@ -67,8 +70,6 @@ final class CoreClient: Observable, @unchecked Sendable {
         return dir
     }
 
-    // MARK: progress
-
     private func installProgressCallback() {
         novel_core_set_progress_callback({ json, _ in
             guard let json, let data = String(cString: json).data(using: .utf8) else { return }
@@ -81,8 +82,6 @@ final class CoreClient: Observable, @unchecked Sendable {
             }
         }, nil)
     }
-
-    // MARK: generic call helpers
 
     private func call(_ body: () -> UnsafeMutablePointer<CChar>?) -> Result<String, Error> {
         guard let cstr = body() else { return .failure(CoreError.emptyResponse) }
@@ -117,17 +116,13 @@ final class CoreClient: Observable, @unchecked Sendable {
         }.value
     }
 
-    // MARK: library
-
     func reloadLibrary() async {
         do {
             let list: LibraryListResult = try await decode(LibraryListResult.self) {
                 novel_core_library_list(Self.libraryRoot().path)
             }
             await MainActor.run { self.library = list.novels }
-        } catch {
-            // surfaced through views polling `library`; keep quiet in background
-        }
+        } catch {}
     }
 
     func novelDetail(_ novelId: String) async throws -> LibraryNovelDetail {
@@ -147,8 +142,6 @@ final class CoreClient: Observable, @unchecked Sendable {
             novel_core_section_get(Self.libraryRoot().path, novelId, index)
         }
     }
-
-    // MARK: downloads
 
     struct DownloadOptions: Sendable {
         var url: String
@@ -193,8 +186,6 @@ final class CoreClient: Observable, @unchecked Sendable {
         }
     }
 
-    // MARK: search
-
     func search(_ query: String, limit: UInt32 = 40) async throws -> [SearchResultItem] {
         struct SearchBox: Decodable, Sendable { let query: String; let results: [SearchResultItem] }
         let box: SearchBox = try await decode(SearchBox.self) {
@@ -208,8 +199,6 @@ final class CoreClient: Observable, @unchecked Sendable {
         let box: SiteBox = try await decode(SiteBox.self) { novel_core_search_sites() }
         return box.sites
     }
-
-    // MARK: presets
 
     func loadPreset(domain: String) async throws -> String {
         struct Box: Decodable, Sendable { let yaml: String }
@@ -233,8 +222,6 @@ final class CoreClient: Observable, @unchecked Sendable {
         let box: Box = try await decode(Box.self) { novel_core_list_parser_yamls() }
         return box.presets.map(\.domain)
     }
-
-    // MARK: config knobs
 
     func setDownloadInterval(ms: UInt32) {
         novel_core_set_download_interval_ms(ms)
