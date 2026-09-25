@@ -124,7 +124,7 @@ struct PresetFormView: View {
                         .tint(AppPalette.ember)
                         if showRaw {
                             TextEditor(text: $rawText)
-                                .font(AppFont.mono(11))
+                                .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(AppPalette.ink)
                                 .frame(minHeight: 180)
                                 .padding(Spacing.s)
@@ -186,7 +186,7 @@ struct PresetFormView: View {
                 .font(AppFont.ui(12, weight: .semibold))
                 .foregroundStyle(AppPalette.inkSoft)
             SegmentTabs(
-                items: ["全年齢", "R-18あり", "R-18専"],
+                titles: ["全年齢", "R-18あり", "R-18専"],
                 selection: $r18Mode
             )
             .onChange(of: r18Mode) { mode in
