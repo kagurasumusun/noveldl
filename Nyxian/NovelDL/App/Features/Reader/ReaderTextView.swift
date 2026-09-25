@@ -1,12 +1,10 @@
 import SwiftUI
 import UIKit
 
-/// タップゾーン:左 = 1 画面戻る / 中央 = 読書メニュー / 右 = 1 画面送る(末尾なら次話)。
 enum ReaderZone {
     case previous, menu, next
 }
 
-/// ページめくりの演出。度合いは控えめ(読みを邪魔しない)。
 enum PageTurn: String {
     case curl, slide, fade, none
 
@@ -22,12 +20,10 @@ enum PageTurn: String {
     static let all: [PageTurn] = [.curl, .slide, .fade, .none]
 }
 
-/// UITextView への参照受け渡し(スクロール操作用)。循環参照を避けるため weak。
 final class ScrollBox {
     weak var view: UITextView?
     var turn: PageTurn = .curl
 
-    /// 1 画面分戻る。先頭なら false。
     @discardableResult
     func pageUp() -> Bool {
         guard let v = view else { return false }
@@ -41,7 +37,6 @@ final class ScrollBox {
         return true
     }
 
-    /// 1 画面分送る。末尾なら false(呼び出し側で次話へ)。
     @discardableResult
     func pageDown() -> Bool {
         guard let v = view else { return false }
@@ -56,17 +51,17 @@ final class ScrollBox {
         return true
     }
 
-    /// 演出は「控えめな速さ」で統一(はきはきしすぎない)。
     private func animate(_ v: UIView, forward: Bool, _ change: @escaping () -> Void) {
         Haptics.tap()
         switch turn {
         case .curl:
-            UIView.transition(
-                with: v,
-                duration: 0.36,
-                options: [forward ? .transitionCurlFromRight : .transitionCurlFromLeft, .allowAnimatedContent],
-                animations: change
-            )
+            let t = CATransition()
+            t.type = CATransitionType(rawValue: forward ? "pageCurl" : "pageUnCurl")
+            t.subtype = forward ? .fromRight : .fromLeft
+            t.duration = 0.36
+            t.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            v.layer.add(t, forKey: "reader.pageCurl")
+            change()
         case .slide:
             let t = CATransition()
             t.type = .push
@@ -88,7 +83,6 @@ final class ScrollBox {
     }
 }
 
-/// 本文ビュー — UITextView のネイティブスクロール(CoreText 直描画の事故を排除)。
 struct ReaderTextView: UIViewRepresentable {
     let attributed: NSAttributedString
     let background: UIColor
@@ -106,7 +100,6 @@ struct ReaderTextView: UIViewRepresentable {
         tv.isEditable = false
         tv.isSelectable = false
         tv.isScrollEnabled = true
-        // 連続スクロールではなく 1 スクリーン = 1 ページのめくりに。
         tv.isPagingEnabled = true
         tv.alwaysBounceVertical = true
         tv.backgroundColor = background
@@ -134,7 +127,6 @@ struct ReaderTextView: UIViewRepresentable {
         if !current.isEqual(attributed) {
             let offset = tv.contentOffset
             tv.attributedText = attributed
-            // 同一話内の書体変更では読み位置を保つ
             tv.setContentOffset(offset, animated: false)
         }
     }
