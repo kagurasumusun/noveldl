@@ -1,23 +1,42 @@
 import SwiftUI
 import UIKit
 
-/// タップゾーン:左 = 1 画面戻る / 中央 = メニュー / 右 = 1 画面送る(末尾なら次話)。
+/// タップゾーン:左 = 1 画面戻る / 中央 = 読書メニュー / 右 = 1 画面送る(末尾なら次話)。
 enum ReaderZone {
     case previous, menu, next
+}
+
+/// ページめくりの演出。度合いは控えめ(読みを邪魔しない)。
+enum PageTurn: String {
+    case curl, slide, fade, none
+
+    var label: String {
+        switch self {
+        case .curl: return "紙捲り"
+        case .slide: return "スライド"
+        case .fade: return "フェード"
+        case .none: return "なし"
+        }
+    }
+
+    static let all: [PageTurn] = [.curl, .slide, .fade, .none]
 }
 
 /// UITextView への参照受け渡し(スクロール操作用)。循環参照を避けるため weak。
 final class ScrollBox {
     weak var view: UITextView?
+    var turn: PageTurn = .curl
 
     /// 1 画面分戻る。先頭なら false。
     @discardableResult
     func pageUp() -> Bool {
         guard let v = view else { return false }
-        let h = max(v.bounds.height * 0.92, 200)
-        let target = v.contentOffset.y - h
         if v.contentOffset.y <= 4 { return false }
-        v.setContentOffset(CGPoint(x: 0, y: max(0, target)), animated: true)
+        let h = max(v.bounds.height * 0.92, 200)
+        let target = max(0, v.contentOffset.y - h)
+        animate(v, forward: false) {
+            v.contentOffset = CGPoint(x: 0, y: target)
+        }
         return true
     }
 
@@ -28,8 +47,42 @@ final class ScrollBox {
         let h = max(v.bounds.height * 0.92, 200)
         let maxY = max(0, v.contentSize.height - v.bounds.height + v.contentInset.bottom)
         if v.contentOffset.y >= maxY - 6 { return false }
-        v.setContentOffset(CGPoint(x: 0, y: min(v.contentOffset.y + h, maxY)), animated: true)
+        let target = min(v.contentOffset.y + h, maxY)
+        animate(v, forward: true) {
+            v.contentOffset = CGPoint(x: 0, y: target)
+        }
         return true
+    }
+
+    /// 演出は「控えめな速さ」で統一(はきはきしすぎない)。
+    private func animate(_ v: UIView, forward: Bool, _ change: @escaping () -> Void) {
+        Haptics.tap()
+        switch turn {
+        case .curl:
+            UIView.transition(
+                with: v,
+                duration: 0.36,
+                options: [forward ? .transitionCurlFromRight : .transitionCurlFromLeft, .allowAnimatedContent],
+                animations: change
+            )
+        case .slide:
+            let t = CATransition()
+            t.type = .push
+            t.subtype = forward ? .fromRight : .fromLeft
+            t.duration = 0.30
+            t.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            v.layer.add(t, forKey: nil)
+            change()
+        case .fade:
+            let t = CATransition()
+            t.type = .fade
+            t.duration = 0.26
+            t.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            v.layer.add(t, forKey: nil)
+            change()
+        case .none:
+            change()
+        }
     }
 }
 
@@ -56,7 +109,6 @@ struct ReaderTextView: UIViewRepresentable {
         tv.textContainerInset = UIEdgeInsets(top: 28, left: sideMargin, bottom: 96, right: sideMargin)
         tv.textContainer.lineFragmentPadding = 0
         tv.adjustsFontForContentSizeCategory = false
-        tv.indicatorStyle = .default
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
         tap.cancelsTouchesInView = false
         tv.addGestureRecognizer(tap)

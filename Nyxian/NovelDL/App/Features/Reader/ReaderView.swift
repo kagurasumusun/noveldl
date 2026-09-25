@@ -1,12 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// 読書画面 — 既読部分はすべて UIKit 標準(UITextView のスクロール)に差し替え。
-/// ・本文は常に読める(描画変換の事故を排除)
-/// ・上下バーを常時表示(メニューが存在しない問題の根治)
-/// ・タップゾーン(左=1画面めくり戻し / 中央=メニュー / 右=1画面めくり送り、末尾で次話)
-/// ・書体・行間・余白・テーマは即時反映(カスタマイズが効かない問題の根治)
-/// ・画像取得などの同期処理を排除(かくつきの根治)
+/// 読書画面 — 本文は UITextView のネイティブスクロール。
+/// 読書用メニュー(表示/送り/移動)は読書画面専用。アプリ設定とは分離。
 struct ReaderView: View {
     let novelId: String
     let startAt: String
@@ -20,10 +16,8 @@ struct ReaderView: View {
     @AppStorage("readerLineSpacing") private var lineSpacing = 6.0
     @AppStorage("readerSideMargin") private var sideMargin = 34.0
     @AppStorage("readerFontDesign") private var fontDesign = "serif"
-
     @AppStorage("readerSwipePaging") private var swipePaging = true
-    @State private var chromeVisible = true
-    @State private var chromeHideTask: Task<Void, Never>?
+    @AppStorage("readerPageTurn") private var pageTurnRaw = PageTurn.curl.rawValue
 
     @State private var chapterIndex: String
     @State private var chapterTitle = ""
@@ -35,11 +29,15 @@ struct ReaderView: View {
     @State private var chapters: [ChapterMeta] = []
     @State private var errorText: String?
     @State private var showToc = false
-    @State private var showType = false
+    @State private var showMenu = false
+    @State private var chromeVisible = true
+    @State private var chromeHideTask: Task<Void, Never>?
+    @State private var showHint = false
 
     private let scroller = ScrollBox()
 
     private var theme: BookTheme { BookTheme(rawValue: themeRaw) ?? .paper }
+    private var pageTurn: PageTurn { PageTurn(rawValue: pageTurnRaw) ?? .curl }
 
     init(novelId: String, startAt: String, title: String) {
         self.novelId = novelId
@@ -79,11 +77,22 @@ struct ReaderView: View {
                 Spacer()
                 bottomBar
             }
+
+            if showHint {
+                hintPill
+            }
         }
         .background(theme.background.ignoresSafeArea())
-        .onAppear { flashChrome() }
+        .onAppear {
+            scroller.turn = pageTurn
+            flashChrome()
+            maybeShowHint()
+        }
+        .onChange(of: pageTurnRaw) { _, v in
+            scroller.turn = PageTurn(rawValue: v) ?? .curl
+        }
         .onChange(of: showToc) { _, open in if !open { flashChrome() } }
-        .onChange(of: showType) { _, open in if !open { flashChrome() } }
+        .onChange(of: showMenu) { _, open in if !open { flashChrome() } }
         .task(id: chapterIndex) { await loadChapter() }
         .onChange(of: fontSize) { applyStyle() }
         .onChange(of: lineSpacing) { applyStyle() }
@@ -94,7 +103,7 @@ struct ReaderView: View {
             ReadingPositionStore.save(novelId, chapter: chapterIndex, page: 0)
         }
         .sheet(isPresented: $showToc) { tocSheet }
-        .sheet(isPresented: $showType) { typeSheet }
+        .sheet(isPresented: $showMenu) { menuSheet }
         .alert("リーダー", isPresented: Binding(
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
@@ -105,7 +114,7 @@ struct ReaderView: View {
         }
     }
 
-    // MARK: 常時表示バー(メニューはここに必ずある)
+    // MARK: 常時バー(自動退場する読書用の最小操作)
 
     private var topBar: some View {
         HStack(spacing: Spacing.m) {
@@ -133,7 +142,7 @@ struct ReaderView: View {
                     .frame(width: 40, height: 40)
             }
             .buttonStyle(PressableButtonStyle())
-            Button { showType = true } label: {
+            Button { openMenu() } label: {
                 Text("Aa")
                     .font(AppFont.serif(16, weight: .semibold))
                     .frame(width: 40, height: 40)
@@ -149,12 +158,13 @@ struct ReaderView: View {
         .opacity(chromeVisible ? 1 : 0)
         .offset(y: chromeVisible ? 0 : -14)
         .allowsHitTesting(chromeVisible)
+        .animation(.easeInOut(duration: 0.4), value: chromeVisible)
     }
 
     private var bottomBar: some View {
         HStack(spacing: Spacing.m) {
             Button {
-                withAnimation { advanceChapter(delta: -1) }
+                goChapter(delta: -1)
             } label: {
                 Image(systemName: "chevron.left")
                     .font(AppFont.ui(14, weight: .semibold))
@@ -172,7 +182,7 @@ struct ReaderView: View {
             }
 
             Button {
-                withAnimation { advanceChapter(delta: 1) }
+                goChapter(delta: 1)
             } label: {
                 Image(systemName: "chevron.right")
                     .font(AppFont.ui(14, weight: .semibold))
@@ -190,6 +200,22 @@ struct ReaderView: View {
         .opacity(chromeVisible ? 1 : 0)
         .offset(y: chromeVisible ? 0 : 14)
         .allowsHitTesting(chromeVisible)
+        .animation(.easeInOut(duration: 0.4), value: chromeVisible)
+    }
+
+    private var hintPill: some View {
+        VStack {
+            Spacer()
+            Text("中央をタップで読書メニュー・左右で送り")
+                .font(AppFont.ui(13, weight: .medium))
+                .foregroundStyle(theme.ink)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(Capsule().fill(theme.background.opacity(0.9)))
+                .overlay(Capsule().strokeBorder(theme.hairline, lineWidth: 1))
+                .padding(.bottom, 96)
+        }
+        .transition(.opacity)
     }
 
     // MARK: 本文未取得
@@ -226,16 +252,16 @@ struct ReaderView: View {
         }
     }
 
-    // MARK: メニューの自動非表示(読書を邪魔しない)
+    // MARK: 操作の度合い(はきはきしすぎない)
 
     private func flashChrome(autoHide: Bool = true) {
         chromeHideTask?.cancel()
-        withAnimation(.easeOut(duration: 0.18)) { chromeVisible = true }
+        withAnimation(.easeInOut(duration: 0.35)) { chromeVisible = true }
         if autoHide {
             chromeHideTask = Task {
-                try? await Task.sleep(nanoseconds: 3_200_000_000)
-                if !Task.isCancelled && !showToc && !showType {
-                    withAnimation(.easeOut(duration: 0.25)) { chromeVisible = false }
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                if !Task.isCancelled && !showToc && !showMenu {
+                    withAnimation(.easeInOut(duration: 0.45)) { chromeVisible = false }
                 }
             }
         }
@@ -243,27 +269,41 @@ struct ReaderView: View {
 
     private func hideChrome() {
         chromeHideTask?.cancel()
-        withAnimation(.easeOut(duration: 0.25)) { chromeVisible = false }
+        withAnimation(.easeInOut(duration: 0.45)) { chromeVisible = false }
+    }
+
+    private func maybeShowHint() {
+        guard UserDefaults.standard.string(forKey: "readerHintShown") != "1" else { return }
+        UserDefaults.standard.set("1", forKey: "readerHintShown")
+        withAnimation(.easeInOut(duration: 0.5)) { showHint = true }
+        Task {
+            try? await Task.sleep(nanoseconds: 4_500_000_000)
+            withAnimation(.easeInOut(duration: 0.6)) { showHint = false }
+        }
+    }
+
+    private func openMenu() {
+        flashChrome(autoHide: false)
+        showMenu = true
     }
 
     // MARK: タップゾーン
 
     private func handleZone(_ zone: ReaderZone) {
+        scroller.turn = pageTurn
         switch zone {
         case .previous:
             if chromeVisible { hideChrome() }
             scroller.pageUp()
         case .menu:
-            flashChrome(autoHide: false)
-            showType = true
+            openMenu()
         case .next:
             if chromeVisible { hideChrome() }
             if !scroller.pageDown() {
-                withAnimation(.easeInOut(duration: 0.22)) { advanceChapter(delta: 1) }
+                goChapter(delta: 1)
             }
         }
     }
-
 
     // MARK: データ
 
@@ -330,11 +370,14 @@ struct ReaderView: View {
         attributed = ReaderMarkup().parse(rawBody, style: currentStyle)
     }
 
-    private func advanceChapter(delta: Int) {
+    private func goChapter(delta: Int) {
         guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }),
               chapters.indices.contains(pos + delta)
         else { return }
-        chapterIndex = chapters[pos + delta].index
+        Haptics.success()
+        withAnimation(.easeInOut(duration: 0.3)) {
+            chapterIndex = chapters[pos + delta].index
+        }
     }
 
     /// 未取得の話をその場で 1 話取得して開く。
@@ -362,14 +405,13 @@ struct ReaderView: View {
         }
     }
 
-    // MARK: 目次シート
+    // MARK: 目次(読書用の移動メニュー)
 
     private var tocSheet: some View {
         NavigationStack {
             List(chapters, id: \.index) { ch in
                 Button {
-                    chapterIndex = ch.index
-                    showToc = false
+                    goChapterFromToc(ch.index)
                 } label: {
                     HStack(spacing: Spacing.m) {
                         Text(ch.index)
@@ -382,9 +424,16 @@ struct ReaderView: View {
                                     .font(AppFont.ui(11, weight: .semibold))
                                     .foregroundStyle(AppPalette.gold)
                             }
-                            Text(ch.subtitle)
-                                .font(AppFont.serif(15))
-                                .foregroundStyle(.primary)
+                            HStack(spacing: 6) {
+                                Text(ch.subtitle)
+                                    .font(AppFont.serif(15))
+                                    .foregroundStyle(.primary)
+                                if let mark = ch.subupdate, !mark.isEmpty {
+                                    Text(mark == "revised" ? "改" : mark)
+                                        .font(AppFont.ui(10, weight: .bold))
+                                        .foregroundStyle(AppPalette.ember)
+                                }
+                            }
                         }
                         Spacer()
                         if ch.bodyDownloaded == true {
@@ -409,91 +458,130 @@ struct ReaderView: View {
         .presentationCornerRadius(20)
     }
 
-    // MARK: 文字とレイアウト(メニューの中身)
-
-    private var typeSheet: some View {
-        VStack(alignment: .leading, spacing: Spacing.l) {
-            HStack {
-                Text("文字とレイアウト")
-                    .font(AppFont.serif(20, weight: .semibold))
-                    .foregroundStyle(AppPalette.ink)
-                Spacer()
-                CircleIconButton(system: "xmark") { showType = false }
-            }
-
-            HStack(spacing: Spacing.s) {
-                ForEach(BookTheme.allCases) { option in
-                    Button {
-                        themeRaw = option.rawValue
-                    } label: {
-                        Text(option.label)
-                            .font(AppFont.ui(13, weight: .semibold))
-                            .foregroundStyle(option.ink)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .background(option.background)
-                            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                                    .strokeBorder(
-                                        themeRaw == option.rawValue ? AppPalette.ember : AppPalette.hairline,
-                                        lineWidth: themeRaw == option.rawValue ? 2 : 1)
-                            )
-                    }
-                    .buttonStyle(PressableButtonStyle())
-                }
-            }
-
-            SegmentTabs(
-                titles: ["明朝", "ゴシック", "等幅"],
-                selection: Binding(
-                    get: { ["serif", "sans", "mono"].firstIndex(of: fontDesign) ?? 0 },
-                    set: { fontDesign = ["serif", "sans", "mono"][$0] }
-                )
-            )
-
-            VStack(spacing: 0) {
-                StepperRow(label: "文字サイズ", value: $fontSize, range: 14...28)
-                RowDivider()
-                StepperRow(label: "行間", value: $lineSpacing, range: 0...16)
-                RowDivider()
-                StepperRow(label: "余白", value: $sideMargin, range: 20...56, step: 4)
-                RowDivider()
-                SettingRow(label: "左右スワイプで送り", detail: "画面端のタップ送りと共存") {
-                    Button {
-                        swipePaging.toggle()
-                        Haptics.tap()
-                    } label: {
-                        Text(swipePaging ? "ON" : "OFF")
-                            .font(AppFont.ui(13, weight: .semibold))
-                            .foregroundStyle(swipePaging ? .white : AppPalette.inkSoft)
-                            .padding(.horizontal, 14)
-                            .frame(height: 32)
-                            .background(
-                                Capsule().fill(swipePaging ? AppPalette.ember : AppPalette.track)
-                            )
-                    }
-                    .buttonStyle(PressableButtonStyle(haptic: false))
-                }
-            }
-            .padding(Spacing.m)
-            .background(PaperBackground())
-
-            HStack(spacing: Spacing.m) {
-                QuietButton(title: "前の話", systemImage: "chevron.left", disabled: !canGoPrevious) {
-                    showType = false
-                    advanceChapter(delta: -1)
-                }
-                QuietButton(title: "次の話", systemImage: "chevron.right", disabled: !canGoNext) {
-                    showType = false
-                    advanceChapter(delta: 1)
-                }
-            }
-            Spacer()
+    private func goChapterFromToc(_ index: String) {
+        showToc = false
+        if index != chapterIndex {
+            Haptics.success()
+            withAnimation(.easeInOut(duration: 0.3)) { chapterIndex = index }
         }
-        .padding(Spacing.xl)
-        .presentationDetents([.height(520)])
+    }
+
+    // MARK: 読書メニュー(読書専用 — アプリ設定とは別)
+
+    private var menuSheet: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.l) {
+                HStack {
+                    Text("読書メニュー")
+                        .font(AppFont.serif(20, weight: .semibold))
+                        .foregroundStyle(AppPalette.ink)
+                    Spacer()
+                    CircleIconButton(system: "xmark") { showMenu = false }
+                }
+
+                menuSectionHeader("表示")
+                HStack(spacing: Spacing.s) {
+                    ForEach(BookTheme.allCases) { option in
+                        Button {
+                            themeRaw = option.rawValue
+                        } label: {
+                            Text(option.label)
+                                .font(AppFont.ui(13, weight: .semibold))
+                                .foregroundStyle(option.ink)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 52)
+                                .background(option.background)
+                                .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                                        .strokeBorder(
+                                            themeRaw == option.rawValue ? AppPalette.ember : AppPalette.hairline,
+                                            lineWidth: themeRaw == option.rawValue ? 2 : 1)
+                                )
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                    }
+                }
+                SegmentTabs(
+                    titles: ["明朝", "ゴシック", "等幅"],
+                    selection: Binding(
+                        get: { ["serif", "sans", "mono"].firstIndex(of: fontDesign) ?? 0 },
+                        set: { fontDesign = ["serif", "sans", "mono"][$0] }
+                    )
+                )
+                VStack(spacing: 0) {
+                    StepperRow(label: "文字サイズ", value: $fontSize, range: 14...28)
+                    RowDivider()
+                    StepperRow(label: "行間", value: $lineSpacing, range: 0...16)
+                    RowDivider()
+                    StepperRow(label: "余白", value: $sideMargin, range: 20...56, step: 4)
+                }
+                .padding(Spacing.m)
+                .background(PaperBackground())
+
+                menuSectionHeader("送り")
+                VStack(alignment: .leading, spacing: Spacing.s) {
+                    Text("めくりの演出")
+                        .font(AppFont.ui(13))
+                        .foregroundStyle(AppPalette.inkSoft)
+                    SegmentTabs(
+                        titles: PageTurn.all.map(\.label),
+                        selection: Binding(
+                            get: { PageTurn.all.firstIndex(of: pageTurn) ?? 0 },
+                            set: { pageTurnRaw = PageTurn.all[$0].rawValue }
+                        )
+                    )
+                    RowDivider()
+                    SettingRow(label: "左右スワイプで送り", detail: "画面端のタップ送りと共存") {
+                        Button {
+                            swipePaging.toggle()
+                            Haptics.tap()
+                        } label: {
+                            Text(swipePaging ? "ON" : "OFF")
+                                .font(AppFont.ui(13, weight: .semibold))
+                                .foregroundStyle(swipePaging ? .white : AppPalette.inkSoft)
+                                .padding(.horizontal, 14)
+                                .frame(height: 32)
+                                .background(
+                                    Capsule().fill(swipePaging ? AppPalette.ember : AppPalette.track)
+                                )
+                        }
+                        .buttonStyle(PressableButtonStyle(haptic: false))
+                    }
+                }
+                .padding(Spacing.m)
+                .background(PaperBackground())
+
+                menuSectionHeader("移動")
+                HStack(spacing: Spacing.m) {
+                    QuietButton(title: "目次", systemImage: "list.bullet") {
+                        showMenu = false
+                        showToc = true
+                    }
+                    QuietButton(title: "前の話", systemImage: "chevron.left", disabled: !canGoPrevious) {
+                        showMenu = false
+                        goChapter(delta: -1)
+                    }
+                    QuietButton(title: "次の話", systemImage: "chevron.right", disabled: !canGoNext) {
+                        showMenu = false
+                        goChapter(delta: 1)
+                    }
+                }
+            }
+            .padding(Spacing.xl)
+        }
+        .presentationDetents([.height(640), .large])
         .presentationCornerRadius(20)
+    }
+
+    private func menuSectionHeader(_ title: String) -> some View {
+        HStack(spacing: Spacing.s) {
+            Text(title)
+                .font(AppFont.ui(12, weight: .semibold))
+                .tracking(2)
+                .foregroundStyle(AppPalette.gold)
+            Rectangle().fill(AppPalette.hairline).frame(height: 1)
+        }
     }
 }
 

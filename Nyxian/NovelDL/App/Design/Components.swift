@@ -73,7 +73,8 @@ struct PressableButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .opacity(configuration.isPressed ? 0.9 : 1)
+            .opacity(configuration.isPressed ? 0.92 : 1)
+            .animation(.easeOut(duration: 0.2), value: configuration.isPressed)
             .onChange(of: configuration.isPressed) { _, pressed in
                 if pressed, haptic { Haptics.tap() }
             }
@@ -547,7 +548,7 @@ struct SegmentTabs: View {
         HStack(spacing: 4) {
             ForEach(titles.indices, id: \.self) { i in
                 Button {
-                    withAnimation(.easeOut(duration: 0.16)) { selection = i }
+                    withAnimation(.easeInOut(duration: 0.22)) { selection = i }
                     Haptics.tap()
                 } label: {
                     Text(titles[i])
