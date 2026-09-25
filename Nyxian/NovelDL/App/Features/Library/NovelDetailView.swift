@@ -69,56 +69,86 @@ struct NovelDetailView: View {
         .task { await reload() }
     }
 
-    // MARK: 書誌
+    // MARK: 書誌(書影の布を帯に展開した装丁)
 
     private var heroCard: some View {
-        HStack(alignment: .top, spacing: Spacing.l) {
-            CoverTile(
-                title: item.title,
-                author: item.author,
-                progress: Double(downloaded) / Double(total),
-                width: 118
-            )
-            .shadow(color: AppPalette.shelfShadow, radius: 8, x: 0, y: 6)
+        let cloth = CoverTile.clothColor(title: item.title, author: item.author)
+        let cream = Color(red: 0.925, green: 0.890, blue: 0.808)
+        return VStack(spacing: 0) {
+            ZStack(alignment: .bottomLeading) {
+                LinearGradient(
+                    colors: [cloth.opacity(0.92), cloth],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .overlay(alignment: .top) {
+                    VStack(spacing: 2) {
+                        Rectangle().fill(cream.opacity(0.55)).frame(height: 1)
+                        Rectangle().fill(cream.opacity(0.3)).frame(height: 1)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
+                }
+
+                HStack(alignment: .bottom, spacing: Spacing.l) {
+                    CoverTile(
+                        title: item.title,
+                        author: item.author,
+                        progress: Double(downloaded) / Double(total),
+                        width: 104
+                    )
+                    .shadow(color: AppPalette.shelfShadow, radius: 10, x: 0, y: 8)
+                    .offset(y: 30)
+                    .padding(.leading, Spacing.l)
+
+                    VStack(alignment: .leading, spacing: Spacing.s) {
+                        Text(item.title)
+                            .font(AppFont.serif(19, weight: .semibold))
+                            .foregroundStyle(cream)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Rectangle().fill(cream.opacity(0.55)).frame(width: 22, height: 1)
+                        Text(item.author)
+                            .font(AppFont.ui(14, weight: .medium))
+                            .foregroundStyle(cream.opacity(0.8))
+                    }
+                    .padding(.bottom, Spacing.xl)
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(height: 168)
+            .clipped()
 
             VStack(alignment: .leading, spacing: Spacing.s) {
-                Text(item.title)
-                    .font(AppFont.serif(21, weight: .semibold))
-                    .foregroundStyle(AppPalette.ink)
-                    .lineLimit(4)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(item.author)
-                    .font(AppFont.ui(15))
-                    .foregroundStyle(AppPalette.inkSoft)
                 HStack(spacing: Spacing.s) {
                     InfoChip(text: item.domain)
                     if let updated = item.updatedAt, !updated.isEmpty {
                         InfoChip(text: "更新 \(shortDate(updated))")
                     }
+                    Spacer()
                 }
-                VStack(alignment: .leading, spacing: Spacing.xs) {
-                    HStack {
-                        Text("取得済み")
-                            .font(AppFont.ui(12))
-                            .foregroundStyle(AppPalette.inkFaint)
-                        Text("\(downloaded) / \(total) 話")
-                            .font(AppFont.ui(15, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(AppPalette.ink)
-                        Spacer()
-                        Text("\(Int(Double(downloaded) / Double(total) * 100))%")
-                            .font(AppFont.ui(13, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(AppPalette.ember)
-                    }
-                    ReadingRibbon(value: Double(downloaded) / Double(total))
+                .padding(.top, 38)
+                HStack {
+                    Text("取得済み")
+                        .font(AppFont.ui(12))
+                        .foregroundStyle(AppPalette.inkFaint)
+                    Text("\(downloaded) / \(total) 話")
+                        .font(AppFont.ui(15, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(AppPalette.ink)
+                    Spacer()
+                    Text("\(Int(Double(downloaded) / Double(total) * 100))%")
+                        .font(AppFont.ui(13, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(AppPalette.ember)
                 }
-                .padding(.top, Spacing.xs)
+                ReadingRibbon(value: Double(downloaded) / Double(total))
             }
+            .padding(.horizontal, Spacing.l)
+            .padding(.bottom, Spacing.l)
         }
-        .padding(Spacing.l)
         .background(PaperBackground())
+        .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
     }
 
-    // MARK: あらすじ
+    // MARK: あらすじ    // MARK: あらすじ
 
     private func synopsisCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s) {

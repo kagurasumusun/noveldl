@@ -113,34 +113,11 @@ final class ReaderMarkup: @unchecked Sendable {
         return NSAttributedString(string: base, attributes: rubyAttrs)
     }
 
+    /// 画像は描画を止めないため小さな罫に置き換える(同期取得=かくつきの原因)。
     private func imageAttachment(src: String, style: Style) -> NSAttributedString {
         let att = NSTextAttachment()
-        if let url = URL(string: src), let data = fetchImageData(from: url),
-            let img = UIImage(data: data) {
-            let scale = style.maxWidth / max(img.size.width, 1)
-            let size = scale < 1
-                ? CGSize(width: img.size.width * scale, height: img.size.height * scale)
-                : img.size
-            att.image = img
-            att.bounds = CGRect(origin: .zero, size: size)
-        } else {
-            att.bounds = CGRect(x: 0, y: 0, width: style.maxWidth, height: 8)
-        }
+        att.bounds = CGRect(x: 0, y: 0, width: min(style.maxWidth, 160), height: 6)
         return NSAttributedString(attachment: att)
-    }
-
-    private func fetchImageData(from url: URL) -> Data? {
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-        let semaphore = DispatchSemaphore(value: 0)
-        // URLSession コールバックは @Sendable — キャプチャ var への同時書き込みを避ける
-        nonisolated(unsafe) var result: Data?
-        URLSession.shared.dataTask(with: request) { data, _, _ in
-            result = data
-            semaphore.signal()
-        }.resume()
-        _ = semaphore.wait(timeout: .now() + 20)
-        return result
     }
 
     private func stripTags(_ input: String) -> String {

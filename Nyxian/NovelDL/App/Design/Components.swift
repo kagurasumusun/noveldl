@@ -373,12 +373,15 @@ struct CoverTile: View {
         Color(red: 0.153, green: 0.192, blue: 0.271),
     ]
 
-    private var cloth: Color {
+    private var cloth: Color { Self.clothColor(title: title, author: author) }
+
+    /// 書影の布色(詳細画面の帯にも同じ布を使う)。
+    static func clothColor(title: String, author: String) -> Color {
         var h: UInt64 = 5381
         for b in (title + "|" + author).utf8 {
             h = (h &* 33) ^ UInt64(b)
         }
-        return Self.cloths[Int(h % UInt64(Self.cloths.count))]
+        return cloths[Int(h % UInt64(cloths.count))]
     }
 
     private var cream: Color { Color(red: 0.925, green: 0.890, blue: 0.808) }

@@ -1,8 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// Reader — Kindle page serenity with Kobo's control drawer.
-/// Tap the page edge to page; tap the top for chrome.
+/// 読書画面 — 既読部分はすべて UIKit 標準(UITextView のスクロール)に差し替え。
+/// ・本文は常に読める(描画変換の事故を排除)
+/// ・上下バーを常時表示(メニューが存在しない問題の根治)
+/// ・タップゾーン(左=1画面めくり戻し / 中央=メニュー / 右=1画面めくり送り、末尾で次話)
+/// ・書体・行間・余白・テーマは即時反映(カスタマイズが効かない問題の根治)
+/// ・画像取得などの同期処理を排除(かくつきの根治)
 struct ReaderView: View {
     let novelId: String
     let startAt: String
@@ -19,14 +23,17 @@ struct ReaderView: View {
 
     @State private var chapterIndex: String
     @State private var chapterTitle = ""
-    @State private var pages: [NSAttributedString] = []
-    @State private var pageIndex = 0
+    @State private var rawBody = ""
+    @State private var attributed = NSAttributedString()
+    @State private var hasBody = false
+    @State private var loading = true
+    @State private var fetching = false
     @State private var chapters: [ChapterMeta] = []
-    @State private var showChrome = false
+    @State private var errorText: String?
     @State private var showToc = false
     @State private var showType = false
-    @State private var showMenu = false
-    @State private var loading = true
+
+    private let scroller = ScrollBox()
 
     private var theme: BookTheme { BookTheme(rawValue: themeRaw) ?? .paper }
 
@@ -34,267 +41,307 @@ struct ReaderView: View {
         self.novelId = novelId
         self.startAt = startAt
         self.title = title
-        // Resume the last reading position when one is stored.
         let saved = ReadingPositionStore.load(novelId)
         _chapterIndex = State(initialValue: saved?.chapter ?? startAt)
     }
 
     var body: some View {
-        GeometryReader { geo in
+        VStack(spacing: 0) {
+            topBar
             ZStack {
                 theme.background.ignoresSafeArea()
-
                 if loading {
                     ProgressView()
                         .tint(theme.secondaryInk)
-                } else if pages.isEmpty {
-                    VStack(spacing: 10) {
-                        Text("この話の本文はまだ取得されていません")
-                            .font(AppFont.serif(17))
-                            .foregroundStyle(theme.ink)
-                        Text("作品詳細から全話をダウンロードしてください")
-                            .font(AppFont.ui(13))
-                            .foregroundStyle(theme.secondaryInk)
-                    }
-                } else {
-                    PageCanvas(
-                        pages: pages,
-                        pageIndex: $pageIndex,
+                } else if hasBody {
+                    ReaderTextView(
+                        attributed: attributed,
                         background: UIColor(theme.background),
-                        insets: pageInsets
+                        sideMargin: CGFloat(sideMargin),
+                        scroller: scroller,
+                        onZone: handleZone
                     )
-                    .ignoresSafeArea()
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 16)
-                            .onEnded { value in
-                                // 横ドラッグで 1 ページ送り(左ドラッグ=次へ)。
-                                // 画面端からのスワイプでも戻りジェスチャに奪われない。
-                                let dx = value.translation.width
-                                let dy = value.translation.height
-                                guard abs(dx) > 40, abs(dx) > abs(dy) * 1.4 else { return }
-                                if dx < 0 {
-                                    nextPage()
-                                } else {
-                                    previousPage()
-                                }
-                            }
-                    )
-                }
-
-                VStack {
-                    Spacer()
-                    HStack(spacing: 10) {
-                        Text(pageLabel)
-                            .font(AppFont.ui(12, design: .monospaced))
-                            .foregroundStyle(theme.secondaryInk)
-                            .layoutPriority(1)
-                        ReadingRibbon(value: progressRatio)
-                            .frame(minWidth: 48, maxWidth: 130)
-                        Text(chapterLabel)
-                            .font(AppFont.ui(13))
-                            .foregroundStyle(theme.secondaryInk)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 22)
-                    .padding(.bottom, 18)
-                    .opacity(showChrome ? 0.0 : 1.0)
-                }
-
-                if showChrome {
-                    chrome(size: geo.size)
+                    .ignoresSafeArea(edges: .bottom)
+                } else {
+                    missingBody
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture(count: 2) {
-                withAnimation(.easeOut(duration: 0.18)) { showChrome.toggle() }
-            }
-            .simultaneousGesture(
-                SpatialTapGesture(count: 1)
-                    .onEnded { value in
-                        // Kindle page zones: left third = back, right third = next,
-                        // center = show/hide chrome. Phone-sized hit targets.
-                        let x = value.location.x
-                        let w = geo.size.width
-                        if x < w / 3 {
-                            previousPage()
-                        } else if x > w * 2 / 3 {
-                            nextPage()
-                        } else {
-                            withAnimation(.easeOut(duration: 0.18)) { showChrome.toggle() }
-                        }
-                    }
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            bottomBar
         }
-        .statusBarHidden(!showChrome)
+        .background(theme.background.ignoresSafeArea())
         .task(id: chapterIndex) { await loadChapter() }
-        .onChange(of: pageIndex) { _, newValue in
-            ReadingPositionStore.save(novelId, chapter: chapterIndex, page: newValue)
-        }
-        .onChange(of: chapterIndex) { _, newValue in
-            ReadingPositionStore.save(novelId, chapter: newValue, page: 0)
-        }
+        .onChange(of: fontSize) { applyStyle() }
+        .onChange(of: lineSpacing) { applyStyle() }
+        .onChange(of: sideMargin) { applyStyle() }
+        .onChange(of: fontDesign) { applyStyle() }
+        .onChange(of: themeRaw) { applyStyle() }
         .onDisappear {
-            ReadingPositionStore.save(novelId, chapter: chapterIndex, page: pageIndex)
+            ReadingPositionStore.save(novelId, chapter: chapterIndex, page: 0)
+        }
+        .sheet(isPresented: $showToc) { tocSheet }
+        .sheet(isPresented: $showType) { typeSheet }
+        .alert("リーダー", isPresented: Binding(
+            get: { errorText != nil },
+            set: { if !$0 { errorText = nil } }
+        )) {
+            Button("OK", role: .cancel) { errorText = nil }
+        } message: {
+            Text(errorText ?? "")
         }
     }
 
-    // MARK: chrome
+    // MARK: 常時表示バー(メニューはここに必ずある)
 
-    private func chrome(size: CGSize) -> some View {
-        VStack {
-            HStack {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                Spacer()
-                VStack(spacing: 1) {
-                    Text(title)
-                        .font(AppFont.serif(14, weight: .medium))
-                        .lineLimit(1)
-                    Text(chapterTitle)
-                        .font(AppFont.ui(13))
-                        .opacity(0.75)
-                        .lineLimit(1)
-                }
-                Spacer()
-                Button { showMenu = true } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .accessibilityLabel("メニュー")
+    private var topBar: some View {
+        HStack(spacing: Spacing.m) {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.down")
+                    .font(AppFont.ui(16, weight: .semibold))
+                    .frame(width: 40, height: 40)
             }
-            .foregroundStyle(theme.ink)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(theme.background.opacity(0.97))
-
-            Spacer()
-
-            HStack(spacing: 12) {
-                Button(action: previousPage) {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 32, height: 32)
-                }
-                PageSlider(value: $pageIndex, count: pages.count)
-                Button(action: nextPage) {
-                    Image(systemName: "chevron.right")
-                        .frame(width: 32, height: 32)
-                }
-                Button { showType = true } label: {
-                    Text("Aa")
-                        .font(AppFont.serif(17, weight: .semibold))
-                }
-            }
-            .foregroundStyle(theme.ink)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .background(theme.background.opacity(0.97))
-        }
-        .transition(.opacity)
-        .sheet(isPresented: $showToc) {
-            tocSheet
-        }
-        .sheet(isPresented: $showType) {
-            typeSheet
-        }
-        .sheet(isPresented: $showMenu) {
-            menuSheet
-        }
-    }
-
-    private var menuSheet: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("メニュー")
-                .font(AppFont.serif(20, weight: .semibold))
-                .foregroundStyle(AppPalette.ink)
-                .padding(.top, 22)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 8)
-
-            menuRow(icon: "list.bullet", title: "目次", detail: "\(chapters.count) 話") {
-                showMenu = false
-                showToc = true
-            }
-            Divider().overlay(AppPalette.hairline).padding(.horizontal, 24)
-            menuRow(icon: "textformat.size", title: "文字とレイアウト", detail: "書体・行間・余白") {
-                showMenu = false
-                showType = true
-            }
-            Divider().overlay(AppPalette.hairline).padding(.horizontal, 24)
-            menuRow(icon: "chevron.left", title: "前の話", detail: previousChapterTitle) {
-                showMenu = false
-                advanceChapter(delta: -1)
-            }
-            Divider().overlay(AppPalette.hairline).padding(.horizontal, 24)
-            menuRow(icon: "chevron.right", title: "次の話", detail: nextChapterTitle) {
-                showMenu = false
-                advanceChapter(delta: 1)
-            }
-            Divider().overlay(AppPalette.hairline).padding(.horizontal, 24)
-            menuRow(icon: "arrow.uturn.backward", title: "閉じて作品詳細へ", detail: "") {
-                showMenu = false
-                dismiss()
-            }
-            Spacer()
-        }
-        .presentationDetents([.height(380)])
-    }
-
-    private func menuRow(
-        icon: String, title: String, detail: String, action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(AppFont.ui(16, weight: .medium))
-                    .foregroundStyle(AppPalette.ember)
-                    .frame(width: 26)
+            .buttonStyle(PressableButtonStyle())
+            Spacer(minLength: 0)
+            VStack(spacing: 1) {
                 Text(title)
-                    .font(AppFont.ui(16))
-                    .foregroundStyle(AppPalette.ink)
-                Spacer()
-                Text(detail)
-                    .font(AppFont.ui(13))
-                    .foregroundStyle(AppPalette.inkFaint)
+                    .font(AppFont.serif(14, weight: .semibold))
+                    .lineLimit(1)
+                Text(chapterTitle.isEmpty ? chapterLabel : chapterTitle)
+                    .font(AppFont.ui(12))
+                    .opacity(0.75)
                     .lineLimit(1)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 15)
-            .contentShape(Rectangle())
+            .foregroundStyle(theme.ink)
+            Spacer(minLength: 0)
+            Button { showToc = true } label: {
+                Image(systemName: "list.bullet")
+                    .font(AppFont.ui(15, weight: .semibold))
+                    .frame(width: 40, height: 40)
+            }
+            .buttonStyle(PressableButtonStyle())
+            Button { showType = true } label: {
+                Text("Aa")
+                    .font(AppFont.serif(16, weight: .semibold))
+                    .frame(width: 40, height: 40)
+            }
+            .buttonStyle(PressableButtonStyle())
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, Spacing.s)
+        .frame(height: 52)
+        .background(theme.background.opacity(0.98))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.hairline).frame(height: 1)
+        }
     }
 
-    private var previousChapterTitle: String {
-        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }),
-              pos > 0 else { return "なし" }
-        return chapters[pos - 1].subtitle
+    private var bottomBar: some View {
+        HStack(spacing: Spacing.m) {
+            Button {
+                withAnimation { advanceChapter(delta: -1) }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(AppFont.ui(14, weight: .semibold))
+                    .frame(width: 44, height: 40)
+            }
+            .buttonStyle(PressableButtonStyle())
+            .disabled(!canGoPrevious)
+
+            VStack(spacing: 4) {
+                Text(chapterLabel)
+                    .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(theme.ink)
+                ReadingRibbon(value: chapterProgress)
+                    .frame(maxWidth: 160)
+            }
+
+            Button {
+                withAnimation { advanceChapter(delta: 1) }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(AppFont.ui(14, weight: .semibold))
+                    .frame(width: 44, height: 40)
+            }
+            .buttonStyle(PressableButtonStyle())
+            .disabled(!canGoNext)
+        }
+        .padding(.horizontal, Spacing.l)
+        .frame(height: 60)
+        .background(theme.background.opacity(0.98))
+        .overlay(alignment: .top) {
+            Rectangle().fill(theme.hairline).frame(height: 1)
+        }
     }
 
-    private var nextChapterTitle: String {
-        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }),
-              pos + 1 < chapters.count else { return "なし" }
-        return chapters[pos + 1].subtitle
+    // MARK: 本文未取得
+
+    private var missingBody: some View {
+        VStack(spacing: Spacing.m) {
+            Image(systemName: "text.alignleft")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(theme.secondaryInk)
+            Text("この話の本文はまだ取得されていません")
+                .font(AppFont.serif(17))
+                .foregroundStyle(theme.ink)
+            if fetching {
+                ProgressView()
+            } else {
+                Button {
+                    Task { await fetchThisChapter() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.down.circle.fill")
+                        Text("この話を取得")
+                    }
+                    .font(AppFont.ui(15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 22)
+                    .frame(height: Metrics.controlHeightSmall)
+                    .background(
+                        RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                            .fill(AppPalette.ember)
+                    )
+                }
+                .buttonStyle(PressableButtonStyle())
+            }
+        }
     }
+
+    // MARK: タップゾーン
+
+    private func handleZone(_ zone: ReaderZone) {
+        switch zone {
+        case .previous:
+            if !scroller.pageUp() {
+                // 先頭ページでは何もしない(誤操作で前に戻らない)
+            }
+        case .menu:
+            showType = true
+        case .next:
+            if !scroller.pageDown() {
+                withAnimation { advanceChapter(delta: 1) }
+            }
+        }
+    }
+
+    // MARK: データ
+
+    private var canGoPrevious: Bool {
+        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }) else { return false }
+        return pos > 0
+    }
+
+    private var canGoNext: Bool {
+        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }) else { return false }
+        return pos + 1 < chapters.count
+    }
+
+    private var chapterLabel: String {
+        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }) else {
+            return "\(chapterIndex) 話"
+        }
+        return "\(pos + 1) / \(chapters.count) 話"
+    }
+
+    private var chapterProgress: Double {
+        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }), !chapters.isEmpty
+        else { return 0 }
+        return Double(pos + 1) / Double(chapters.count)
+    }
+
+    private var currentStyle: ReaderMarkup.Style {
+        ReaderMarkup.Style(
+            fontSize: fontSize,
+            lineSpacing: lineSpacing,
+            ink: UIColor(theme.ink),
+            maxWidth: 280,
+            design: fontDesign
+        )
+    }
+
+    private func loadChapter() async {
+        loading = true
+        defer { loading = false }
+        do {
+            let section = try await core.section(novelId: novelId, index: chapterIndex)
+            chapterTitle = section.subtitle
+            if chapters.isEmpty {
+                chapters = (try? await core.novelDetail(novelId))?.chapters ?? []
+            }
+            let body = [section.introXhtml, section.bodyXhtml, section.postXhtml]
+                .compactMap { $0 }
+                .joined(separator: "\n")
+            rawBody = body
+            hasBody = !(section.bodyXhtml ?? "").isEmpty || !body.isEmpty
+            applyStyle()
+            ReadingPositionStore.save(novelId, chapter: chapterIndex, page: 0)
+        } catch {
+            rawBody = ""
+            attributed = NSAttributedString()
+            hasBody = false
+            errorText = "この話を開けません: \(error.localizedDescription)"
+        }
+    }
+
+    /// 書体・行間・余白・テーマの即時反映(取得はせず描画だけ差し替える)。
+    private func applyStyle() {
+        guard hasBody, !rawBody.isEmpty else { return }
+        attributed = ReaderMarkup().parse(rawBody, style: currentStyle)
+    }
+
+    private func advanceChapter(delta: Int) {
+        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }),
+              chapters.indices.contains(pos + delta)
+        else { return }
+        chapterIndex = chapters[pos + delta].index
+    }
+
+    /// 未取得の話をその場で 1 話取得して開く。
+    private func fetchThisChapter() async {
+        guard let meta = core.library.first(where: { $0.novelId == novelId }) else {
+            errorText = "作品情報が見つかりません"
+            return
+        }
+        fetching = true
+        defer { fetching = false }
+        do {
+            _ = try await core.download(
+                CoreClient.DownloadOptions(
+                    url: meta.tocUrl,
+                    outputDir: meta.outputDir,
+                    episodes: 1,
+                    fromIndex: chapterIndex,
+                    mode: "bulk"
+                )
+            )
+            await core.reloadLibrary()
+            await loadChapter()
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+
+    // MARK: 目次シート
 
     private var tocSheet: some View {
         NavigationStack {
             List(chapters, id: \.index) { ch in
                 Button {
                     chapterIndex = ch.index
-                    pageIndex = 0
                     showToc = false
                 } label: {
-                    HStack {
+                    HStack(spacing: Spacing.m) {
+                        Text(ch.index)
+                            .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(AppPalette.inkFaint)
+                            .frame(width: 34, alignment: .trailing)
                         VStack(alignment: .leading, spacing: 2) {
                             if let group = ch.chapter, !group.isEmpty {
                                 Text(group)
-                                    .font(AppFont.ui(12, weight: .semibold))
+                                    .font(AppFont.ui(11, weight: .semibold))
                                     .foregroundStyle(AppPalette.gold)
                             }
                             Text(ch.subtitle)
-                                .font(AppFont.serif(16))
+                                .font(AppFont.serif(15))
                                 .foregroundStyle(.primary)
                         }
                         Spacer()
@@ -309,39 +356,49 @@ struct ReaderView: View {
                                 .font(.system(size: 12))
                         }
                     }
+                    .padding(.vertical, 4)
                 }
+                .buttonStyle(PressableButtonStyle())
             }
             .navigationTitle("目次")
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
+        .presentationCornerRadius(20)
     }
 
-    private var typeSheet: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Text("文字とレイアウト")
-                .font(AppFont.serif(20, weight: .semibold))
+    // MARK: 文字とレイアウト(メニューの中身)
 
-            HStack(spacing: 14) {
+    private var typeSheet: some View {
+        VStack(alignment: .leading, spacing: Spacing.l) {
+            HStack {
+                Text("文字とレイアウト")
+                    .font(AppFont.serif(20, weight: .semibold))
+                    .foregroundStyle(AppPalette.ink)
+                Spacer()
+                CircleIconButton(system: "xmark") { showType = false }
+            }
+
+            HStack(spacing: Spacing.s) {
                 ForEach(BookTheme.allCases) { option in
                     Button {
                         themeRaw = option.rawValue
                     } label: {
                         Text(option.label)
-                            .font(AppFont.ui(13, weight: .medium))
+                            .font(AppFont.ui(13, weight: .semibold))
                             .foregroundStyle(option.ink)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                            .frame(height: 52)
                             .background(option.background)
-                            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius))
+                            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: Metrics.cardRadius)
+                                RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
                                     .strokeBorder(
-                                        themeRaw == option.rawValue ? AppPalette.ember : .clear,
-                                        lineWidth: 2)
+                                        themeRaw == option.rawValue ? AppPalette.ember : AppPalette.hairline,
+                                        lineWidth: themeRaw == option.rawValue ? 2 : 1)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
                 }
             }
 
@@ -363,111 +420,27 @@ struct ReaderView: View {
             .padding(Spacing.m)
             .background(PaperBackground())
 
+            HStack(spacing: Spacing.m) {
+                QuietButton(title: "前の話", systemImage: "chevron.left", disabled: !canGoPrevious) {
+                    showType = false
+                    advanceChapter(delta: -1)
+                }
+                QuietButton(title: "次の話", systemImage: "chevron.right", disabled: !canGoNext) {
+                    showType = false
+                    advanceChapter(delta: 1)
+                }
+            }
             Spacer()
         }
-        .padding(24)
-        .presentationDetents([.height(430), .medium])
-        .onChange(of: fontSize) { Task { await repaginate() } }
-        .onChange(of: lineSpacing) { Task { await repaginate() } }
-        .onChange(of: sideMargin) { Task { await repaginate() } }
-        .onChange(of: fontDesign) { Task { await repaginate() } }
-    }
-
-    // MARK: data
-
-    /// ページ送りと描画で必ず同じ余白を使う(ズレると本文が欠ける)。
-    private var pageInsets: UIEdgeInsets {
-        let side = CGFloat(sideMargin)
-        return UIEdgeInsets(top: 54, left: side, bottom: 64, right: side)
-    }
-
-    private var pageLabel: String {
-        guard !pages.isEmpty else { return "" }
-        return "\(pageIndex + 1) / \(pages.count)"
-    }
-
-    private var progressRatio: Double {
-        guard !pages.isEmpty else { return 0 }
-        return Double(pageIndex + 1) / Double(pages.count)
-    }
-
-    private var chapterLabel: String {
-        guard let idx = Int(chapterIndex) else { return "" }
-        return "\(idx) 話"
-    }
-
-    private func loadChapter() async {
-        loading = true
-        defer { loading = false }
-        do {
-            let section = try await core.section(novelId: novelId, index: chapterIndex)
-            chapterTitle = section.subtitle
-            let body = [section.introXhtml, section.bodyXhtml, section.postXhtml]
-                .compactMap { $0 }
-                .joined(separator: "\n")
-            let detail = try? await core.novelDetail(novelId)
-            chapters = detail?.chapters ?? []
-            await paginate(body: body)
-        } catch {
-            pages = []
-        }
-    }
-
-    private func repaginate() async {
-        guard !pages.isEmpty else { return }
-        // rebuild from source (chapter reload keeps it simple + correct)
-        await loadChapter()
-    }
-
-    private func paginate(body: String) async {
-        let style = ReaderMarkup.Style(
-            fontSize: fontSize,
-            lineSpacing: lineSpacing,
-            ink: UIColor(theme.ink),
-            maxWidth: 300,
-            design: fontDesign)
-        let markup = ReaderMarkup().parse(body, style: style)
-        let bounds = UIScreen.main.bounds.size
-        let page = PagePaginator.paginate(
-            markup,
-            pageSize: CGSize(width: bounds.width, height: bounds.height),
-            insets: pageInsets)
-        self.pages = page
-        let saved = ReadingPositionStore.load(novelId)
-        self.pageIndex = (saved?.chapter == chapterIndex) ? min(saved?.page ?? 0, max(page.count - 1, 0)) : 0
-    }
-
-    private func nextPage() {
-        guard !pages.isEmpty else { return }
-        Haptics.tap()
-        if pageIndex + 1 < pages.count {
-            pageIndex += 1
-        } else {
-            advanceChapter(delta: 1)
-        }
-    }
-
-    private func previousPage() {
-        guard !pages.isEmpty else { return }
-        Haptics.tap()
-        if pageIndex > 0 {
-            pageIndex -= 1
-        } else {
-            advanceChapter(delta: -1)
-        }
-    }
-
-    private func advanceChapter(delta: Int) {
-        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }),
-            chapters.indices.contains(pos + delta)
-        else { return }
-        chapterIndex = chapters[pos + delta].index
-        pageIndex = 0
+        .padding(Spacing.xl)
+        .presentationDetents([.height(520)])
+        .presentationCornerRadius(20)
     }
 }
 
+// MARK: - 位置記憶
 
-/// Kindle-style reading position: resumes each book where the reader left off.
+/// Kindle 式の読書位置。章単位のみ記録(描画中の細かい保存は行わない)。
 enum ReadingPositionStore {
     private static let key = "readingPositions"
 

@@ -1,0 +1,94 @@
+import SwiftUI
+import UIKit
+
+/// タップゾーン:左 = 1 画面戻る / 中央 = メニュー / 右 = 1 画面送る(末尾なら次話)。
+enum ReaderZone {
+    case previous, menu, next
+}
+
+/// UITextView への参照受け渡し(スクロール操作用)。循環参照を避けるため weak。
+final class ScrollBox {
+    weak var view: UITextView?
+
+    /// 1 画面分戻る。先頭なら false。
+    @discardableResult
+    func pageUp() -> Bool {
+        guard let v = view else { return false }
+        let h = max(v.bounds.height * 0.92, 200)
+        let target = v.contentOffset.y - h
+        if v.contentOffset.y <= 4 { return false }
+        v.setContentOffset(CGPoint(x: 0, y: max(0, target)), animated: true)
+        return true
+    }
+
+    /// 1 画面分送る。末尾なら false(呼び出し側で次話へ)。
+    @discardableResult
+    func pageDown() -> Bool {
+        guard let v = view else { return false }
+        let h = max(v.bounds.height * 0.92, 200)
+        let maxY = max(0, v.contentSize.height - v.bounds.height + v.contentInset.bottom)
+        if v.contentOffset.y >= maxY - 6 { return false }
+        v.setContentOffset(CGPoint(x: 0, y: min(v.contentOffset.y + h, maxY)), animated: true)
+        return true
+    }
+}
+
+/// 本文ビュー — UITextView のネイティブスクロール(CoreText 直描画の事故を排除)。
+struct ReaderTextView: UIViewRepresentable {
+    let attributed: NSAttributedString
+    let background: UIColor
+    var sideMargin: CGFloat = 34
+    let scroller: ScrollBox
+    let onZone: (ReaderZone) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onZone: onZone)
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let tv = UITextView()
+        tv.isEditable = false
+        tv.isSelectable = false
+        tv.isScrollEnabled = true
+        tv.alwaysBounceVertical = true
+        tv.backgroundColor = background
+        tv.textContainerInset = UIEdgeInsets(top: 28, left: sideMargin, bottom: 96, right: sideMargin)
+        tv.textContainer.lineFragmentPadding = 0
+        tv.adjustsFontForContentSizeCategory = false
+        tv.indicatorStyle = .default
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        tap.cancelsTouchesInView = false
+        tv.addGestureRecognizer(tap)
+        scroller.view = tv
+        return tv
+    }
+
+    func updateUIView(_ tv: UITextView, context: Context) {
+        tv.backgroundColor = background
+        tv.textContainerInset = UIEdgeInsets(top: 28, left: sideMargin, bottom: 96, right: sideMargin)
+        if !tv.attributedText.isEqual(attributed) {
+            let offset = tv.contentOffset
+            tv.attributedText = attributed
+            // 同一話内の書体変更では読み位置を保つ
+            tv.setContentOffset(offset, animated: false)
+        }
+    }
+
+    final class Coordinator: NSObject {
+        let onZone: (ReaderZone) -> Void
+        init(onZone: @escaping (ReaderZone) -> Void) { self.onZone = onZone }
+
+        @objc func tapped(_ gesture: UITapGestureRecognizer) {
+            guard let view = gesture.view else { return }
+            let x = gesture.location(in: view).x
+            let w = view.bounds.width
+            if x < w / 3 {
+                onZone(.previous)
+            } else if x > w * 2 / 3 {
+                onZone(.next)
+            } else {
+                onZone(.menu)
+            }
+        }
+    }
+}
