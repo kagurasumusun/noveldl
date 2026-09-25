@@ -102,9 +102,12 @@ final class ReaderMarkup: @unchecked Sendable {
     }
 
     private func rubyText(base: String, ruby: String, attributes attrs: [NSAttributedString.Key: Any]) -> NSAttributedString {
+        // Nyxian の SDK では attributes 引数は非 optional の CFDictionary として
+        // インポートされる（nil 不可）— 空の NSDictionary をブリッジして渡す。
+        let noAttrs = NSDictionary() as CFDictionary
         let annotation = CTRubyAnnotationCreateWithAttributes(
             .auto, .auto, .before,
-            (ruby as CFString), nil)
+            (ruby as CFString), noAttrs)
         var rubyAttrs = attrs
         rubyAttrs[rubyKey] = annotation
         return NSAttributedString(string: base, attributes: rubyAttrs)

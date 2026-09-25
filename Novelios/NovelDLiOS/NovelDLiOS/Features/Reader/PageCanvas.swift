@@ -70,7 +70,8 @@ final class PageCanvasView: UIView {
         let path = CGPath(rect: contentRect, transform: nil)
         let framesetter = CTFramesetterCreateWithAttributedString(page as CFAttributedString)
         let frame = CTFramesetterCreateFrame(
-            framesetter, CFRange(location: 0, length: page.length), path, nil)
+            framesetter, CFRange(location: 0, length: page.length), path,
+            NSDictionary() as CFDictionary)
 
         ctx.textMatrix = .identity
         ctx.translateBy(x: 0, y: rect.height)
@@ -102,7 +103,8 @@ enum PagePaginator {
             let path = CGPath(
                 rect: CGRect(origin: .zero, size: content), transform: nil)
             let frame = CTFramesetterCreateFrame(
-                framesetter, CFRange(location: offset, length: remaining), path, nil)
+                framesetter, CFRange(location: offset, length: remaining), path,
+                NSDictionary() as CFDictionary)
             let range = CTFrameGetStringRange(frame)
             var fitted = range.length
             if fitted <= 0 {
