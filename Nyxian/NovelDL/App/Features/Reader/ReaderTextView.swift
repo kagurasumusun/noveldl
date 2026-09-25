@@ -23,13 +23,32 @@ final class ScrollBox {
     weak var view: UITextView?
     var turn: PageTurn = .curl
 
+    /// 1ページ = 上余白 + 本文帯(pageBand)+ 下余白。
+    /// 余白は contentInset 側で確保し、どのページでも本文が画面端・
+    /// ノッチ・ホームバーに食い込まないようにする。
+    var padTop: CGFloat = 66
+    var padBottom: CGFloat = 52
+
+    private var minOffset: CGFloat { -padTop }
+    private var pageBand: CGFloat {
+        guard let v = view else { return 200 }
+        return max(v.bounds.height - padTop - padBottom, 120)
+    }
+    private var maxOffset: CGFloat {
+        guard let v = view else { return minOffset }
+        // 本文の末尾を本文帯の下端に合わせるのが最大送り位置。
+        return max(minOffset, v.contentSize.height - pageBand - padTop)
+    }
+    private func pageIndex(_ y: CGFloat) -> CGFloat {
+        ((y + padTop + 2) / pageBand).rounded(.down)
+    }
+
     @discardableResult
     func pageUp() -> Bool {
         guard let v = view else { return false }
-        if v.contentOffset.y <= 4 { return false }
-        let h = max(v.bounds.height, 200)
-        let page = (v.contentOffset.y / h).rounded(.down) * h
-        let target = max(0, page - h)
+        let cur = pageIndex(v.contentOffset.y)
+        guard cur > 0 else { return false }
+        let target = max(minOffset, (cur - 1) * pageBand - padTop)
         animate(v, forward: false) {
             v.contentOffset = CGPoint(x: 0, y: target)
         }
@@ -39,11 +58,9 @@ final class ScrollBox {
     @discardableResult
     func pageDown() -> Bool {
         guard let v = view else { return false }
-        let h = max(v.bounds.height, 200)
-        let maxY = max(0, v.contentSize.height - v.bounds.height + v.contentInset.bottom)
-        if v.contentOffset.y >= maxY - 6 { return false }
-        let page = (v.contentOffset.y / h).rounded(.down) * h
-        let target = min(page + h, maxY)
+        let cur = pageIndex(v.contentOffset.y)
+        let target = min(maxOffset, (cur + 1) * pageBand - padTop)
+        if target <= v.contentOffset.y + 4 { return false }
         animate(v, forward: true) {
             v.contentOffset = CGPoint(x: 0, y: target)
         }
@@ -52,13 +69,12 @@ final class ScrollBox {
 
     var atFirstPage: Bool {
         guard let v = view else { return true }
-        return v.contentOffset.y <= 4
+        return v.contentOffset.y <= minOffset + 4
     }
 
     var atLastPage: Bool {
         guard let v = view else { return true }
-        let maxY = max(0, v.contentSize.height - v.bounds.height + v.contentInset.bottom)
-        return v.contentOffset.y >= maxY - 6
+        return v.contentOffset.y >= maxOffset - 4
     }
 
     /// 挿絵を実画像へ差し替える(レンジは現在の textStorage 上)。
@@ -139,13 +155,18 @@ struct ReaderTextView: UIViewRepresentable {
         tv.contentInsetAdjustmentBehavior = .never
         // 本文全体をレイアウトさせる(しないと1画面で切れて「本文が出ない」)。
         tv.layoutManager.allowsNonContiguousLayout = false
+        // 幅はビューに追従させる(width: 0 指定だと折り返しが壊れて横にはみ出す)。
+        tv.textContainer.widthTracksTextView = true
         tv.textContainer.heightTracksTextView = false
-        tv.textContainer.size = CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
-        tv.textContainerInset = UIEdgeInsets(top: 26, left: sideMargin, bottom: 40, right: sideMargin)
+        // 左右のみ本文インセット。上下の余白は contentInset で全ページ均等に確保。
+        tv.textContainerInset = UIEdgeInsets(top: 0, left: sideMargin, bottom: 0, right: sideMargin)
         tv.textContainer.lineFragmentPadding = 0
+        tv.textContainer.size = CGSize(width: max(tv.bounds.width, 1),
+                                       height: CGFloat.greatestFiniteMagnitude)
+        tv.contentInset = UIEdgeInsets(top: box.padTop, left: 0, bottom: box.padBottom, right: 0)
         tv.showsVerticalScrollIndicator = false
         tv.attributedText = attributed
-        tv.contentOffset = .zero
+        tv.contentOffset = CGPoint(x: 0, y: -box.padTop)
 
         let taps = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
         tv.addGestureRecognizer(taps)
@@ -182,9 +203,16 @@ struct ReaderTextView: UIViewRepresentable {
         context.coordinator.swipeEnabled = swipePaging
 
         tv.backgroundColor = UIColor(theme.background)
-        tv.textContainerInset = UIEdgeInsets(top: 26, left: sideMargin, bottom: 40, right: sideMargin)
+        // セーフエリア(ノッチ/ホームバー)分を余白に含め、本文を画面内へ収める。
+        let safe = tv.safeAreaInsets
+        box.padTop = max(28, safe.top + 16)
+        box.padBottom = max(36, safe.bottom + 18)
+        tv.contentInset = UIEdgeInsets(top: box.padTop, left: 0, bottom: box.padBottom, right: 0)
+        tv.textContainerInset = UIEdgeInsets(top: 0, left: sideMargin, bottom: 0, right: sideMargin)
+        tv.textContainer.widthTracksTextView = true
         tv.textContainer.heightTracksTextView = false
-        tv.textContainer.size = CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        tv.textContainer.size = CGSize(width: max(tv.bounds.width, 1),
+                                       height: CGFloat.greatestFiniteMagnitude)
         box.view = tv
         box.turn = turn
         context.coordinator.box = box
@@ -192,7 +220,7 @@ struct ReaderTextView: UIViewRepresentable {
         if !context.coordinator.applied.isEqual(to: attributed) {
             context.coordinator.applied = attributed
             tv.attributedText = attributed
-            tv.contentOffset = .zero
+            tv.contentOffset = CGPoint(x: 0, y: -box.padTop)
         }
     }
 
