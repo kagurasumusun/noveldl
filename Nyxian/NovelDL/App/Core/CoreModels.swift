@@ -49,6 +49,14 @@ struct LibraryNovelInfo: Decodable, Hashable, Sendable {
     let episodeCount: Int
     /// あらすじ(追加時に取得保存されたもの)
     let description: String?
+    /// 完結/連載中など(サイトのメタ情報・追加時に取得)
+    let status: String?
+    /// 次回更新予定
+    let nextUpdate: String?
+    /// コメント数など
+    let commentCount: String?
+    /// サイト側の更新日時表記
+    let siteUpdated: String?
 }
 
 struct LibraryNovelDetail: Decodable, Sendable {

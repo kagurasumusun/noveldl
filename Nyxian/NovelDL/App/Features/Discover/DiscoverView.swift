@@ -15,8 +15,8 @@ struct DiscoverView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.l) {
                     SectionBanner(
-                        title: "さがす",
-                        subtitle: sites.isEmpty ? nil : sites.map(\.label).joined(separator: "・")
+                        title: "DISCOVER",
+                        subtitle: "作品を探す"
                     )
 
                     HStack(spacing: Spacing.m) {
@@ -46,6 +46,8 @@ struct DiscoverView: View {
                     .padding(.horizontal, Spacing.l)
                     .frame(height: 50)
                     .background(PaperBackground())
+
+                    searchServices
 
                     if results.isEmpty && !searching {
                         VStack(spacing: Spacing.m) {
@@ -153,6 +155,63 @@ struct DiscoverView: View {
     }
 
     private func shortDate(_ s: String) -> String { String(s.prefix(10)) }
+
+    /// 横断・専用の検索サービス(検索のみ — 取得は各サイトから)。
+    private var searchServices: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("SEARCH ENGINES")
+                .font(AppFont.ui(11, weight: .semibold))
+                .tracking(2)
+                .foregroundStyle(AppPalette.gold)
+                .padding(.horizontal, Spacing.l)
+                .padding(.top, Spacing.l)
+            Text("横断・専用の検索サービス(検索のみ)")
+                .font(AppFont.ui(11))
+                .foregroundStyle(AppPalette.inkFaint)
+                .padding(.horizontal, Spacing.l)
+                .padding(.top, 2)
+                .padding(.bottom, Spacing.s)
+
+            VStack(spacing: 0) {
+                serviceRow(
+                    name: "Web小説アンテナ",
+                    note: "20サイト横断の検索・更新情報",
+                    url: query.isEmpty
+                        ? "https://webnovels.jp/"
+                        : "https://webnovels.jp/search?q=" + (query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")
+                )
+                RowDivider(leading: Spacing.l)
+                serviceRow(name: "ノベレコ", note: "なろう/カクヨム/ハーメルン検索エンジン", url: "https://novereco.net/")
+                RowDivider(leading: Spacing.l)
+                serviceRow(name: "なろう検索", note: "なろう特化の検索・全文検索導線", url: "https://narousearch.appspot.com/")
+                RowDivider(leading: Spacing.l)
+                serviceRow(name: "ランタン検索", note: "R-18 レーベル(ノクターン等)専用", url: "https://narousearch.appspot.com/")
+            }
+            .background(PaperBackground())
+        }
+    }
+
+    private func serviceRow(name: String, note: String, url: String) -> some View {
+        Link(destination: URL(string: url)!) {
+            HStack(spacing: Spacing.m) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(AppFont.ui(14, weight: .semibold))
+                        .foregroundStyle(AppPalette.ink)
+                    Text(note)
+                        .font(AppFont.ui(11))
+                        .foregroundStyle(AppPalette.inkFaint)
+                }
+                Spacer()
+                Image(systemName: "safari")
+                    .font(AppFont.ui(13, weight: .semibold))
+                    .foregroundStyle(AppPalette.ember)
+            }
+            .padding(.horizontal, Spacing.l)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+    }
 
     private func run() async {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -14,9 +14,8 @@ struct QueueView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.xl) {
                     SectionBanner(
-                        title: "ダウンロード",
-                        subtitle: core.progress.running ? "取得中" : "待機中"
-                    )
+                        title: "FETCH",
+                        subtitle: "取得キュー")
 
                     VStack(alignment: .leading, spacing: Spacing.l) {
                         HStack(alignment: .firstTextBaseline) {

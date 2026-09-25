@@ -434,13 +434,13 @@ struct ReaderView: View {
 
     private func menuSectionHeader(_ title: String, _ en: String) -> some View {
         HStack(spacing: Spacing.s) {
-            Text(title)
-                .font(AppFont.ui(12, weight: .semibold))
-                .foregroundStyle(AppPalette.gold)
             Text(en)
-                .font(AppFont.ui(8, weight: .semibold))
+                .font(AppFont.ui(13, weight: .bold))
+                .foregroundStyle(AppPalette.ink)
+                .tracking(1.5)
+            Text(title)
+                .font(AppFont.ui(10, weight: .medium))
                 .foregroundStyle(AppPalette.inkFaint)
-                .tracking(1.2)
             Rectangle()
                 .fill(AppPalette.hairline)
                 .frame(height: 1)

@@ -376,6 +376,10 @@ Value fetch_metadata_via_rules(const std::string& url, const Value& preset, Http
     v.set("title", Value::string(toc.title.value_or("")));
     v.set("author", Value::string(toc.author.value_or("")));
     v.set("story", Value::string(toc.story.value_or("")));
+    v.set("status", Value::string(toc.status.value_or("")));
+    v.set("next_update", Value::string(toc.next_update.value_or("")));
+    v.set("comment_count", Value::string(toc.comment_count.value_or("")));
+    v.set("updated", Value::string(toc.updated.value_or("")));
     v.set("episodes", Value::integer((long long)toc.chapters.size()));
     v.set("toc_url", Value::string(url));
     return v;
@@ -678,14 +682,22 @@ Value op_fetch_toc(const DownloadOptions& opts) {
         if (ch.subupdate) c.set("subupdate", Value::string(*ch.subupdate));
         chapters.push(std::move(c));
     }
-    // 詳細ページが表示する情報(あらすじ等)もこの時点で取得・保存する。
+    // 詳細ページが表示する情報(あらすじ・状態・更新予定等)もこの時点で取得・保存する。
     std::string story;
-    try {
-        Value meta = fetch_metadata_via_rules(opts.url, preset, http);
-        story = meta.get_str("story", "");
-    } catch (const std::exception&) {
+    {
+        NovelMetaExtra mx;
+        try {
+            Value meta = fetch_metadata_via_rules(opts.url, preset, http);
+            story = meta.get_str("story", "");
+            mx.status = meta.get_str("status", "");
+            mx.next_update = meta.get_str("next_update", "");
+            mx.comment_count = meta.get_str("comment_count", "");
+            mx.updated = meta.get_str("updated", "");
+        } catch (const std::exception&) {
+        }
+        if (!story.empty()) storage.update_novel_description(novel_id, story);
+        storage.update_novel_meta(novel_id, mx);
     }
-    if (!story.empty()) storage.update_novel_description(novel_id, story);
 
     set_progress((long long)tr.chapters.size(), 0, (long long)tr.chapters.size(), 0,
                  "目次取得完了", false);
@@ -790,6 +802,13 @@ Value op_library_novel(const std::string& root_dir, const std::string& novel_id)
     novel.set("domain", Value::string(storage.novel_domain(novel_id)));
     novel.set("output_dir", Value::string(storage.novel_output_dir(novel_id)));
     novel.set("description", Value::string(storage.novel_description(novel_id)));
+    {
+        auto mx = storage.novel_meta(novel_id);
+        novel.set("status", Value::string(mx.status));
+        novel.set("next_update", Value::string(mx.next_update));
+        novel.set("comment_count", Value::string(mx.comment_count));
+        novel.set("site_updated", Value::string(mx.updated));
+    }
 
     auto toc = storage.cached_toc_chapters(novel_id);
     auto states = storage.section_download_states(novel_id);

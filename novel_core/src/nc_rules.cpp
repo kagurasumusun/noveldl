@@ -147,6 +147,10 @@ struct TocSource {
 
 struct NovelInfoSelectors {
     std::optional<std::string> title, author, story, cover;
+    std::optional<std::string> status;
+    std::optional<std::string> next_update;
+    std::optional<std::string> comment_count;
+    std::optional<std::string> updated;
 };
 
 struct NovelInfoRules {
@@ -330,6 +334,10 @@ ParserRules compile_rules(const Value& preset) {
         rules.info.author = opt_str(*info, "author");
         rules.info.story = opt_str(*info, "story");
         rules.info.cover = opt_str(*info, "cover");
+        rules.info.status = opt_str(*info, "status");
+        rules.info.next_update = opt_str(*info, "next_update");
+        rules.info.comment_count = opt_str(*info, "comment_count");
+        rules.info.updated = opt_str(*info, "updated");
     }
     if (const Value* nr = preset.get("novel_info_rules")) {
         NovelInfoRules x;
@@ -825,6 +833,10 @@ struct Engine {
         toc.author = extract_info(html, *doc, "author");
         apply_info_rules(html, *doc, toc.title, toc.author);
         toc.story = extract_info(html, *doc, "story");
+        toc.status = extract_info(html, *doc, "status");
+        toc.next_update = extract_info(html, *doc, "next_update");
+        toc.comment_count = extract_info(html, *doc, "comment_count");
+        toc.updated = extract_info(html, *doc, "updated");
         for (auto& source : ordered_sources()) {
             if (!source.collects_chapters()) continue;
             collect_source(html, *doc, source, toc.chapters, {nullptr, nullptr});
@@ -863,6 +875,10 @@ struct Engine {
         else if (field == "author") sel = rules.info.author;
         else if (field == "story") sel = rules.info.story;
         else if (field == "cover") sel = rules.info.cover;
+        else if (field == "status") sel = rules.info.status;
+        else if (field == "next_update") sel = rules.info.next_update;
+        else if (field == "comment_count") sel = rules.info.comment_count;
+        else if (field == "updated") sel = rules.info.updated;
         if (sel) {
             std::string trimmed = trim(*sel);
             if (starts_with(trimmed, "$")) {

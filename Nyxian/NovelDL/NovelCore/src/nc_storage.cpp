@@ -155,6 +155,10 @@ void migrate_master(Sqlite& db) {
     add_column_if_missing(db, "novels", "output_dir", "TEXT NOT NULL DEFAULT ''");
     add_column_if_missing(db, "novels", "shard_dir", "TEXT NOT NULL DEFAULT ''");
     add_column_if_missing(db, "novels", "description", "TEXT NOT NULL DEFAULT ''");
+    add_column_if_missing(db, "novels", "status", "TEXT NOT NULL DEFAULT ''");
+    add_column_if_missing(db, "novels", "next_update", "TEXT NOT NULL DEFAULT ''");
+    add_column_if_missing(db, "novels", "comment_count", "TEXT NOT NULL DEFAULT ''");
+    add_column_if_missing(db, "novels", "site_updated", "TEXT NOT NULL DEFAULT ''");
     add_column_if_missing(db, "novels", "created_at", "TEXT NOT NULL DEFAULT ''");
     add_column_if_missing(db, "novels", "last_downloaded_at", "TEXT NOT NULL DEFAULT ''");
 }
@@ -416,6 +420,35 @@ void SectionStorage::update_novel_description(const std::string& novel_id,
     stmt.bind_text(2, novel_id);
     while (stmt.step()) {
     }
+}
+
+void SectionStorage::update_novel_meta(const std::string& novel_id,
+                                       const NovelMetaExtra& mx) {
+    Stmt stmt(impl_->master.prepare(
+        "UPDATE novels SET status = ?1, next_update = ?2, comment_count = ?3,"
+        " site_updated = ?4 WHERE novel_id = ?5"));
+    stmt.bind_text(1, mx.status);
+    stmt.bind_text(2, mx.next_update);
+    stmt.bind_text(3, mx.comment_count);
+    stmt.bind_text(4, mx.updated);
+    stmt.bind_text(5, novel_id);
+    while (stmt.step()) {
+    }
+}
+
+NovelMetaExtra SectionStorage::novel_meta(const std::string& novel_id) {
+    NovelMetaExtra mx;
+    Stmt stmt(impl_->master.prepare(
+        "SELECT status, next_update, comment_count, site_updated"
+        " FROM novels WHERE novel_id = ?1"));
+    stmt.bind_text(1, novel_id);
+    if (stmt.step()) {
+        mx.status = stmt.col_text(0);
+        mx.next_update = stmt.col_text(1);
+        mx.comment_count = stmt.col_text(2);
+        mx.updated = stmt.col_text(3);
+    }
+    return mx;
 }
 
 std::string SectionStorage::novel_description(const std::string& novel_id) {

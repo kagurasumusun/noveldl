@@ -18,7 +18,7 @@ struct SettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.xl) {
-                    SectionBanner(title: "設定", eyebrow: "SETTINGS")
+                    SectionBanner(title: "SETTINGS", subtitle: "設定")
 
                     sectionCard(
                         title: "取得の間隔",

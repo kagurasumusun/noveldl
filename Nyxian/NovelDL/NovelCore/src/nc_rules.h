@@ -27,6 +27,10 @@ struct ParsedToc {
     std::optional<std::string> title;
     std::optional<std::string> author;
     std::optional<std::string> story;
+    std::optional<std::string> status;
+    std::optional<std::string> next_update;
+    std::optional<std::string> comment_count;
+    std::optional<std::string> updated;
     std::vector<Chapter> chapters;
 };
 

@@ -38,6 +38,7 @@ struct NovelDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.l) {
                 heroCard
+                metaGrid
                 if let synopsis, !synopsis.isEmpty {
                     synopsisCard(synopsis)
                 }
@@ -68,78 +69,107 @@ struct NovelDetailView: View {
 
     // MARK: 書誌(書影の布を帯に展開した装丁)
 
-    /// 表紙まわりは「横広の 1 画像」のみ(実カバーがあればそれを使用)。
+    /// 表紙は「横広の 1 画像」のみ(カスタム画像も可)。
     private var heroCard: some View {
-        VStack(alignment: .leading, spacing: Spacing.m) {
-            WideCover(
-                title: item.title,
-                author: item.author,
-                image: customCover ?? core.covers[item.novelId]
-            )
-            .overlay(alignment: .topTrailing) {
-                PhotosPicker(selection: $coverPick, matching: .images) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(AppFont.ui(13, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.95, green: 0.93, blue: 0.90))
-                        .frame(width: 38, height: 38)
-                        .background(Circle().fill(.black.opacity(0.35)))
-                }
-                .padding(Spacing.s)
+        WideCover(
+            title: item.title,
+            author: item.author,
+            image: customCover ?? core.covers[item.novelId]
+        )
+        .overlay(alignment: .topTrailing) {
+            PhotosPicker(selection: $coverPick, matching: .images) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(AppFont.ui(13, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.95, green: 0.93, blue: 0.90))
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(.black.opacity(0.35)))
             }
-            .onChange(of: coverPick) {
-                guard let pick = coverPick else { return }
-                Task {
-                    if let data = try? await pick.loadTransferable(type: Data.self),
-                       let img = UIImage(data: data) {
-                        CoverStore.save(img, storagePath: item.storagePath)
-                        customCover = CoverStore.customImage(item.storagePath)
-                        Haptics.success()
-                    }
+            .padding(Spacing.s)
+        }
+        .onChange(of: coverPick) {
+            guard let pick = coverPick else { return }
+            Task {
+                if let data = try? await pick.loadTransferable(type: Data.self),
+                   let img = UIImage(data: data) {
+                    CoverStore.save(img, storagePath: item.storagePath)
+                    customCover = CoverStore.customImage(item.storagePath)
+                    Haptics.success()
                 }
-            }
-
-            // 詳細の表示項目:サイト名・話数・最終更新の3点を常に(タイトル/著者は表紙に)
-            HStack(spacing: Spacing.s) {
-                InfoChip(text: SiteCatalog.name(for: item.domain))
-                InfoChip(text: "全\(total)話")
-                if let updated = item.updatedAt, !updated.isEmpty {
-                    InfoChip(text: "更新 \(shortDate(updated))")
-                }
-                Spacer()
-            }
-
-            VStack(alignment: .leading, spacing: Spacing.s) {
-                HStack {
-                    Text("取得済み")
-                        .font(AppFont.ui(12))
-                        .foregroundStyle(AppPalette.inkFaint)
-                    Text("\(downloaded) / \(total) 話")
-                        .font(AppFont.ui(15, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(AppPalette.ink)
-                    Spacer()
-                    Text("\(Int(Double(downloaded) / Double(total) * 100))%")
-                        .font(AppFont.ui(13, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(AppPalette.ember)
-                }
-                ReadingRibbon(value: Double(downloaded) / Double(total))
             }
         }
     }
 
+    /// 情報(META):作者・状態・話数・コメント・更新・取得状況を一枚の棚札に。
+    private var metaGrid: some View {
+        VStack(spacing: 0) {
+            metaRow("作者", item.author)
+            RowDivider(leading: Spacing.l)
+            if let status = detail?.novel.status, !status.isEmpty {
+                metaRow("状態", status)
+                RowDivider(leading: Spacing.l)
+            }
+            metaRow("合計話数", "全\(total)話")
+            if let comments = detail?.novel.commentCount, !comments.isEmpty {
+                RowDivider(leading: Spacing.l)
+                metaRow("コメント", comments)
+            }
+            if let updated = detail?.novel.siteUpdated, !updated.isEmpty {
+                RowDivider(leading: Spacing.l)
+                metaRow("更新日", updated)
+            } else if let updated = item.updatedAt, !updated.isEmpty {
+                RowDivider(leading: Spacing.l)
+                metaRow("確認日", shortDate(updated))
+            }
+            if let next = detail?.novel.nextUpdate, !next.isEmpty {
+                RowDivider(leading: Spacing.l)
+                metaRow("更新予定", next)
+            }
+            RowDivider(leading: Spacing.l)
+            // 取得状況は控えめな 1 行に(大きく出しすぎない)
+            HStack(spacing: Spacing.m) {
+                Text("取得済み")
+                    .font(AppFont.ui(12))
+                    .foregroundStyle(AppPalette.inkFaint)
+                Text("\(downloaded)/\(total)")
+                    .font(AppFont.ui(13, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(AppPalette.ink)
+                Spacer()
+                ReadingRibbon(value: Double(downloaded) / Double(total))
+                    .frame(width: 84)
+                Text("\(Int(Double(downloaded) / Double(total) * 100))%")
+                    .font(AppFont.ui(11, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(AppPalette.ember)
+            }
+            .padding(.horizontal, Spacing.l)
+            .padding(.vertical, 10)
+        }
+        .background(PaperBackground())
+    }
+
+    private func metaRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.m) {
+            Text(label)
+                .font(AppFont.ui(12, weight: .medium))
+                .foregroundStyle(AppPalette.inkFaint)
+                .frame(width: 64, alignment: .leading)
+            Text(value)
+                .font(AppFont.ui(14))
+                .foregroundStyle(AppPalette.ink)
+            Spacer()
+        }
+        .padding(.horizontal, Spacing.l)
+        .padding(.vertical, 10)
+    }
+
     private func synopsisCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
-            headerJP("あらすじ", "STORY")
-                .foregroundStyle(AppPalette.ink)
-                .padding(.top, Spacing.s)
+            headerEN("STORY", "あらすじ")
             synopsisBody(text)
         }
     }
 
     private func synopsisBody(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
-            Text("あらすじ")
-                .font(AppFont.serif(17, weight: .semibold))
-                .foregroundStyle(AppPalette.ink)
             Text(text)
                 .font(AppFont.ui(14))
                 .foregroundStyle(AppPalette.inkSoft)
@@ -166,36 +196,14 @@ struct NovelDetailView: View {
 
     private var actionCard: some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
-            headerJP("操作", "ACTIONS")
-                .foregroundStyle(AppPalette.ink)
-                .padding(.top, Spacing.s)
+            headerEN("ACTIONS", "操作")
             actionBody
         }
     }
 
     private var actionBody: some View {
         VStack(spacing: Spacing.m) {
-            EmberButton(
-                title: busy
-                    ? "ダウンロード中…"
-                    : (downloaded >= total ? "未取得・更新分を確認して取得" : "全話をダウンロード"),
-                systemImage: "arrow.down.circle.fill",
-                prominent: true,
-                disabled: busy
-            ) {
-                Task { await runDownload(all: true) }
-            }
-
-            if let statusText {
-                HStack(spacing: Spacing.s) {
-                    ProgressView()
-                    Text(statusText)
-                        .font(AppFont.ui(13))
-                        .foregroundStyle(AppPalette.inkSoft)
-                    Spacer()
-                }
-            }
-
+            // 読むを主役に(ダウンロードを大きく出しすぎない)
             if let first = detail?.chapters.first(where: { $0.bodyDownloaded == true })
                 ?? detail?.chapters.first {
                 Button(action: {
@@ -222,33 +230,74 @@ struct NovelDetailView: View {
                 .buttonStyle(PressableButtonStyle())
             }
 
-            HStack(spacing: Spacing.m) {
-                QuietButton(title: "範囲を指定…", systemImage: "slider.horizontal.3", disabled: busy) {
-                    showOptions = true
+            // 取得まわりは控えめな一行に
+            HStack(spacing: Spacing.s) {
+                Button {
+                    Task { await runDownload(all: true) }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: busy ? "hourglass" : "arrow.down.circle")
+                        Text(busy ? "取得中…" : (downloaded >= total ? "更新を確認" : "全話を取得"))
+                    }
+                    .font(AppFont.ui(13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(AppPalette.ember))
                 }
-                QuietButton(title: "書き出し", systemImage: "square.and.arrow.up", disabled: busy) {
+                .buttonStyle(PressableButtonStyle())
+                .disabled(busy)
+
+                Button {
+                    showOptions = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(AppFont.ui(14, weight: .semibold))
+                        .foregroundStyle(AppPalette.inkSoft)
+                        .frame(width: 46, height: 40)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(AppPalette.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(AppPalette.hairline, lineWidth: 1))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(busy)
+
+                Button {
                     Task { await exportZip() }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(AppFont.ui(14, weight: .semibold))
+                        .foregroundStyle(AppPalette.inkSoft)
+                        .frame(width: 46, height: 40)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(AppPalette.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(AppPalette.hairline, lineWidth: 1))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(busy)
+            }
+
+            if let statusText {
+                HStack(spacing: Spacing.s) {
+                    ProgressView().scaleEffect(0.8)
+                    Text(statusText)
+                        .font(AppFont.ui(12))
+                        .foregroundStyle(AppPalette.inkSoft)
+                    Spacer()
                 }
             }
 
             if core.progress.running {
                 HStack {
-                    Text("サイトに負荷をかけない間隔で取得中")
+                    Text("間隔を空けて取得中")
                         .font(AppFont.ui(11))
                         .foregroundStyle(AppPalette.inkFaint)
                     Spacer()
                     Button("中止") { core.cancel() }
-                        .font(AppFont.ui(13, weight: .semibold))
+                        .font(AppFont.ui(12, weight: .semibold))
                         .foregroundStyle(AppPalette.ember)
-                        .buttonStyle(PressableButtonStyle())
                 }
             }
         }
-        .padding(Spacing.l)
-        .background(PaperBackground())
     }
-
-    // MARK: 範囲指定シート(アラートの数値入力を廃止)
 
     private var optionsSheet: some View {
         OptionsSheetBody(
@@ -278,7 +327,7 @@ struct NovelDetailView: View {
     private var chapterSection: some View {
         VStack(alignment: .leading, spacing: Spacing.m) {
             HStack {
-                headerJP("目次", "INDEX")
+                headerEN("INDEX", "目次")
                     .foregroundStyle(AppPalette.ink)
                 Spacer()
                 Text("全\(total)話")
@@ -324,17 +373,19 @@ struct NovelDetailView: View {
         }
     }
 
-    private func headerJP(_ jp: String, _ en: String) -> some View {
+    /// 英語の見出しを主役に、日本語は小さく添える(メリハリをはっきり)。
+    private func headerEN(_ en: String, _ jp: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
-            Text(jp)
-                .font(AppFont.serif(19, weight: .semibold))
-                .foregroundStyle(AppPalette.ink)
             Text(en)
-                .font(AppFont.ui(9, weight: .semibold))
-                .foregroundStyle(AppPalette.gold)
-                .tracking(1.2)
+                .font(AppFont.serif(22, weight: .bold))
+                .foregroundStyle(AppPalette.ink)
+                .tracking(1.5)
+            Text(jp)
+                .font(AppFont.ui(11, weight: .medium))
+                .foregroundStyle(AppPalette.inkFaint)
+            Spacer()
         }
-        .padding(.top, Spacing.s)
+        .padding(.top, Spacing.m)
     }
 
     private func chapterRow(_ ch: ChapterMeta) -> some View {

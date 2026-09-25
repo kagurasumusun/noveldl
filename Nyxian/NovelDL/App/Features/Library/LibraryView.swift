@@ -69,11 +69,12 @@ struct LibraryView: View {
         VStack(alignment: .leading, spacing: Spacing.m) {
             HStack(alignment: .lastTextBaseline) {
                 VStack(alignment: .leading, spacing: Spacing.xs) {
-                    Text("本棚")
-                        .font(AppFont.serif(30, weight: .semibold))
+                    Text("LIBRARY")
+                        .font(AppFont.serif(30, weight: .bold))
                         .foregroundStyle(AppPalette.ink)
-                    Text(shelfSubtitle)
-                        .font(AppFont.ui(13))
+                        .tracking(2)
+                    Text("本棚 — " + shelfSubtitle)
+                        .font(AppFont.ui(12))
                         .foregroundStyle(AppPalette.inkFaint)
                 }
                 Spacer()

@@ -7,6 +7,14 @@
 
 namespace nc {
 
+/// 詳細ページ表示用の追加メタ(状態/更新予定/コメント等)。
+struct NovelMetaExtra {
+    std::string status;
+    std::string next_update;
+    std::string comment_count;
+    std::string updated;
+};
+
 struct NovelListItem {
     std::string novel_id;
     std::string title;
@@ -73,6 +81,8 @@ public:
 
     void update_novel_description(const std::string& novel_id, const std::string& description);
     std::string novel_description(const std::string& novel_id);
+    void update_novel_meta(const std::string& novel_id, const NovelMetaExtra& mx);
+    NovelMetaExtra novel_meta(const std::string& novel_id);
 
     void upsert_novel(const std::string& novel_id, const std::string& title,
                       const std::string& author, const std::string& toc_url,

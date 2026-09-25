@@ -80,6 +80,7 @@ struct PresetFormView: View {
         "list_fetch", "list_title", "list_subtitle", "list_latest", "skip",
         "section_title", "body", "subupdate", "exclude_list_sections",
         "throttle_ms", "browser_fallback", "confirm_over18", "over18_cookie",
+        "status", "updated", "next_update", "comment_count",
     ]
 
     var body: some View {
@@ -106,6 +107,13 @@ struct PresetFormView: View {
                         fieldRow("section_title", "話タイトル", "<h2> などの正規表現")
                         fieldRow("body", "本文", "本文ブロックを包む正規表現([\\s\\S]*? で対応)")
                         fieldRow("subupdate", "改稿マーク", "任意。改稿表示の正規表現")
+                    }
+
+                    section("詳細表示の抽出") {
+                        fieldRow("status", "状態(完結/連載中)", "任意。例: 完結 と書かれた要素の正規表現")
+                        fieldRow("updated", "更新日", "任意。更新日時の正規表現")
+                        fieldRow("next_update", "更新予定日", "任意。次回更新表記の正規表現")
+                        fieldRow("comment_count", "コメント数", "任意。件数表記の正規表現")
                     }
 
                     section("アクセスの節度") {
