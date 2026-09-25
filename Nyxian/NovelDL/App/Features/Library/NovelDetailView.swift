@@ -26,7 +26,7 @@ struct NovelDetailView: View {
     @State private var fromIndex = ""
 
     @State private var flatChapters: [ChapterMeta] = []
-    @State private var chapterLimit = 60
+    @State private var chapterLimit = 200
     @State private var readerRoute: ReaderRoute?
     @State private var customCover: UIImage?
     @State private var showCoverPicker = false
@@ -356,16 +356,23 @@ struct NovelDetailView: View {
                     RowDivider(leading: Spacing.l)
                 }
                 if flatChapters.count > chapterLimit {
-                    Button {
-                        withAnimation(.easeOut(duration: 0.2)) { chapterLimit += 200 }
-                    } label: {
-                        Text("さらに \(min(200, flatChapters.count - chapterLimit)) 話を表示(残り \(flatChapters.count - chapterLimit))")
-                            .font(AppFont.ui(13, weight: .semibold))
-                            .foregroundStyle(AppPalette.ember)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                    // 末尾が見えたら自動で次を読み込む(ボタン操作は要らない)
+                    HStack(spacing: Spacing.s) {
+                        ProgressView().scaleEffect(0.7)
+                        Text("残り \(flatChapters.count - chapterLimit) 話…")
+                            .font(AppFont.ui(11))
+                            .foregroundStyle(AppPalette.inkFaint)
                     }
-                    .buttonStyle(PressableButtonStyle())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .onAppear {
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 80_000_000)
+                            if chapterLimit < flatChapters.count {
+                                chapterLimit += 300
+                            }
+                        }
+                    }
                 }
             }
             .background(PaperBackground())
