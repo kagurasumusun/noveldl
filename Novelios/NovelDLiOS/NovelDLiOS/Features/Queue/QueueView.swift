@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Activity — the download lane (Kindle "downloading" strip made a page).
 struct QueueView: View {
-    @EnvironmentObject private var core
+    @EnvironmentObject private var core: CoreClient
 
     private var ratio: Double {
         guard core.progress.total > 0 else { return 0 }

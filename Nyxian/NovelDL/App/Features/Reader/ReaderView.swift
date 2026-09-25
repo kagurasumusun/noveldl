@@ -8,7 +8,7 @@ struct ReaderView: View {
     let startAt: String
     let title: String
 
-    @EnvironmentObject private var core
+    @EnvironmentObject private var core: CoreClient
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("readerTheme") private var themeRaw = BookTheme.paper.rawValue

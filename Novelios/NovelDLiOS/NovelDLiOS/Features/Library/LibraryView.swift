@@ -3,7 +3,7 @@ import SwiftUI
 /// The bookshelf. Cover-forward grid with a "continue" hero —
 /// Kobo shelf geometry with Kindle home calmness.
 struct LibraryView: View {
-    @EnvironmentObject private var core
+    @EnvironmentObject private var core: CoreClient
     @State private var refreshing = false
     @State private var importing = false
     @State private var importUrl = ""
