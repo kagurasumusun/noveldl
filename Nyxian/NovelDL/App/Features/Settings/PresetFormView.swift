@@ -123,7 +123,7 @@ struct PresetFormView: View {
                         .tint(AppPalette.ember)
                         if showRaw {
                             TextEditor(text: $rawText)
-                                .font(AppFont.mono(11))
+                                .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(AppPalette.ink)
                                 .frame(minHeight: 180)
                                 .padding(Spacing.s)
