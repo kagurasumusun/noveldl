@@ -52,20 +52,22 @@ enum BookTheme: String, CaseIterable, Identifiable {
 // MARK: - パレット
 
 /// 紙・墨・煉瓦の三段。行動色は煉瓦のみ。
+/// アプリ全体の地色は温かいダーク(暗すぎず明るすぎず)。
+/// 読書テーマ(紙/セピア/夜)は本文用に別途選べる。
 enum AppPalette {
-    static let ember = Color(red: 0.655, green: 0.243, blue: 0.161)
-    static let emberDeep = Color(red: 0.541, green: 0.192, blue: 0.122)
-    static let gold = Color(red: 0.545, green: 0.435, blue: 0.243)
-    static let canvas = Color(red: 0.968, green: 0.957, blue: 0.933)
-    static let surface = Color.white
-    static let ink = Color(red: 0.114, green: 0.106, blue: 0.094)
-    static let inkSoft = Color(red: 0.333, green: 0.310, blue: 0.278)
-    static let inkFaint = Color(red: 0.427, green: 0.400, blue: 0.357)
-    static let hairline = Color(red: 0.882, green: 0.859, blue: 0.816)
-    static let track = Color(red: 0.878, green: 0.851, blue: 0.796)
-    /// 書影だけに付ける「棚の影」。カードには付けない(玩具っぽくなる)。
-    static let shelfShadow = Color.black.opacity(0.16)
-    static let pressTint = Color.black.opacity(0.04)
+    static let ember = Color(red: 0.788, green: 0.380, blue: 0.290)
+    static let emberDeep = Color(red: 0.639, green: 0.290, blue: 0.212)
+    static let gold = Color(red: 0.702, green: 0.573, blue: 0.353)
+    static let canvas = Color(red: 0.106, green: 0.102, blue: 0.094)     // #1B1A18
+    static let surface = Color(red: 0.145, green: 0.137, blue: 0.125)    // #252320
+    static let ink = Color(red: 0.925, green: 0.910, blue: 0.878)        // #ECE8E0
+    static let inkSoft = Color(red: 0.690, green: 0.663, blue: 0.620)
+    static let inkFaint = Color(red: 0.522, green: 0.494, blue: 0.451)
+    static let hairline = Color(red: 0.220, green: 0.208, blue: 0.184)
+    static let track = Color(red: 0.235, green: 0.220, blue: 0.200)
+    /// 書影の「棚の影」(ダーク面では深めに)。カードには付けない。
+    static let shelfShadow = Color.black.opacity(0.45)
+    static let pressTint = Color.white.opacity(0.06)
 }
 
 // MARK: - 書体

@@ -98,7 +98,6 @@ struct NovelDetailView: View {
                         progress: Double(downloaded) / Double(total),
                         width: 104
                     )
-                    .shadow(color: AppPalette.shelfShadow, radius: 10, x: 0, y: 8)
                     .offset(y: 30)
                     .padding(.leading, Spacing.l)
 
@@ -384,9 +383,11 @@ struct NovelDetailView: View {
             let result = try await core.download(options)
             await reload()
             await core.reloadLibrary()
+            var msg = "取得済み: 新規 \(result.saved)話・更新 \(result.updated)話・スキップ \(result.skipped)話"
             if result.failed > 0 {
-                errorText = "\(result.saved)話を取得・\(result.updated)話を更新(\(result.failed)話は失敗。「全話をダウンロード」の再実行で続きから取得します)"
+                msg += "・失敗 \(result.failed)話(再実行で続きから取得します)"
             }
+            errorText = msg
         } catch {
             errorText = error.localizedDescription
         }

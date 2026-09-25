@@ -536,8 +536,7 @@ void SectionStorage::upsert_section_placeholders(const std::string& novel_id,
                     subtitle = excluded.subtitle,
                     source_url = CASE WHEN excluded.source_url != ''
                                       THEN excluded.source_url ELSE sections.source_url END,
-                    body_downloaded = CASE WHEN sections.source_signature = ''
-                                      THEN 0 ELSE sections.body_downloaded END,
+                    body_downloaded = sections.body_downloaded,
                     updated_at = CASE WHEN sections.source_signature = ''
                                       THEN excluded.updated_at ELSE sections.updated_at END
             )SQL"));

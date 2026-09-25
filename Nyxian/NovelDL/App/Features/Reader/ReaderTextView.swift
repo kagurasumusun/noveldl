@@ -38,6 +38,7 @@ struct ReaderTextView: UIViewRepresentable {
     let attributed: NSAttributedString
     let background: UIColor
     var sideMargin: CGFloat = 34
+    var swipePaging: Bool = true
     let scroller: ScrollBox
     let onZone: (ReaderZone) -> Void
 
@@ -59,11 +60,18 @@ struct ReaderTextView: UIViewRepresentable {
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
         tap.cancelsTouchesInView = false
         tv.addGestureRecognizer(tap)
+        let nextSwipe = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipedNext))
+        nextSwipe.direction = .left
+        tv.addGestureRecognizer(nextSwipe)
+        let prevSwipe = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipedPrev))
+        prevSwipe.direction = .right
+        tv.addGestureRecognizer(prevSwipe)
         scroller.view = tv
         return tv
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
+        context.coordinator.swipeEnabled = swipePaging
         tv.backgroundColor = background
         tv.textContainerInset = UIEdgeInsets(top: 28, left: sideMargin, bottom: 96, right: sideMargin)
         let current: NSAttributedString = tv.attributedText ?? NSAttributedString()
@@ -77,7 +85,18 @@ struct ReaderTextView: UIViewRepresentable {
 
     final class Coordinator: NSObject {
         let onZone: (ReaderZone) -> Void
+        var swipeEnabled = true
         init(onZone: @escaping (ReaderZone) -> Void) { self.onZone = onZone }
+
+        @objc func swipedNext() {
+            guard swipeEnabled else { return }
+            onZone(.next)
+        }
+
+        @objc func swipedPrev() {
+            guard swipeEnabled else { return }
+            onZone(.previous)
+        }
 
         @objc func tapped(_ gesture: UITapGestureRecognizer) {
             guard let view = gesture.view else { return }

@@ -124,7 +124,6 @@ struct LibraryView: View {
                 author: item.author,
                 progress: Double(done) / Double(total)
             )
-            .shadow(color: AppPalette.shelfShadow, radius: 8, x: 0, y: 6)
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 Text(item.title)
                     .font(AppFont.serif(14, weight: .semibold))
@@ -222,9 +221,11 @@ struct LibraryView: View {
             )
             activeStatus = nil
             Haptics.success()
+            var msg = "取得済み: 新規 \(result.saved)話・更新 \(result.updated)話・スキップ \(result.skipped)話"
             if result.failed > 0 {
-                errorText = "\(result.saved)話を取得・\(result.updated)話を更新しました(\(result.failed)話は失敗。再実行で続きから取得できます)"
+                msg += "・失敗 \(result.failed)話(再実行で続きから取得します)"
             }
+            errorText = msg
             await core.reloadLibrary()
         } catch {
             activeStatus = nil

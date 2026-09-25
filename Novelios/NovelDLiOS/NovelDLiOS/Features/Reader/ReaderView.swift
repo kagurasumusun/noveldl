@@ -21,6 +21,10 @@ struct ReaderView: View {
     @AppStorage("readerSideMargin") private var sideMargin = 34.0
     @AppStorage("readerFontDesign") private var fontDesign = "serif"
 
+    @AppStorage("readerSwipePaging") private var swipePaging = true
+    @State private var chromeVisible = true
+    @State private var chromeHideTask: Task<Void, Never>?
+
     @State private var chapterIndex: String
     @State private var chapterTitle = ""
     @State private var rawBody = ""
@@ -46,8 +50,7 @@ struct ReaderView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
+        ZStack {
             ZStack {
                 theme.background.ignoresSafeArea()
                 if loading {
@@ -58,18 +61,29 @@ struct ReaderView: View {
                         attributed: attributed,
                         background: UIColor(theme.background),
                         sideMargin: CGFloat(sideMargin),
+                        swipePaging: swipePaging,
                         scroller: scroller,
                         onZone: { handleZone($0) }
                     )
+                    .id(chapterIndex)
+                    .transition(.opacity)
                     .ignoresSafeArea(edges: .bottom)
                 } else {
                     missingBody
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            bottomBar
+
+            VStack(spacing: 0) {
+                topBar
+                Spacer()
+                bottomBar
+            }
         }
         .background(theme.background.ignoresSafeArea())
+        .onAppear { flashChrome() }
+        .onChange(of: showToc) { _, open in if !open { flashChrome() } }
+        .onChange(of: showType) { _, open in if !open { flashChrome() } }
         .task(id: chapterIndex) { await loadChapter() }
         .onChange(of: fontSize) { applyStyle() }
         .onChange(of: lineSpacing) { applyStyle() }
@@ -132,6 +146,9 @@ struct ReaderView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(theme.hairline).frame(height: 1)
         }
+        .opacity(chromeVisible ? 1 : 0)
+        .offset(y: chromeVisible ? 0 : -14)
+        .allowsHitTesting(chromeVisible)
     }
 
     private var bottomBar: some View {
@@ -170,6 +187,9 @@ struct ReaderView: View {
         .overlay(alignment: .top) {
             Rectangle().fill(theme.hairline).frame(height: 1)
         }
+        .opacity(chromeVisible ? 1 : 0)
+        .offset(y: chromeVisible ? 0 : 14)
+        .allowsHitTesting(chromeVisible)
     }
 
     // MARK: 本文未取得
@@ -206,22 +226,44 @@ struct ReaderView: View {
         }
     }
 
+    // MARK: メニューの自動非表示(読書を邪魔しない)
+
+    private func flashChrome(autoHide: Bool = true) {
+        chromeHideTask?.cancel()
+        withAnimation(.easeOut(duration: 0.18)) { chromeVisible = true }
+        if autoHide {
+            chromeHideTask = Task {
+                try? await Task.sleep(nanoseconds: 3_200_000_000)
+                if !Task.isCancelled && !showToc && !showType {
+                    withAnimation(.easeOut(duration: 0.25)) { chromeVisible = false }
+                }
+            }
+        }
+    }
+
+    private func hideChrome() {
+        chromeHideTask?.cancel()
+        withAnimation(.easeOut(duration: 0.25)) { chromeVisible = false }
+    }
+
     // MARK: タップゾーン
 
     private func handleZone(_ zone: ReaderZone) {
         switch zone {
         case .previous:
-            if !scroller.pageUp() {
-                // 先頭ページでは何もしない(誤操作で前に戻らない)
-            }
+            if chromeVisible { hideChrome() }
+            scroller.pageUp()
         case .menu:
+            flashChrome(autoHide: false)
             showType = true
         case .next:
+            if chromeVisible { hideChrome() }
             if !scroller.pageDown() {
-                withAnimation { advanceChapter(delta: 1) }
+                withAnimation(.easeInOut(duration: 0.22)) { advanceChapter(delta: 1) }
             }
         }
     }
+
 
     // MARK: データ
 
@@ -416,6 +458,23 @@ struct ReaderView: View {
                 StepperRow(label: "行間", value: $lineSpacing, range: 0...16)
                 RowDivider()
                 StepperRow(label: "余白", value: $sideMargin, range: 20...56, step: 4)
+                RowDivider()
+                SettingRow(label: "左右スワイプで送り", detail: "画面端のタップ送りと共存") {
+                    Button {
+                        swipePaging.toggle()
+                        Haptics.tap()
+                    } label: {
+                        Text(swipePaging ? "ON" : "OFF")
+                            .font(AppFont.ui(13, weight: .semibold))
+                            .foregroundStyle(swipePaging ? .white : AppPalette.inkSoft)
+                            .padding(.horizontal, 14)
+                            .frame(height: 32)
+                            .background(
+                                Capsule().fill(swipePaging ? AppPalette.ember : AppPalette.track)
+                            )
+                    }
+                    .buttonStyle(PressableButtonStyle(haptic: false))
+                }
             }
             .padding(Spacing.m)
             .background(PaperBackground())

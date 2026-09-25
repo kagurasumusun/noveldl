@@ -6,16 +6,12 @@ struct SettingsView: View {
 
     @AppStorage("downloadIntervalMs") private var intervalMs = 5000
     @AppStorage("browserFetchCommand") private var browserCommand = ""
-    @AppStorage("readerTheme") private var readerTheme = BookTheme.paper.rawValue
-    @AppStorage("readerFontSize") private var readerFontSize = 19.0
-    @AppStorage("readerLineSpacing") private var readerLineSpacing = 6.0
 
     @State private var presets: [String] = []
     @State private var over18: Set<String> = []
     @State private var cookieDomain = ""
     @State private var cookieValue = ""
     @State private var statusText: String?
-    @State private var designIndex = 0
 
     var body: some View {
         NavigationStack {
@@ -107,28 +103,6 @@ struct SettingsView: View {
                         .padding(.vertical, Spacing.s)
                     }
 
-                    sectionCard(title: "読書の初期設定") {
-                        VStack(alignment: .leading, spacing: Spacing.s) {
-                            Text("テーマ")
-                                .font(AppFont.ui(15))
-                                .foregroundStyle(AppPalette.ink)
-                            SegmentTabs(
-                                titles: BookTheme.allCases.map(\.label),
-                                selection: Binding(
-                                    get: { max(BookTheme.allCases.firstIndex(of: BookTheme(rawValue: readerTheme) ?? .paper) ?? 0, 0) },
-                                    set: {
-                                        readerTheme = BookTheme.allCases[$0].rawValue
-                                    }
-                                )
-                            )
-                        }
-                        .padding(.vertical, Spacing.s)
-                        RowDivider()
-                        StepperRow(label: "文字サイズ", value: $readerFontSize, range: 14...28)
-                        RowDivider()
-                        StepperRow(label: "行間", value: $readerLineSpacing, range: 0...16)
-                    }
-
                     if let statusText {
                         Text(statusText)
                             .font(AppFont.ui(13))
@@ -151,6 +125,7 @@ struct SettingsView: View {
             .background(AppPalette.canvas.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .task {
+                guard presets.isEmpty else { return }
                 presets = (try? await core.listPresets()) ?? []
                 var marks: Set<String> = []
                 for domain in presets {
