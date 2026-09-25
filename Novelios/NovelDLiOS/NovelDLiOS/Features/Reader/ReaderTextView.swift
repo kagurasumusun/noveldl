@@ -82,9 +82,14 @@ final class ScrollBox {
         Haptics.tap()
         switch turn {
         case .curl:
-            UIView.transition(with: v, duration: 0.36, options: [
-                forward ? .transitionCurlUp : .transitionCurlDown, .allowUserInteraction,
-            ], animations: change)
+            // CATransition の pageCurl(UIView.transition の配列リテラル回避)
+            let t = CATransition()
+            t.type = CATransitionType(rawValue: forward ? "pageCurl" : "pageUnCurl")
+            t.subtype = forward ? .fromRight : .fromLeft
+            t.duration = 0.36
+            t.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            v.layer.add(t, forKey: "reader.pageCurl")
+            change()
         case .slide:
             let t = CATransition()
             t.duration = 0.30

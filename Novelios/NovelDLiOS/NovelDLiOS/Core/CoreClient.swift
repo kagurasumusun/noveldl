@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 /// Swift 6 bridge over the novel_core C ABI.
 /// All core calls are synchronous + blocking → always hop through `run`.
@@ -36,6 +37,12 @@ final class CoreClient: Observable, @unchecked Sendable {
     var library: [LibraryNovelItem] {
         get { access(keyPath: \.library); return _library }
         set { withMutation(keyPath: \.library) { _library = newValue } }
+    }
+
+    private var _covers: [String: UIImage] = [:]
+    var covers: [String: UIImage] {
+        get { access(keyPath: \.covers); return _covers }
+        set { withMutation(keyPath: \.covers) { _covers = newValue } }
     }
 
     private let decoder: JSONDecoder = {

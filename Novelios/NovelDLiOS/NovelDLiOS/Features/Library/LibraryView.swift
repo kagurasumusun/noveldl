@@ -172,7 +172,7 @@ struct LibraryView: View {
                                 .font(AppFont.ui(15, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
-                                .frame(height: Metrics.control)
+                                .frame(height: Metrics.controlHeight)
                                 .background(RoundedRectangle(cornerRadius: Metrics.fieldRadius, style: .continuous).fill(AppPalette.ember))
                         }
                         .buttonStyle(PressableButtonStyle())
@@ -215,16 +215,14 @@ struct LibraryView: View {
         activeStatus = "目次を取得中…"
         errorText = nil
         do {
-            let fetched = try await core.fetchToc(url: trimmed, overwrite: false, startAt: 1, limit: 0)
-            let novelId = fetched.novel.novelId
+            let fetched = try await core.fetchToc(url: trimmed, outputDir: "NovelDL-out")
             await core.reloadLibrary()
             activeStatus = "全話を取得中…"
-            let urlOut = try await core.novelDetail(novelId).novel.sourceUrl
-            let out = try await core.download(DownloadOptions(
-                url: urlOut,
+            let out = try await core.download(CoreClient.DownloadOptions(
+                url: trimmed,
                 outputDir: "NovelDL-out",
                 episodes: 0,
-                fromIndex: 1,
+                fromIndex: "",
                 mode: "bulk"
             ))
             activeStatus = nil
@@ -233,7 +231,7 @@ struct LibraryView: View {
             await core.reloadLibrary()
             let skippedText = out.skipped > 0 ? "・スキップ\(out.skipped)話" : ""
             let failText = out.failed > 0 ? "・失敗\(out.failed)話(再実行で続きから取得します)" : ""
-            errorText = "「\(fetched.novel.title)」を追加しました\n取得済み: 新規\(out.downloaded)話・更新\(out.updated)\(skippedText)\(failText)"
+            errorText = "「\(fetched.title)」を追加しました\n取得済み: 新規\(out.saved)話・更新\(out.updated)話\(skippedText)\(failText)"
         } catch {
             activeStatus = nil
             errorText = "取り込みに失敗しました: \(error.localizedDescription)"
