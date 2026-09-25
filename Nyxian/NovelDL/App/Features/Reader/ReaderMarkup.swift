@@ -30,16 +30,34 @@ final class ReaderMarkup: @unchecked Sendable {
         var bodyFont: UIFont {
             switch design {
             case "sans":
-                return UIFont.systemFont(ofSize: fontSize, weight: .regular)
+                return Self.jpSans(fontSize)
             case "mono":
                 return UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             default:
-                let base = UIFont.systemFont(ofSize: fontSize, weight: .regular)
-                if let desc = base.fontDescriptor.withDesign(.serif) {
-                    return UIFont(descriptor: desc, size: fontSize)
-                }
-                return base
+                return Self.jpSerif(fontSize)
             }
+        }
+
+        /// 日本語グリフを持つ明朝。UIFont の withDesign(.serif) は
+        /// Times New Roman を指し日本語グリフが無いため、全文字が
+        /// 異なるフォールバックに散って行間・字間がガタガタに見えていた。
+        static func jpSerif(_ size: CGFloat) -> UIFont {
+            for name in ["Hiragino Mincho ProN", "HiraMinProN-W3", "YuMincho", "YuMincho-Medium"] {
+                if let f = UIFont(name: name, size: size) { return f }
+            }
+            let base = UIFont.systemFont(ofSize: size, weight: .regular)
+            if let desc = base.fontDescriptor.withDesign(.serif) {
+                return UIFont(descriptor: desc, size: size)
+            }
+            return base
+        }
+
+        /// 日本語グリフを持つゴシック。
+        static func jpSans(_ size: CGFloat) -> UIFont {
+            for name in ["Hiragino Sans", "HiraKakuProN-W3"] {
+                if let f = UIFont(name: name, size: size) { return f }
+            }
+            return UIFont.systemFont(ofSize: size, weight: .regular)
         }
     }
 
@@ -47,6 +65,44 @@ final class ReaderMarkup: @unchecked Sendable {
         var imageRefs: [ImageRef] = []
         let text = parseInner(xhtml, style: style, images: &imageRefs)
         return ParseResult(text: text, images: imageRefs)
+    }
+
+    /// 章タイトルの見出しブロック(本文の先頭に置く)。
+    static func chapterHeading(title: String, style: Style) -> NSAttributedString {
+        guard !title.isEmpty else { return NSAttributedString() }
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        para.lineSpacing = 2
+        para.paragraphSpacing = 0
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: Self.jpSerif(min(style.fontSize + 3, 28)),
+            .foregroundColor: style.ink,
+            .paragraphStyle: para,
+        ]
+        let out = NSMutableAttributedString()
+        out.append(NSAttributedString(string: title, attributes: attrs))
+        // タイトルと本文の間に飾り罫と空白を置く
+        let rule = NSMutableParagraphStyle()
+        rule.alignment = .center
+        rule.paragraphSpacing = style.lineSpacing + 8
+        out.append(NSAttributedString(string: "\n﹅﹅﹅\n", attributes: [
+            .font: Self.jpSerif(max(style.fontSize - 6, 10)),
+            .foregroundColor: style.ink.withAlphaComponent(0.35),
+            .paragraphStyle: rule,
+        ]))
+        return out
+    }
+
+    /// 前書き/本文/後書きの間に入る区切り(※ 印)。
+    static func dividerBlock(style: Style) -> NSAttributedString {
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        para.paragraphSpacing = style.lineSpacing + 6
+        return NSAttributedString(string: "\n※\n", attributes: [
+            .font: Self.jpSerif(max(style.fontSize - 4, 12)),
+            .foregroundColor: style.ink.withAlphaComponent(0.45),
+            .paragraphStyle: para,
+        ])
     }
 
     private func parseInner(_ xhtml: String, style: Style, images: inout [ImageRef]) -> NSAttributedString {

@@ -232,9 +232,11 @@ final class CoreClient: Observable, @unchecked Sendable {
         try await decode(NovelInfoResult.self) { novel_core_novel_info(url) }
     }
 
-    func exportZip(novelId: String) async throws -> ExportResult {
+    /// 書き出し。前書き/後書きは既定で含めない(opt-in)。
+    func exportZip(novelId: String, includeIntroPost: Bool = false) async throws -> ExportResult {
+        let extra = includeIntroPost ? "true" : "false"
         let json = """
-            {"root_dir":"\(Self.libraryRoot().path)","novel_id":"\(novelId)","format":"aozora"}
+            {"root_dir":"\(Self.libraryRoot().path)","novel_id":"\(novelId)","format":"aozora","include_intro_post":\(extra)}
             """
         return try await decode(ExportResult.self) {
             novel_core_export_txt_zip(json)

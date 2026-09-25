@@ -26,7 +26,7 @@ struct ReaderView: View {
 
     @AppStorage("readerTheme") private var themeRaw = BookTheme.paper.rawValue
     @AppStorage("readerFontSize") private var fontSize = 19.0
-    @AppStorage("readerLineSpacing") private var lineSpacing = 6.0
+    @AppStorage("readerLineSpacing") private var lineSpacing = 8.0
     @AppStorage("readerMargin") private var margin = 12.0
     @AppStorage("readerFontDesign") private var fontDesign = "serif"
     @AppStorage("readerSwipePaging") private var swipePaging = true
@@ -34,10 +34,22 @@ struct ReaderView: View {
     @AppStorage("readerShowRuby") private var showRuby = true
     @AppStorage("readerShowHeader") private var showHeader = true
     @AppStorage("readerShowFooter") private var showFooter = true
+    /// 前書き/後書きの表示(既定 OFF — 余分なものは opt-in)。
+    @AppStorage("readerShowIntroPost") private var showIntroPost = false
+    /// 章タイトルの見出し表示。
+    @AppStorage("readerShowChapterTitle") private var showChapterTitle = true
 
     @State private var chromeVisible = true
     @State private var lastHTML = ""
     @State private var readerBox = ScrollBox()
+
+    /// 組み立て元の断片(トグル変更時に rebuild で再合成する)。
+    @State private var lastIntro = ""
+    @State private var lastPost = ""
+    @State private var lastSubTitle = ""
+    /// フッターの頁カウンタ。
+    @State private var currentPage = 0
+    @State private var pageCount = 1
 
     /// 目次/メニューは 1 つの sheet(item:) で出し分ける。
     /// 同じビューに .sheet(isPresented:) を 2 つ付けると環境によって
@@ -148,6 +160,11 @@ struct ReaderView: View {
             }
         }
         .onAppear {
+            // 頁カウンタの更新はボックスからの通知で受ける。
+            readerBox.onPage = { idx, cnt in
+                currentPage = idx
+                pageCount = cnt
+            }
             if !UserDefaults.standard.bool(forKey: "readerHintShown") {
                 hintVisible = true
                 UserDefaults.standard.set(true, forKey: "readerHintShown")
@@ -205,6 +222,9 @@ struct ReaderView: View {
                     .foregroundStyle(theme.ink)
                 ReadingRibbon(value: chapterProgress)
                     .frame(maxWidth: 96)
+                Text(pageCount > 1 ? "\(currentPage + 1)/\(pageCount)頁" : " ")
+                    .font(AppFont.ui(9, weight: .medium).monospacedDigit())
+                    .foregroundStyle(theme.ink.opacity(0.6))
             }
             .frame(maxWidth: .infinity)
             chromeCaptioned("chevron.down", "次頁") {
@@ -338,6 +358,10 @@ struct ReaderView: View {
                 menuSectionHeader("表示項目", "ITEMS")
                 VStack(spacing: 0) {
                     toggleRow("ルビ(振り仮名)", showRuby) { showRuby.toggle(); applyStyle() }
+                    RowDivider()
+                    toggleRow("章タイトル", showChapterTitle) { showChapterTitle.toggle(); applyStyle() }
+                    RowDivider()
+                    toggleRow("前書き・後書き", showIntroPost) { showIntroPost.toggle(); applyStyle() }
                     RowDivider()
                     toggleRow("ヘッダー(タイトル)", showHeader) { showHeader.toggle() }
                     RowDivider()
@@ -534,10 +558,50 @@ struct ReaderView: View {
     }
 
     private func applyStyle() {
+        rebuild()
+    }
+
+    /// 見出し/前書き/本文/後書きを組み立てて表示テキストを作る。
+    /// 挿絵のレンジは結合後のテキスト位置へ補正する。
+    private func rebuild() {
         guard !lastHTML.isEmpty else { return }
-        let result = markup.parse(lastHTML, style: currentStyle())
-        attributed = result.text
-        imageRefs = result.images
+        let style = currentStyle()
+        let combined = NSMutableAttributedString()
+        var refs: [ImageRef] = []
+        if showChapterTitle {
+            combined.append(ReaderMarkup.chapterHeading(title: lastSubTitle, style: style))
+        }
+        if showIntroPost, !lastIntro.isEmpty {
+            let r = markup.parse(lastIntro, style: style)
+            for im in r.images {
+                refs.append(ImageRef(
+                    range: NSRange(location: im.range.location + combined.length, length: im.range.length),
+                    src: im.src))
+            }
+            combined.append(r.text)
+            combined.append(ReaderMarkup.dividerBlock(style: style))
+        }
+        let bodyBase = combined.length
+        let body = markup.parse(lastHTML, style: style)
+        for im in body.images {
+            refs.append(ImageRef(
+                range: NSRange(location: im.range.location + bodyBase, length: im.range.length),
+                src: im.src))
+        }
+        combined.append(body.text)
+        if showIntroPost, !lastPost.isEmpty {
+            combined.append(ReaderMarkup.dividerBlock(style: style))
+            let r = markup.parse(lastPost, style: style)
+            for im in r.images {
+                refs.append(ImageRef(
+                    range: NSRange(location: im.range.location + combined.length, length: im.range.length),
+                    src: im.src))
+            }
+            combined.append(r.text)
+        }
+        attributed = combined
+        imageRefs = refs
+        Task { await loadImages(refs) }
     }
 
     private func load() async {
@@ -577,10 +641,10 @@ struct ReaderView: View {
             chapterProgress = Double(pos + 1) / Double(total)
             let html = (sec.bodyXhtml ?? "").isEmpty ? "この話はまだ取得できませんでした。作品詳細から再取得してください。" : (sec.bodyXhtml ?? "")
             lastHTML = html
-            let result = markup.parse(html, style: currentStyle())
-            attributed = result.text
-            imageRefs = result.images
-            Task { await loadImages(result.images) }
+            lastSubTitle = meta?.subtitle ?? ""
+            lastIntro = sec.introXhtml ?? ""
+            lastPost = sec.postXhtml ?? ""
+            rebuild()
         } catch {
             loadError = "読めませんでした: \(error.localizedDescription)"
         }

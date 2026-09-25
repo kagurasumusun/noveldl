@@ -35,10 +35,16 @@ toc_sources:
     description: "フォールバック: ラベル付きクエリリンク"
 
 body_selectors:
+  # 本文のみ。--preface / --afterword の修飾を持つ前書き・後書きを除外する
+  # ( wrapper を取ると前書き/後書きが本文に混在し、二重保存になっていた)。
+  - selector: "div.js-novel-text.p-novel__text:not(.p-novel__text--preface):not(.p-novel__text--afterword), .p-novel__text:not(.p-novel__text--preface):not(.p-novel__text--afterword)"
+    priority: 12
+    extract: "inner_html"
+    description: "本文のみ(前書き/後書きを含まない)"
   - selector: ".p-novel__body"
     priority: 10
     extract: "inner_html"
-    description: "小説家になろう系本文（現行デザイン）"
+    description: "フォールバック: 本文ラッパー(前書き/後書きが混入することがある)"
   - selector: "div.js-novel-text.p-novel__text, .js-novel-text.p-novel__text"
     priority: 9
     extract: "inner_html"

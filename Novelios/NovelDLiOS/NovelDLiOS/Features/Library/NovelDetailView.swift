@@ -203,15 +203,17 @@ struct NovelDetailView: View {
     private var actionBody: some View {
         VStack(spacing: Spacing.m) {
             // 読むを主役に(ダウンロードを大きく出しすぎない)
-            if let first = detail?.chapters.first(where: { $0.bodyDownloaded == true })
-                ?? detail?.chapters.first {
+            // 栞があればその話から、無ければ取得済みの先頭から。
+            let resume = resumeChapterIndex()
+            if let target = resume
+                ?? detail?.chapters.first(where: { $0.bodyDownloaded == true })?.index
+                ?? detail?.chapters.first?.index {
                 Button(action: {
-                    readerRoute = ReaderRoute(novelId: item.novelId, index: first.index, title: item.title, tocUrl: item.tocUrl)
+                    readerRoute = ReaderRoute(novelId: item.novelId, index: target, title: item.title, tocUrl: item.tocUrl)
                 }, label: {
                     HStack(spacing: 6) {
                         Image(systemName: "book")
-                        Text(detail?.chapters.contains(where: { $0.bodyDownloaded == true }) == true
-                             ? "読む(続きから)" : "読む(先頭)")
+                        Text(resume != nil ? "読む(続きから)" : "読む(先頭)")
                     }
                     .font(AppFont.ui(15, weight: .semibold))
                     .foregroundStyle(AppPalette.ember)
@@ -433,6 +435,19 @@ struct NovelDetailView: View {
     }
 
     // MARK: data
+
+    /// 栞(ブックマーク)に記憶した続きの話index。詳細内に存在する話のみ返す。
+    private func resumeChapterIndex() -> String? {
+        let list = UserDefaults.standard.stringArray(forKey: "readerBookmarks") ?? []
+        let prefix = item.novelId + "#"
+        for entry in list.reversed() where entry.hasPrefix(prefix) {
+            let idx = String(entry.dropFirst(prefix.count))
+            if detail?.chapters.contains(where: { $0.index == idx }) == true {
+                return idx
+            }
+        }
+        return nil
+    }
 
     private func reload() async {
         detail = try? await core.novelDetail(item.novelId)

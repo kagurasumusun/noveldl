@@ -1050,6 +1050,9 @@ Value op_export_txt_zip(const Value& options) {
     std::string title = replace_filename_special_chars(
         truncate_path_component(meta->first.empty() ? novel_id : meta->first, 120));
     std::string author = replace_filename_special_chars(meta->second);
+    // 前書き/後書きは既定で含めない(余分なものを書き出さない)。
+    // 明示的に include_intro_post: true を渡した場合のみ含める。
+    const bool include_extra = options.get_bool("include_intro_post", false);
     std::vector<std::pair<std::string, std::string>> files;
     std::string combined;
     if (!author.empty()) combined += "作者: " + author + "\n\n";
@@ -1064,10 +1067,10 @@ Value op_export_txt_zip(const Value& options) {
             continue;
         }
         std::string text;
-        if (!sec->intro_xhtml.empty())
+        if (include_extra && !sec->intro_xhtml.empty())
             text += html_to_aozora(sec->intro_xhtml, false, false) + "\n\n";
         text += html_to_aozora(sec->body_xhtml, false, false);
-        if (!sec->post_xhtml.empty())
+        if (include_extra && !sec->post_xhtml.empty())
             text += "\n\n" + html_to_aozora(sec->post_xhtml, false, false);
         if (!aozora) text = sanitize_fragment_text(text);
 

@@ -18,10 +18,10 @@ enum PageTurn: String, CaseIterable {
 }
 
 /// サイズを完全に固定した UITextView。
-/// 素の UITextView は isScrollEnabled = false のとき sizeThatFits が
-/// 「コンテンツが収まるサイズ」を返すため、SwiftUI がそのサイズを尊重して
-/// 画面より巨大なビューを中央に置いてしまう(左右が切れる・行間が吹む)。
-/// サイズ要求をすべて「確定済みの fixedSize」で答えることで防ぐ。
+/// isScrollEnabled = false の UITextView は sizeThatFits が「コンテンツが
+/// 収まるサイズ」を返すため、SwiftUI がそのサイズを尊重して画面より巨大な
+/// ビューを中央に置いてしまう(左右が切れる原因)。サイズ要求にはすべて
+/// 確定済みの fixedSize で答えて防ぐ。
 final class PageTextView: UITextView {
     var fixedSize: CGSize = .zero {
         didSet {
@@ -38,212 +38,224 @@ final class PageTextView: UITextView {
     override func sizeThatFits(_ size: CGSize) -> CGSize { fixedSize }
 }
 
-/// UITextView 本体。行境界に吸着させた 1 スクリーン = 1 ページの横送り。
-/// 余白は左右のマージンのみで、額縁のような箱にはしない。
+/// ページ分割と表示を管理する(オフセット操作は一切しない)。
+///
+/// 旧実装は UITextView の contentOffset を動かしてページングしていたため、
+/// セーフエリア確定タイミングやスクロール無効時の内部リセットと噛み合わず、
+/// 「本文が表示されない」「ページ位置が吹む」ことがあった。
+/// 現実装は TextKit で全行を測り、本文帯に収まる行ごとに本文を「分割」して
+/// 1ページずつ丸ごと表示する。表示内容が必ず画面内に収まるため、
+/// オフセット調整は構造的に不要。
 final class ScrollBox {
     weak var view: UITextView?
     var turn: PageTurn = .curl
 
     /// 1ページ = 上余白(padTop)+ 本文帯 + 下余白(padBottom)。
-    /// 余白は contentInset 側で確保する。値はセーフエリア(ノッチ/ホームバー)から
-    /// 送りのたびに取り直す。ビューがウィンドウに載る前は safeAreaInsets が 0 なので、
-    /// 「レイアウト時に一度だけ確定」だと本文がノッチやホームバーに食い込み、
-    /// 「リーダーが画面に収まらない」原因になっていた。
+    /// 余白は textContainerInset 側で確保する。値はセーフエリアから取り直す。
     var padTop: CGFloat = 66
     var padBottom: CGFloat = 52
 
-    /// 全行の上端/下端(本文コンテンツ座標)。ページ送りは必ず行の区切りへ吸着させ、
-    /// どのページでも最終行が下余白へ半分だけ食い込むことがないようにする。
-    private var lineTop: [CGFloat] = []
-    private var lineBottom: [CGFloat] = []
-    private var lineCacheLength = -1
-    private var lineCacheWidth: CGFloat = -1
-    private var lineCacheInsetTop: CGFloat = -1
+    private(set) var pageCount = 1
+    private(set) var pageIndex = 0
+    /// (pageIndex, pageCount) — 表示が変わったら呼ばれる。
+    var onPage: ((Int, Int) -> Void)?
 
-    private var band: CGFloat {
-        guard let v = view else { return 200 }
-        return max(v.bounds.height - padTop - padBottom, 120)
-    }
-    private var minOffset: CGFloat { -padTop }
+    private var fullText = NSAttributedString()
+    private var pageRanges: [NSRange] = []
+    private var geomKey = ""
+    private var lastWidth: CGFloat = 0
+    private var lastHeight: CGFloat = 0
+    /// 本文がまだ prepare されていない時期に届いた挿絵の保留列。
+    /// (rebuild が loadImages を先にspawnし、SwiftUI の更新が後から来る競合対策)
+    private var pendingImages: [(range: NSRange, image: UIImage, width: CGFloat)] = []
 
-    /// セーフエリアを取り直し、変わっていれば contentInset と行情報を更新する。
-    func refreshPads() {
-        guard let v = view else { return }
+    /// セーフエリアを取り直す。変化があったかを返す。
+    @discardableResult
+    func refreshPads() -> Bool {
+        guard let v = view else { return false }
         let safe = v.safeAreaInsets
         let top = max(30.0, safe.top + 18.0)
         let bottom = max(40.0, safe.bottom + 20.0)
-        guard top != padTop || bottom != padBottom else { return }
+        guard top != padTop || bottom != padBottom else { return false }
         padTop = top
         padBottom = bottom
-        v.contentInset = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
-        invalidateLines()
+        return true
     }
 
-    func invalidateLines() {
-        lineCacheLength = -1
-        lineCacheWidth = -1
-        lineCacheInsetTop = -1
-        lineTop = []
-        lineBottom = []
+    /// 幾何キャッシュを捨てる(挿絵差し替えなどで再分割させたいとき)。
+    func invalidateGeometry() {
+        geomKey = ""
     }
 
-    /// 全行の上下端を TextKit から収集(テキスト/幅/上インセットが変わらなければ再利用)。
-    private func rebuildLinesIfNeeded() {
-        // NOTE: textStorage / layoutManager は UIKit では非 Optional。
-        // `guard let` で受けると「initializer for conditional binding must
-        // have Optional type」でビルドできない。
-        guard let v = view else { return }
-        let storage = v.textStorage
-        let lm = v.layoutManager
-        if storage.length == lineCacheLength,
-           v.textContainer.size.width == lineCacheWidth,
-           v.textContainerInset.top == lineCacheInsetTop,
-           !lineTop.isEmpty {
-            return
-        }
-        lm.ensureLayout(for: v.textContainer)
-        lineTop = []
-        lineBottom = []
-        lineCacheLength = storage.length
-        lineCacheWidth = v.textContainer.size.width
-        lineCacheInsetTop = v.textContainerInset.top
-        if storage.length > 0 {
-            let insetTop = v.textContainerInset.top
-            let full = NSRange(location: 0, length: storage.length)
-            lm.enumerateLineFragments(forGlyphRange: full) { [weak self] rect, _, _, _, _ in
-                guard let self else { return }
-                self.lineTop.append(rect.minY + insetTop)
-                self.lineBottom.append(rect.maxY + insetTop)
+    /// 本文と幾何を取り込み、必要なら分割を作り直して現在ページを表示する。
+    /// 同一テキスト・同一幾何の再呼び出しは安価(表示の張り直しのみ)。
+    func prepare(text: NSAttributedString, containerWidth: CGFloat, viewHeight: CGFloat, keepIndex: Bool) {
+        lastWidth = containerWidth
+        lastHeight = viewHeight
+        fullText = text
+
+        let band = max(viewHeight - padTop - padBottom, 120)
+        var keyParts: [String] = [
+            String(text.length),
+            String(Int(containerWidth)),
+            String(Int(band)),
+            String(Int(padTop)),
+            String(Int(padBottom)),
+        ]
+        // スタイル(文字サイズ/行間/書体)変化も検知する(長さが同じでも高さが変わる)。
+        if text.length > 0 {
+            let mid = min(text.length - 1, max(0, text.length / 2))
+            if let f0 = text.attribute(.font, at: 0, effectiveRange: nil) as? UIFont {
+                keyParts.append(String(Int(f0.pointSize * 10)))
+            }
+            if let fm = text.attribute(.font, at: mid, effectiveRange: nil) as? UIFont {
+                keyParts.append(String(Int(fm.pointSize * 10)))
             }
         }
-        if lineTop.isEmpty {
-            lineTop = [0]
-            lineBottom = [v.contentSize.height]
+        let key = keyParts.joined(separator: "|")
+        if key == geomKey, !pageRanges.isEmpty {
+            displayCurrent()
+            return
         }
+        geomKey = key
+        var working = text
+        // 保留されていた挿絵があれば本文に反映してから分割する。
+        if !pendingImages.isEmpty {
+            let m = NSMutableAttributedString(attributedString: working)
+            for p in pendingImages where NSMaxRange(p.range) <= m.length {
+                m.addAttribute(.attachment, value: attachment(for: p.image, width: p.width), range: p.range)
+            }
+            pendingImages = []
+            working = m
+            fullText = working
+        }
+        pageRanges = Self.paginate(working, width: containerWidth, band: band)
+        pageCount = max(pageRanges.count, 1)
+        if !keepIndex {
+            pageIndex = 0
+        }
+        pageIndex = min(pageIndex, pageCount - 1)
+        displayCurrent()
+        notifyPage()
     }
 
-    /// 現在の表示上端(contentOffset + padTop)に対応する先頭行の添字。
-    private func firstLineIndex(visibleTop: CGFloat) -> Int {
+    /// 全行を測り、本文帯(band)に収まる行ごとにページ区切りを作る。
+    private static func paginate(_ text: NSAttributedString, width: CGFloat, band: CGFloat) -> [NSRange] {
+        guard text.length > 0 else { return [] }
+        let storage = NSTextStorage(attributedString: text)
+        let lm = NSLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: max(width, 1),
+                                                     height: CGFloat.greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        lm.addTextContainer(container)
+        storage.addLayoutManager(lm)
+        lm.ensureLayout(for: container)
+
+        var lineRanges: [NSRange] = []
+        var lineTop: [CGFloat] = []
+        var lineBottom: [CGFloat] = []
+        var gi = 0
+        let total = lm.numberOfGlyphs
+        while gi < total {
+            var glyphRange = NSRange(location: gi, length: 0)
+            let frag = lm.lineFragmentRect(forGlyphAt: gi, effectiveRange: &glyphRange)
+            if glyphRange.length <= 0 { break }
+            let charRange = lm.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+            lineRanges.append(charRange)
+            lineTop.append(frag.minY)
+            lineBottom.append(frag.maxY)
+            gi = NSMaxRange(glyphRange)
+        }
+        guard !lineRanges.isEmpty else { return [NSRange(location: 0, length: text.length)] }
+
+        var pages: [NSRange] = []
         var i = 0
-        while i + 1 < lineTop.count && lineTop[i + 1] <= visibleTop + 0.5 { i += 1 }
-        return i
-    }
-
-    /// 最終ページの開始行(末尾だけを収めるよう後ろから詰めた位置)。
-    private var lastStartLineIndex: Int {
-        guard !lineTop.isEmpty else { return 0 }
-        let bottom = lineBottom[lineBottom.count - 1]
-        var s = lineTop.count - 1
-        while s > 0 && bottom - lineTop[s - 1] <= band { s -= 1 }
-        return s
-    }
-
-    /// 最終ページの開始オフセット(本文の末尾を帯に収める行合わせの位置)。
-    private var lastPageStartOffset: CGFloat {
-        lineTop.isEmpty ? minOffset : max(minOffset, lineTop[lastStartLineIndex] - padTop)
-    }
-
-    /// ページ送りの連鎖(pageDown の詰め方 + 最終ページのクランプ)と同じ並びで、
-    /// 行 i を先頭とするページの「前のページの先頭行」を求める。
-    /// これで前へ戻るときも、順方向と同じページ区切りを正確に逆順に辿れる。
-    private func previousStartLineIndex(before i: Int) -> Int {
-        guard i > 0 else { return 0 }
-        let lastStart = lastStartLineIndex
-        var prevStart = 0
-        var p = 0
-        while p < i {
-            var j = p
-            while j + 1 < lineBottom.count && lineBottom[j + 1] - lineTop[p] <= band { j += 1 }
-            var nxt = j + 1
-            if nxt > lastStart { nxt = lastStart }
-            if nxt == i { return p }
-            if nxt > i { return prevStart }  // 通常起こらない(防御)
-            prevStart = p
-            p = nxt
+        while i < lineRanges.count {
+            var j = i
+            while j + 1 < lineRanges.count && lineBottom[j + 1] - lineTop[i] <= band { j += 1 }
+            let loc = lineRanges[i].location
+            let end = NSMaxRange(lineRanges[j])
+            if end > loc {
+                pages.append(NSRange(location: loc, length: end - loc))
+            }
+            i = j + 1
         }
-        return prevStart
+        return pages
+    }
+
+    private func displayCurrent() {
+        guard let v = view else { return }
+        let range = pageRanges.isEmpty
+            ? NSRange(location: 0, length: fullText.length)
+            : pageRanges[min(pageIndex, pageRanges.count - 1)]
+        v.attributedText = fullText.attributedSubstring(from: range)
+    }
+
+    private func show(_ index: Int, forward: Bool) {
+        let clamped = min(max(index, 0), pageCount - 1)
+        guard clamped != pageIndex, let v = view else { return }
+        animate(v, forward: forward) { [weak self] in
+            guard let self else { return }
+            self.pageIndex = clamped
+            self.displayCurrent()
+        }
+        notifyPage()
+    }
+
+    private func notifyPage() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.onPage?(self.pageIndex, self.pageCount)
+        }
     }
 
     @discardableResult
     func pageDown() -> Bool {
-        guard let v = view else { return false }
-        refreshPads()
-        rebuildLinesIfNeeded()
-        guard !lineTop.isEmpty else { return false }
-        let i = firstLineIndex(visibleTop: v.contentOffset.y + padTop)
-        // 現ページの先頭行から、本文帯に完全に収まる最後の行を求める
-        var j = i
-        while j + 1 < lineBottom.count && lineBottom[j + 1] - lineTop[i] <= band { j += 1 }
-        guard j + 1 < lineTop.count else { return false }  // すでに最終ページ
-        var target = lineTop[j + 1] - padTop
-        let lastStart = lastPageStartOffset
-        if target > lastStart { target = lastStart }
-        if target <= v.contentOffset.y + 0.5 { return false }
-        animate(v, forward: true) {
-            v.contentOffset = CGPoint(x: 0, y: target)
-        }
+        guard pageIndex + 1 < pageCount else { return false }  // 最終ページ = 次の話へ
+        show(pageIndex + 1, forward: true)
         return true
     }
 
     @discardableResult
     func pageUp() -> Bool {
-        guard let v = view else { return false }
-        refreshPads()
-        rebuildLinesIfNeeded()
-        guard !lineTop.isEmpty else { return false }
-        let i = firstLineIndex(visibleTop: v.contentOffset.y + padTop)
-        guard i > 0 else { return false }
-        let s = previousStartLineIndex(before: i)
-        let target = max(minOffset, lineTop[s] - padTop)
-        if target >= v.contentOffset.y - 0.5 { return false }
-        animate(v, forward: false) {
-            v.contentOffset = CGPoint(x: 0, y: target)
-        }
+        guard pageIndex > 0 else { return false }  // 先頭ページ = 前の話へ
+        show(pageIndex - 1, forward: false)
         return true
     }
 
-    var atFirstPage: Bool {
-        guard let v = view else { return true }
-        return v.contentOffset.y <= minOffset + 1
-    }
+    var atFirstPage: Bool { pageIndex == 0 }
+    var atLastPage: Bool { pageIndex >= pageCount - 1 }
 
-    var atLastPage: Bool {
-        guard let v = view else { return true }
-        refreshPads()
-        rebuildLinesIfNeeded()
-        return v.contentOffset.y >= lastPageStartOffset - 1
-    }
-
-    /// 挿絵を実画像へ差し替える(レンジは現在の textStorage 上)。
-    func applyImage(at range: NSRange, image: UIImage, displayWidth: CGFloat) {
-        guard let v = view else { return }
-        let storage = v.textStorage
-        guard NSMaxRange(range) <= storage.length else { return }
-        let scale = displayWidth / max(image.size.width, 1)
+    private func attachment(for image: UIImage, width: CGFloat) -> NSTextAttachment {
+        let scale = width / max(image.size.width, 1)
         let size = CGSize(
-            width: min(displayWidth, image.size.width * scale),
+            width: min(width, image.size.width * scale),
             height: image.size.height * scale
         )
         let att = NSTextAttachment()
         att.image = image
         att.bounds = CGRect(x: 0, y: -4, width: size.width, height: size.height)
-        // テキスト編集で contentOffset が先頭へ戻されることがあるため退避しておく。
-        let keepOffset = v.contentOffset
-        storage.beginEditing()
-        storage.addAttribute(.attachment, value: att, range: range)
-        storage.endEditing()
-        if v.contentOffset != keepOffset {
-            v.contentOffset = keepOffset
+        return att
+    }
+
+    /// 挿絵を実画像へ差し替える(レンジは結合後の全文テキスト上)。
+    func applyImage(at range: NSRange, image: UIImage, displayWidth: CGFloat) {
+        // まだ本文が載っていない(初回レイアウト前)なら次の prepare で反映する。
+        guard fullText.length > 0, lastWidth > 0 else {
+            pendingImages.append((range, image, displayWidth))
+            return
         }
-        // 添付差し替えで本文の高さが変わるため行情報を作り直す。
-        invalidateLines()
+        guard NSMaxRange(range) <= fullText.length else { return }
+        let updated = NSMutableAttributedString(attributedString: fullText)
+        updated.addAttribute(.attachment, value: attachment(for: image, width: displayWidth), range: range)
+        // 画像は行高を変えるので必ず再分割する(表示ページは維持)。
+        prepare(text: updated, containerWidth: lastWidth, viewHeight: lastHeight, keepIndex: true)
     }
 
     private func animate(_ v: UIView, forward: Bool, _ change: @escaping () -> Void) {
         Haptics.tap()
         switch turn {
         case .curl:
-            // CATransition の pageCurl(UIView.transition の配列リテラル回避)
             let t = CATransition()
             t.type = CATransitionType(rawValue: forward ? "pageCurl" : "pageUnCurl")
             t.subtype = forward ? .fromRight : .fromLeft
@@ -273,7 +285,6 @@ struct ReaderTextView: UIViewRepresentable {
     var theme: BookTheme
     var box: ScrollBox
     /// 確定済みの表示サイズ(GeometryReader 由来)。
-    /// 折り返し幅はこの値から計算し、UITextView の自己サイズリングには任せない。
     var pageSize: CGSize
     var turn: PageTurn = .curl
     var sideMargin: CGFloat = 28
@@ -289,6 +300,10 @@ struct ReaderTextView: UIViewRepresentable {
         Coordinator(parent: self)
     }
 
+    private func containerWidth() -> CGFloat {
+        max(pageSize.width - sideMargin * 2, 1)
+    }
+
     func makeUIView(context: Context) -> UITextView {
         let tv = PageTextView()
         tv.fixedSize = pageSize
@@ -296,26 +311,18 @@ struct ReaderTextView: UIViewRepresentable {
         tv.backgroundColor = UIColor(theme.background)
         tv.isEditable = false
         tv.isSelectable = false
-        // 送りは「横スワイプ / 左右タップ」の一本化。縦スクロールは無効
-        //(縦と横の同時有効をやめ、端では次/前の話へ自動遷移させる)。
         tv.isScrollEnabled = false
         tv.isPagingEnabled = false
         tv.alwaysBounceVertical = false
         tv.contentInsetAdjustmentBehavior = .never
-        // 本文全体をレイアウトさせる(しないと1画面で切れて「本文が出ない」)。
         tv.layoutManager.allowsNonContiguousLayout = false
-        // 幅は pageSize から確定させる(widthTracksTextView にすると
-        // レイアウト順で幅が振れて折り返しが壊れ、画面より広い本文になる)。
         tv.textContainer.widthTracksTextView = false
         tv.textContainer.heightTracksTextView = false
-        tv.textContainerInset = UIEdgeInsets(top: 0, left: sideMargin, bottom: 0, right: sideMargin)
         tv.textContainer.lineFragmentPadding = 0
-        tv.textContainer.size = CGSize(width: max(pageSize.width - sideMargin * 2, 1),
+        tv.textContainerInset = UIEdgeInsets(top: box.padTop, left: sideMargin, bottom: box.padBottom, right: sideMargin)
+        tv.textContainer.size = CGSize(width: containerWidth(),
                                        height: CGFloat.greatestFiniteMagnitude)
-        tv.contentInset = UIEdgeInsets(top: box.padTop, left: 0, bottom: box.padBottom, right: 0)
         tv.showsVerticalScrollIndicator = false
-        tv.attributedText = attributed
-        tv.contentOffset = CGPoint(x: 0, y: -box.padTop)
 
         let taps = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
         tv.addGestureRecognizer(taps)
@@ -328,16 +335,15 @@ struct ReaderTextView: UIViewRepresentable {
             $0.delegate = context.coordinator
             tv.addGestureRecognizer($0)
         }
-        // タップとスワイプが同時に成立可能(shouldRecognizeSimultaneouslyWith = true)
-        // なので、指定なしだと端でのスワイプが「スワイプ送り」と「端タップ送り」の
-        // 二重発火になり、1回のフリックでページが2回分進む(反応が極端すぎる原因)。
-        // スワイプが成立するかどうか判定が終わるまでタップの確定を待たせる。
+        // スワイプ判定が確定するまでタップを待たせる(二重発火の防止)。
         taps.require(toFail: leftSwipe)
         taps.require(toFail: rightSwipe)
         context.coordinator.swipeEnabled = swipePaging
         box.view = tv
         box.turn = turn
         context.coordinator.box = box
+        box.prepare(text: attributed, containerWidth: containerWidth(),
+                    viewHeight: pageSize.height, keepIndex: false)
         return tv
     }
 
@@ -353,36 +359,29 @@ struct ReaderTextView: UIViewRepresentable {
 
         tv.backgroundColor = UIColor(theme.background)
 
-        // サイズ/余白の確定。回転などで pageSize が変わったときは、
-        // 変更前の先頭行を基準に読書位置を張り直す。
-        // fixedSize は PageTextView のメンバーなのでキャストして使う
-        // (updateUIView の引数型は UITextView のまま)。
-        var restoreAnchor: CGFloat? = nil
+        // サイズ/余白の確定。変化があれば分割を作り直す(表示ページは維持)。
+        var geometryChanged = false
         if let page = tv as? PageTextView, pageSize != page.fixedSize {
-            restoreAnchor = tv.contentOffset.y + box.padTop
             page.fixedSize = pageSize
-            box.invalidateLines()
+            geometryChanged = true
         }
-        box.refreshPads()
-        tv.contentInset = UIEdgeInsets(top: box.padTop, left: 0, bottom: box.padBottom, right: 0)
-        if let anchor = restoreAnchor {
-            tv.contentOffset = CGPoint(x: 0, y: anchor - box.padTop)
+        if box.refreshPads() {
+            geometryChanged = true
         }
-        tv.textContainerInset = UIEdgeInsets(top: 0, left: sideMargin, bottom: 0, right: sideMargin)
-        tv.textContainer.widthTracksTextView = false
-        tv.textContainer.heightTracksTextView = false
-        tv.textContainer.size = CGSize(width: max(pageSize.width - sideMargin * 2, 1),
+        tv.textContainerInset = UIEdgeInsets(top: box.padTop, left: sideMargin, bottom: box.padBottom, right: sideMargin)
+        tv.textContainer.size = CGSize(width: containerWidth(),
                                        height: CGFloat.greatestFiniteMagnitude)
         box.view = tv
         box.turn = turn
-        context.coordinator.box = box
-        // 入れ替わり検知(本文 or スタイル変更)のときだけ載せ替える。
-        if !context.coordinator.applied.isEqual(to: attributed) {
+
+        // 入れ替わり検知(本文 or スタイル変更)。
+        let sameText = context.coordinator.applied.isEqual(to: attributed)
+        if !sameText {
             context.coordinator.applied = attributed
-            box.invalidateLines()
-            tv.attributedText = attributed
-            tv.contentOffset = CGPoint(x: 0, y: -box.padTop)
+            geometryChanged = true
         }
+        box.prepare(text: attributed, containerWidth: containerWidth(),
+                    viewHeight: pageSize.height, keepIndex: !geometryChanged)
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
@@ -427,7 +426,7 @@ struct ReaderTextView: UIViewRepresentable {
             guard let tv = gesture.view as? UITextView else { return }
             let p = gesture.location(in: tv)
             let w = tv.bounds.width
-            // 端(外側2割)だけが送り。中央はメニュー出没に充てる(反応しすぎの是正)。
+            // 端(外側2割)だけが送り。中央はメニュー出没に充てる。
             if p.x < w * 0.20 {
                 onTurn()
                 if !(box?.pageUp() ?? false) { onReachStart() }
