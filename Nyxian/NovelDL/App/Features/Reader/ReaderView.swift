@@ -25,6 +25,7 @@ struct ReaderView: View {
     @State private var showChrome = false
     @State private var showToc = false
     @State private var showType = false
+    @State private var showMenu = false
     @State private var loading = true
 
     private var theme: BookTheme { BookTheme(rawValue: themeRaw) ?? .paper }
@@ -60,11 +61,24 @@ struct ReaderView: View {
                         pages: pages,
                         pageIndex: $pageIndex,
                         background: UIColor(theme.background),
-                        insets: pageInsets,
-                        onSwipeNext: nextPage,
-                        onSwipePrevious: previousPage
+                        insets: pageInsets
                     )
                     .ignoresSafeArea()
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 16)
+                            .onEnded { value in
+                                // 横ドラッグで 1 ページ送り(左ドラッグ=次へ)。
+                                // 画面端からのスワイプでも戻りジェスチャに奪われない。
+                                let dx = value.translation.width
+                                let dy = value.translation.height
+                                guard abs(dx) > 40, abs(dx) > abs(dy) * 1.4 else { return }
+                                if dx < 0 {
+                                    nextPage()
+                                } else {
+                                    previousPage()
+                                }
+                            }
+                    )
                 }
 
                 VStack {
@@ -144,9 +158,11 @@ struct ReaderView: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                Button { showToc = true } label: {
-                    Image(systemName: "list.bullet")
+                Button { showMenu = true } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 17, weight: .semibold))
                 }
+                .accessibilityLabel("メニュー")
             }
             .foregroundStyle(theme.ink)
             .padding(.horizontal, 18)
@@ -189,6 +205,84 @@ struct ReaderView: View {
         .sheet(isPresented: $showType) {
             typeSheet
         }
+        .sheet(isPresented: $showMenu) {
+            menuSheet
+        }
+    }
+
+    private var menuSheet: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("メニュー")
+                .font(AppFont.serif(20, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+                .padding(.top, 22)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 8)
+
+            menuRow(icon: "list.bullet", title: "目次", detail: "\(chapters.count) 話") {
+                showMenu = false
+                showToc = true
+            }
+            Divider().overlay(AppPalette.hairline).padding(.horizontal, 24)
+            menuRow(icon: "textformat.size", title: "文字とレイアウト", detail: "書体・行間・余白") {
+                showMenu = false
+                showType = true
+            }
+            Divider().overlay(AppPalette.hairline).padding(.horizontal, 24)
+            menuRow(icon: "chevron.left", title: "前の話", detail: previousChapterTitle) {
+                showMenu = false
+                advanceChapter(delta: -1)
+            }
+            Divider().overlay(AppPalette.hairline).padding(.horizontal, 24)
+            menuRow(icon: "chevron.right", title: "次の話", detail: nextChapterTitle) {
+                showMenu = false
+                advanceChapter(delta: 1)
+            }
+            Divider().overlay(AppPalette.hairline).padding(.horizontal, 24)
+            menuRow(icon: "arrow.uturn.backward", title: "閉じて作品詳細へ", detail: "") {
+                showMenu = false
+                dismiss()
+            }
+            Spacer()
+        }
+        .presentationDetents([.height(380)])
+    }
+
+    private func menuRow(
+        icon: String, title: String, detail: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(AppFont.ui(16, weight: .medium))
+                    .foregroundStyle(AppPalette.ember)
+                    .frame(width: 26)
+                Text(title)
+                    .font(AppFont.ui(16))
+                    .foregroundStyle(AppPalette.ink)
+                Spacer()
+                Text(detail)
+                    .font(AppFont.ui(13))
+                    .foregroundStyle(AppPalette.inkFaint)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 15)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var previousChapterTitle: String {
+        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }),
+              pos > 0 else { return "なし" }
+        return chapters[pos - 1].subtitle
+    }
+
+    private var nextChapterTitle: String {
+        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }),
+              pos + 1 < chapters.count else { return "なし" }
+        return chapters[pos + 1].subtitle
     }
 
     private var tocSheet: some View {

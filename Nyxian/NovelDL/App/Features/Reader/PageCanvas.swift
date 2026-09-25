@@ -4,33 +4,17 @@ import CoreText
 
 /// CoreText page canvas — slices an NSAttributedString into pages and
 /// draws them like a printed sheet (no WKWebView).
+/// ジェスチャは ReaderView 側に一本化(ここは純粋な描画のみ)。
 struct PageCanvas: UIViewRepresentable {
     let pages: [NSAttributedString]
     @Binding var pageIndex: Int
     let background: UIColor
     var insets: UIEdgeInsets = UIEdgeInsets(top: 54, left: 34, bottom: 64, right: 34)
-    var onSwipeNext: () -> Void
-    var onSwipePrevious: () -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
 
     func makeUIView(context: Context) -> PageCanvasView {
         let view = PageCanvasView()
         view.backgroundColor = background
-        view.coordinator = context.coordinator
         view.insets = insets
-        let next = UISwipeGestureRecognizer(
-            target: context.coordinator, action: #selector(Coordinator.swipeNext))
-        next.direction = .left
-        let prev = UISwipeGestureRecognizer(
-            target: context.coordinator, action: #selector(Coordinator.swipePrev))
-        prev.direction = .right
-        view.addGestureRecognizer(next)
-        view.addGestureRecognizer(prev)
-        // 注:タップは SwiftUI 側のゾーン判定に一本化する(UIKit のタップを
-        // 入れると二重発火して「タップしただけで次話へ」の事故になる)。
         return view
     }
 
@@ -41,21 +25,12 @@ struct PageCanvas: UIViewRepresentable {
         view.pageIndex = pageIndex
         view.setNeedsDisplay()
     }
-
-    final class Coordinator: NSObject {
-        let parent: PageCanvas
-        init(_ parent: PageCanvas) { self.parent = parent }
-
-        @objc func swipeNext() { parent.onSwipeNext() }
-        @objc func swipePrev() { parent.onSwipePrevious() }
-    }
 }
 
 final class PageCanvasView: UIView {
     var pages: [NSAttributedString] = []
     var pageIndex = 0
     var insets = UIEdgeInsets(top: 54, left: 34, bottom: 64, right: 34)
-    weak var coordinator: PageCanvas.Coordinator?
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext(),
@@ -76,15 +51,14 @@ final class PageCanvasView: UIView {
 
         ctx.textMatrix = .identity
         // CoreText は下原点。コンテンツ矩形内で上下だけ反転し、パス座標
-        // (UIKit 上原点)の位置にそのまま収まるようにする(以前の変換だと
-        // 本文が画面外に描画されて「本文が読めない」状態になっていた)。
+        // (UIKit 上原点)の位置にそのまま収まるようにする。
         ctx.translateBy(x: 0, y: contentRect.minY + contentRect.maxY)
         ctx.scaleBy(x: 1, y: -1)
         CTFrameDraw(frame, ctx)
     }
 }
 
-/// Pagination engine — CTFramesetter slices by fitted line ranges.
+/// Pagination engine — CTFramesetter slices by FITTED (visible) line ranges.
 enum PagePaginator {
     static func paginate(
         _ text: NSAttributedString,
@@ -108,8 +82,11 @@ enum PagePaginator {
             let frame = CTFramesetterCreateFrame(
                 framesetter, CFRange(location: offset, length: remaining), path,
                 NSDictionary() as CFDictionary)
-            let range = CTFrameGetStringRange(frame)
-            var fitted = range.length
+            // 重要:実際に版面に収まった文字数は VISIBLE 範囲。GetStringRange は
+            // 依頼範囲(=残り全部)を返してしまうため、1 話が必ず 1 ページになり、
+            // 「本文が読めない」「タップで即次話」の原因になっていた。
+            let visible = CTFrameGetVisibleStringRange(frame)
+            var fitted = visible.length
             if fitted <= 0 {
                 fitted = min(remaining, 200) // safety: force progress
             }
