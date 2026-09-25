@@ -140,7 +140,7 @@ struct ReaderTextView: UIViewRepresentable {
         // 本文全体をレイアウトさせる(しないと1画面で切れて「本文が出ない」)。
         tv.layoutManager.allowsNonContiguousLayout = false
         tv.textContainer.heightTracksTextView = false
-        tv.textContainer.size = CGSize(width: 0, height: .greatestFiniteMagnitude)
+        tv.textContainer.size = CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         tv.textContainerInset = UIEdgeInsets(top: 26, left: sideMargin, bottom: 40, right: sideMargin)
         tv.textContainer.lineFragmentPadding = 0
         tv.showsVerticalScrollIndicator = false
@@ -178,7 +178,7 @@ struct ReaderTextView: UIViewRepresentable {
         tv.backgroundColor = UIColor(theme.background)
         tv.textContainerInset = UIEdgeInsets(top: 26, left: sideMargin, bottom: 40, right: sideMargin)
         tv.textContainer.heightTracksTextView = false
-        tv.textContainer.size = CGSize(width: 0, height: .greatestFiniteMagnitude)
+        tv.textContainer.size = CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         box.view = tv
         box.turn = turn
         context.coordinator.box = box
