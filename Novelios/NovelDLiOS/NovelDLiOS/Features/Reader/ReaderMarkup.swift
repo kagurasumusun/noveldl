@@ -3,6 +3,17 @@ import CoreText
 
 /// XHTML → NSAttributedString with CoreText ruby annotations.
 /// Native only — no WKWebView anywhere in the reader.
+/// 挿絵の読み込み元(実画像は ReaderView 側で非同期に差し替える)。
+struct ImageRef: Equatable {
+    let range: NSRange
+    let src: String
+}
+
+struct ParseResult {
+    let text: NSAttributedString
+    let images: [ImageRef]
+}
+
 final class ReaderMarkup: @unchecked Sendable {
     private let rubyKey = NSAttributedString.Key(kCTRubyAnnotationAttributeName as String)
 
@@ -32,7 +43,13 @@ final class ReaderMarkup: @unchecked Sendable {
         }
     }
 
-    func parse(_ xhtml: String, style: Style) -> NSAttributedString {
+    func parse(_ xhtml: String, style: Style) -> ParseResult {
+        var imageRefs: [ImageRef] = []
+        let text = parseInner(xhtml, style: style, images: &imageRefs)
+        return ParseResult(text: text, images: imageRefs)
+    }
+
+    private func parseInner(_ xhtml: String, style: Style, images: inout [ImageRef]) -> NSAttributedString {
         let para = NSMutableParagraphStyle()
         para.lineSpacing = style.lineSpacing
         para.alignment = .natural
@@ -63,6 +80,7 @@ final class ReaderMarkup: @unchecked Sendable {
                     showRuby: style.showRuby))
             } else if m.range(at: 2).location != NSNotFound {
                 let src = ns.substring(with: m.range(at: 2))
+                images.append(ImageRef(range: NSRange(location: out.length, length: 1), src: src))
                 out.append(imageAttachment(src: src, style: style))
             } else if token.lowercased().hasPrefix("<br") {
                 out.append(NSAttributedString(string: "\n", attributes: attrs))
@@ -129,10 +147,27 @@ final class ReaderMarkup: @unchecked Sendable {
     }
 
     /// 画像は描画を止めないため小さな罫に置き換える(同期取得=かくつきの原因)。
+    /// 挿絵のプレースホルダ(実画像は後から非同期で差し替える)。
+    static let placeholderImage: UIImage = {
+        let size = CGSize(width: 240, height: 180)
+        let r = UIGraphicsImageRenderer(size: size)
+        return r.image { ctx in
+            UIColor(white: 0.82, alpha: 1).setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+        }
+    }()
+
     private func imageAttachment(src: String, style: Style) -> NSAttributedString {
         let att = NSTextAttachment()
-        att.bounds = CGRect(x: 0, y: 0, width: min(style.maxWidth, 160), height: 6)
-        return NSAttributedString(attachment: att)
+        att.image = Self.placeholderImage
+        let width = min(style.maxWidth, 280)
+        att.bounds = CGRect(x: 0, y: -4, width: width, height: width * 0.75)
+        let s = NSMutableAttributedString(attachment: att)
+        s.addAttributes([.font: style.bodyFont], range: NSRange(location: 0, length: s.length))
+        let p = NSMutableParagraphStyle()
+        p.alignment = .center
+        s.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: s.length))
+        return s
     }
 
     private func stripTags(_ input: String) -> String {

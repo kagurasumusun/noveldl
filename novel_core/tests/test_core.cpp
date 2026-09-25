@@ -187,7 +187,11 @@ body_selectors:
 
 static void test_rules_custom_site_no_defaults() {
     RulesParser parser(preset_of("body_selectors:\n  - selector: article\n"));
-    CHECK_EQ(parser.parse_toc_page_hrefs("<nav><a href='?p=2'>次へ</a></nav>").size(), (size_t)0);
+    // コンテンツ抽出のルールは推測しない(既定なし)。
+    auto sec = parser.parse_section("<article>ただの記事</article>");
+    CHECK(sec.body.find("ただの記事") != std::string::npos);  // body_selectors がある分のみ動く
+    // ページ送りリンクはルール無しでも汎用検出する(ページ分割された目次への対応)。
+    CHECK_EQ(parser.parse_toc_page_hrefs("<nav><a href='?p=2'>次へ</a></nav>").size(), (size_t)1);
 }
 
 static void test_rules_api_json() {
@@ -458,6 +462,27 @@ static void test_section_sort_key() {
 }
 
 // ── URL helpers ───────────────────────────────────────────────────────────
+static void test_toc_next_page_detection() {
+    // 明示ルール無しでも「次へ」リンク / rel="next" から複数ページ目の目次を辿れる。
+    RulesParser empty(Value::map_());
+    std::string html =
+        "<div class=\"index\"><a href=\"/novel/1/1.html\">1話</a></div>"
+        "<nav><a href=\"/novel/1/?p=2\">次へ</a></nav>";
+    auto hrefs = empty.parse_toc_page_hrefs(html);
+    CHECK(hrefs.size() == 1 && hrefs[0] == "/novel/1/?p=2");
+
+    std::string html2 =
+        "<a rel=\"next\" href=\"https://x.y/list?page=3\">次</a>"
+        "<a href=\"/home\">ホーム</a>";
+    auto hrefs2 = empty.parse_toc_page_hrefs(html2);
+    CHECK(hrefs2.size() == 1 && hrefs2[0] == "https://x.y/list?page=3");
+
+    // 送りリンクが無ければ空のまま(誤検出しない)。
+    std::string html3 = "<a href=\"/home\">ホーム</a><a href=\"/about\">このサイトについて</a>";
+    auto hrefs3 = empty.parse_toc_page_hrefs(html3);
+    CHECK(hrefs3.empty());
+}
+
 static void test_urls() {
     CHECK_EQ(url_absolute("https://a.example/works/1", "/e/2"), std::string("https://a.example/e/2"));
     CHECK_EQ(url_absolute("https://a.example/works/1", "2.html"),
@@ -530,6 +555,7 @@ int main() {
     RUN(test_json);
     RUN(test_regex);
     RUN(test_html_select);
+    RUN(test_toc_next_page_detection);
     RUN(test_rules_injection);
     RUN(test_rules_page_range);
     RUN(test_rules_custom_site_no_defaults);

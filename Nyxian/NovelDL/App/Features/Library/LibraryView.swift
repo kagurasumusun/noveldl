@@ -8,6 +8,7 @@ struct LibraryView: View {
     @State private var importUrl = ""
     @State private var errorText: String?
     @State private var activeStatus: String?
+    @State private var readerRoute: ReaderRoute?
 
     var body: some View {
         NavigationStack {
@@ -55,7 +56,7 @@ struct LibraryView: View {
             .navigationDestination(for: LibraryNovelItem.self) { item in
                 NovelDetailView(item: item)
             }
-            .navigationDestination(for: ReaderRoute.self) { route in
+            .fullScreenCover(item: $readerRoute) { route in
                 ReaderView(novelId: route.novelId, startAt: route.index, title: route.title)
             }
         }

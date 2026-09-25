@@ -83,8 +83,7 @@ struct PresetFormView: View {
     ]
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.xl) {
                     section("基本") {
                         fieldRow("site_name", "サイト名", "例: 小説家になろう")
@@ -177,7 +176,6 @@ struct PresetFormView: View {
                 .background(AppPalette.canvas)
             }
             .task { await load() }
-        }
     }
 
     private var r18Row: some View {
@@ -186,7 +184,7 @@ struct PresetFormView: View {
                 .font(AppFont.ui(12, weight: .semibold))
                 .foregroundStyle(AppPalette.inkSoft)
             SegmentTabs(
-                items: ["全年齢", "R-18あり", "R-18専"],
+                titles: ["全年齢", "R-18あり", "R-18専"],
                 selection: $r18Mode
             )
             .onChange(of: r18Mode) { mode in

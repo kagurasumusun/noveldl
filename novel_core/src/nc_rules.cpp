@@ -915,9 +915,38 @@ ParsedToc RulesParser::parse_toc(const std::string& html) const {
     return e.parse_toc(html);
 }
 
+namespace {
+// 明示ルールが無い場合の保険:ページ送りリンク(次へ 等 / rel="next")を汎用検出する。
+// 複数ページに分かれた目次を持つサイトを、個別ルール無しでも取りこぼさないため。
+std::vector<std::string> generic_next_page_hrefs(const std::string& html) {
+    Regex anchor(R"(<a\b[^>]*href\s*=\s*[\"']([^\"']+)[\"'][^>]*>([\s\S]*?)</a>)", false, true);
+    Regex rel(R"(\brel\s*=\s*[\"']([^\"']+)[\"'])", false, true);
+    Regex next_text(R"(^\s*(次へ|次のページ|次の頁|次へ移動|次|next|»|›|≫|>>)\s*$)", false, true);
+    Regex tag(R"(<[^>]+>)");
+    std::vector<std::string> out;
+    std::set<std::string> seen;
+    for (auto& m : anchor.find_all(html)) {
+        std::string href = m.get_or(1, "");
+        if (href.empty() || href[0] == '#' || href.rfind("javascript:", 0) == 0) continue;
+        bool is_next = false;
+        if (auto rm = rel.search(m.groups.empty() ? std::string() : m.groups[0])) {
+            std::string v = rm->get_or(1, "");
+            std::transform(v.begin(), v.end(), v.begin(), ::tolower);
+            is_next = v.find("next") != std::string::npos;
+        }
+        std::string text = trim(tag.replace_all(m.get_or(2, ""), ""));
+        if (!is_next && !next_text.is_match(text)) continue;
+        if (seen.insert(href).second) out.push_back(href);
+    }
+    return out;
+}
+}  // namespace
+
 std::vector<std::string> RulesParser::parse_toc_page_hrefs(const std::string& html) const {
     Engine e{compile_rules(preset_)};
-    return e.parse_toc_page_hrefs(html);
+    auto hrefs = e.parse_toc_page_hrefs(html);
+    if (hrefs.empty()) hrefs = generic_next_page_hrefs(html);
+    return hrefs;
 }
 
 ParsedSection RulesParser::parse_section(const std::string& html) const {

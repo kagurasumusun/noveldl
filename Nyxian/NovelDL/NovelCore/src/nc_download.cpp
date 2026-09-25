@@ -192,7 +192,9 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
 
     TocResult result;
     AccessSettings access = AccessSettings::from_preset(preset);
+    int fetched_pages = 0;
     while (!pages.queue.empty()) {
+        if (++fetched_pages > 400) break;  // 異常なページ連鎖の保険
         if (cancel_requested()) throw Error("cancelled");
         auto [url, html] = pages.queue.front();
         pages.queue.pop_front();

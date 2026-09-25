@@ -1,9 +1,10 @@
 import SwiftUI
 
-struct ReaderRoute: Hashable {
+struct ReaderRoute: Hashable, Identifiable {
     let novelId: String
     let index: String
     let title: String
+    var id: String { "\(novelId)#\(index)" }
 }
 
 /// 作品詳細 — 書誌・あらすじ・操作・目次を一枚の紙面として構成。
@@ -24,6 +25,7 @@ struct NovelDetailView: View {
 
     @State private var flatChapters: [ChapterMeta] = []
     @State private var chapterLimit = 60
+    @State private var readerRoute: ReaderRoute?
 
     private var downloaded: Int { detail?.downloadedCount ?? item.downloadedCount ?? 0 }
     private var total: Int { max(detail?.novel.episodeCount ?? item.episodeCount, 1) }
@@ -46,6 +48,9 @@ struct NovelDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showOptions) { optionsSheet }
+        .fullScreenCover(item: $readerRoute) { route in
+            ReaderView(novelId: route.novelId, startAt: route.index, title: route.title)
+        }
         .alert("詳細", isPresented: Binding(
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
@@ -148,9 +153,9 @@ struct NovelDetailView: View {
 
             if let first = detail?.chapters.first(where: { $0.bodyDownloaded == true })
                 ?? detail?.chapters.first {
-                NavigationLink(
-                    value: ReaderRoute(novelId: item.novelId, index: first.index, title: item.title)
-                ) {
+                Button {
+                    readerRoute = ReaderRoute(novelId: item.novelId, index: first.index, title: item.title)
+                } {
                     HStack(spacing: 6) {
                         Image(systemName: "book")
                         Text(detail?.chapters.contains(where: { $0.bodyDownloaded == true }) == true
@@ -276,9 +281,9 @@ struct NovelDetailView: View {
     }
 
     private func chapterRow(_ ch: ChapterMeta) -> some View {
-        NavigationLink(
-            value: ReaderRoute(novelId: item.novelId, index: ch.index, title: item.title)
-        ) {
+        Button {
+            readerRoute = ReaderRoute(novelId: item.novelId, index: ch.index, title: item.title)
+        } {
             HStack(spacing: Spacing.m) {
                 Text(ch.index)
                     .font(AppFont.ui(12, weight: .semibold).monospacedDigit())

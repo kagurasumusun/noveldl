@@ -1,13 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// タップゾーン:左 = 1 画面戻る / 中央 = 読書メニュー / 右 = 1 画面送る(末尾なら次話)。
-enum ReaderZone {
-    case previous, menu, next
-}
-
-/// ページめくりの演出。度合いは控えめ(読みを邪魔しない)。
-enum PageTurn: String {
+/// ページめくりの演出。
+enum PageTurn: String, CaseIterable {
     case curl, slide, fade, none
 
     var label: String {
@@ -19,15 +14,15 @@ enum PageTurn: String {
         }
     }
 
-    static let all: [PageTurn] = [.curl, .slide, .fade, .none]
+    static var all: [PageTurn] { [.curl, .fade, .slide, .none] }
 }
 
-/// UITextView への参照受け渡し(スクロール操作用)。循環参照を避けるため weak。
+/// UITextView 本体。1 スクリーン = 1 ページの縦ページング。
+/// 余白は左右のマージンのみで、額縁のような箱にはしない。
 final class ScrollBox {
     weak var view: UITextView?
     var turn: PageTurn = .curl
 
-    /// 1 画面分戻る。先頭なら false。
     @discardableResult
     func pageUp() -> Bool {
         guard let v = view else { return false }
@@ -41,7 +36,6 @@ final class ScrollBox {
         return true
     }
 
-    /// 1 画面分送る。末尾なら false(呼び出し側で次話へ)。
     @discardableResult
     func pageDown() -> Bool {
         guard let v = view else { return false }
@@ -56,115 +50,180 @@ final class ScrollBox {
         return true
     }
 
-    /// 演出は「控えめな速さ」で統一(はきはきしすぎない)。
+    var atFirstPage: Bool {
+        guard let v = view else { return true }
+        return v.contentOffset.y <= 4
+    }
+
+    var atLastPage: Bool {
+        guard let v = view else { return true }
+        let maxY = max(0, v.contentSize.height - v.bounds.height + v.contentInset.bottom)
+        return v.contentOffset.y >= maxY - 6
+    }
+
+    /// 挿絵を実画像へ差し替える(レンジは現在の textStorage 上)。
+    func applyImage(at range: NSRange, image: UIImage, displayWidth: CGFloat) {
+        guard let v = view, let storage = v.textStorage,
+              NSMaxRange(range) <= storage.length else { return }
+        let scale = displayWidth / max(image.size.width, 1)
+        let size = CGSize(
+            width: min(displayWidth, image.size.width * scale),
+            height: image.size.height * scale
+        )
+        let att = NSTextAttachment()
+        att.image = image
+        att.bounds = CGRect(x: 0, y: -4, width: size.width, height: size.height)
+        storage.beginEditing()
+        storage.addAttribute(.attachment, value: att, range: range)
+        storage.endEditing()
+    }
+
     private func animate(_ v: UIView, forward: Bool, _ change: @escaping () -> Void) {
         Haptics.tap()
         switch turn {
         case .curl:
-            UIView.transition(
-                with: v,
-                duration: 0.36,
-                options: [forward ? .transitionCurlFromRight : .transitionCurlFromLeft, .allowAnimatedContent],
-                animations: change
-            )
+            UIView.transition(with: v, duration: 0.36, options: [
+                forward ? .transitionCurlUp : .transitionCurlDown, .allowUserInteraction,
+            ], animations: change)
         case .slide:
             let t = CATransition()
+            t.duration = 0.30
             t.type = .push
             t.subtype = forward ? .fromRight : .fromLeft
-            t.duration = 0.30
             t.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            v.layer.add(t, forKey: nil)
+            v.layer.add(t, forKey: "turn")
             change()
         case .fade:
-            let t = CATransition()
-            t.type = .fade
-            t.duration = 0.26
-            t.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            v.layer.add(t, forKey: nil)
-            change()
+            UIView.transition(with: v, duration: 0.26, options: [.transitionCrossDissolve, .allowUserInteraction],
+                              animations: change)
         case .none:
             change()
         }
     }
 }
 
-/// 本文ビュー — UITextView のネイティブスクロール(CoreText 直描画の事故を排除)。
 struct ReaderTextView: UIViewRepresentable {
-    let attributed: NSAttributedString
-    let background: UIColor
-    var sideMargin: CGFloat = 34
+    var attributed: NSAttributedString
+    var theme: BookTheme
+    var box: ScrollBox
+    var turn: PageTurn = .curl
+    var sideMargin: CGFloat = 28
     var swipePaging: Bool = true
-    let scroller: ScrollBox
-    let onZone: (ReaderZone) -> Void
+    var onCenterTap: () -> Void = {}
+    var onPrevPage: () -> Void = {}
+    var onNextPage: () -> Void = {}
+    var onReachStart: () -> Void = {}
+    var onReachEnd: () -> Void = {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onZone: onZone)
+        Coordinator(parent: self)
     }
 
     func makeUIView(context: Context) -> UITextView {
         let tv = UITextView()
+        tv.backgroundColor = UIColor(theme.background)
         tv.isEditable = false
         tv.isSelectable = false
         tv.isScrollEnabled = true
         // 連続スクロールではなく 1 スクリーン = 1 ページのめくりに。
         tv.isPagingEnabled = true
         tv.alwaysBounceVertical = true
-        tv.backgroundColor = background
-        tv.textContainerInset = UIEdgeInsets(top: 28, left: sideMargin, bottom: 96, right: sideMargin)
+        tv.contentInsetAdjustmentBehavior = .never
+        tv.textContainerInset = UIEdgeInsets(top: 26, left: sideMargin, bottom: 40, right: sideMargin)
         tv.textContainer.lineFragmentPadding = 0
-        tv.adjustsFontForContentSizeCategory = false
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
-        tap.cancelsTouchesInView = false
-        tv.addGestureRecognizer(tap)
-        let nextSwipe = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipedNext))
-        nextSwipe.direction = .left
-        tv.addGestureRecognizer(nextSwipe)
-        let prevSwipe = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipedPrev))
-        prevSwipe.direction = .right
-        tv.addGestureRecognizer(prevSwipe)
-        scroller.view = tv
+        tv.showsVerticalScrollIndicator = false
+        tv.attributedText = attributed
+        tv.contentOffset = .zero
+
+        let taps = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        tv.addGestureRecognizer(taps)
+
+        let leftSwipe = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipedPrev))
+        leftSwipe.direction = .right  // 左から右 = 前のページへ戻る
+        let rightSwipe = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipedNext))
+        rightSwipe.direction = .left  // 右から左 = 次のページへ
+        [leftSwipe, rightSwipe].forEach {
+            $0.delegate = context.coordinator
+            tv.addGestureRecognizer($0)
+        }
+        context.coordinator.swipeEnabled = swipePaging
+        box.view = tv
+        box.turn = turn
+        context.coordinator.box = box
         return tv
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.onCenterTap = onCenterTap
+        context.coordinator.onPrevPage = onPrevPage
+        context.coordinator.onNextPage = onNextPage
+        context.coordinator.onReachStart = onReachStart
+        context.coordinator.onReachEnd = onReachEnd
         context.coordinator.swipeEnabled = swipePaging
-        tv.backgroundColor = background
-        tv.textContainerInset = UIEdgeInsets(top: 28, left: sideMargin, bottom: 96, right: sideMargin)
-        let current: NSAttributedString = tv.attributedText ?? NSAttributedString()
-        if !current.isEqual(attributed) {
-            let offset = tv.contentOffset
+
+        tv.backgroundColor = UIColor(theme.background)
+        tv.textContainerInset = UIEdgeInsets(top: 26, left: sideMargin, bottom: 40, right: sideMargin)
+        box.view = tv
+        box.turn = turn
+        context.coordinator.box = box
+        // 入れ替わり検知(本文 or スタイル変更)のときだけ載せ替える。
+        if !context.coordinator.applied.isEqual(to: attributed) {
+            context.coordinator.applied = attributed
             tv.attributedText = attributed
-            // 同一話内の書体変更では読み位置を保つ
-            tv.setContentOffset(offset, animated: false)
+            tv.contentOffset = .zero
         }
     }
 
-    final class Coordinator: NSObject {
-        let onZone: (ReaderZone) -> Void
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: ReaderTextView
+        var box: ScrollBox?
         var swipeEnabled = true
-        init(onZone: @escaping (ReaderZone) -> Void) { self.onZone = onZone }
+        var applied = NSAttributedString()
+        var onCenterTap: () -> Void = {}
+        var onPrevPage: () -> Void = {}
+        var onNextPage: () -> Void = {}
+        var onReachStart: () -> Void = {}
+        var onReachEnd: () -> Void = {}
+
+        init(parent: ReaderTextView) {
+            self.parent = parent
+            self.onCenterTap = parent.onCenterTap
+            self.onPrevPage = parent.onPrevPage
+            self.onNextPage = parent.onNextPage
+            self.onReachStart = parent.onReachStart
+            self.onReachEnd = parent.onReachEnd
+        }
 
         @objc func swipedNext() {
             guard swipeEnabled else { return }
-            onZone(.next)
+            if !(box?.pageDown() ?? false) {
+                onReachEnd()  // 最後のページから次へ = 次の話へ
+            }
         }
 
         @objc func swipedPrev() {
             guard swipeEnabled else { return }
-            onZone(.previous)
+            if !(box?.pageUp() ?? false) {
+                onReachStart()  // 最初のページから前へ = 前の話へ
+            }
         }
 
         @objc func tapped(_ gesture: UITapGestureRecognizer) {
-            guard let view = gesture.view else { return }
-            let x = gesture.location(in: view).x
-            let w = view.bounds.width
-            if x < w / 3 {
-                onZone(.previous)
-            } else if x > w * 2 / 3 {
-                onZone(.next)
+            guard let tv = gesture.view as? UITextView else { return }
+            let p = gesture.location(in: tv)
+            let w = tv.bounds.width
+            if p.x < w * 0.28 {
+                if !(box?.pageUp() ?? false) { onReachStart() }
+            } else if p.x > w * 0.72 {
+                if !(box?.pageDown() ?? false) { onReachEnd() }
             } else {
-                onZone(.menu)
+                onCenterTap()
             }
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
         }
     }
 }
