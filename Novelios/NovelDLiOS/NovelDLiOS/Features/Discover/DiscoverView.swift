@@ -259,13 +259,19 @@ struct DiscoverView: View {
     }
 
     private func run() async {
-        let text = session.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        // 検索語に古い site: 指定が混ざっていたら取り除いてから
+        // 現在の範囲チップの指定を付け直す(二重指定で0件になるのを防ぐ)。
+        let words = session.query
+            .split(separator: " ")
+            .filter { !$0.lowercased().hasPrefix("site:") }
+        let base = words.joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !base.isEmpty else { return }
         searching = true
         defer { searching = false }
         do {
             // 検索範囲(site:)で絞り込み — 各サイト単独でも横断でも検索できる
-            let scoped = session.scopeKey.map { text + " site:" + $0 } ?? text
+            let scoped = session.scopeKey.map { base + " site:" + $0 } ?? base
             session.results = try await core.search(scoped)
         } catch {
             errorText = error.localizedDescription

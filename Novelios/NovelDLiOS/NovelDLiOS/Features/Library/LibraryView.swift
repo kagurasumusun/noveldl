@@ -218,12 +218,22 @@ struct LibraryView: View {
         activeStatus = "目次を取得中…"
         errorText = nil
         do {
-            let fetched = try await core.fetchToc(url: trimmed, outputDir: "NovelDL-out")
+            // 保存先は必ずライブラリ配下の絶対パスにする。
+            // 相対パスを渡すと iOS では書き込み不可の場所へ向かい、
+            // DB 作成に失敗して「追加したのに本棚に出ない」になった。
+            let slug = trimmed
+                .replacingOccurrences(of: "https://", with: "")
+                .replacingOccurrences(of: "http://", with: "")
+                .replacingOccurrences(of: "/", with: "_")
+            let dir = CoreClient.libraryRoot()
+                .appendingPathComponent(slug, isDirectory: true)
+                .path
+            let fetched = try await core.fetchToc(url: trimmed, outputDir: dir)
             await core.reloadLibrary()
             activeStatus = "全話を取得中…"
             let out = try await core.download(CoreClient.DownloadOptions(
                 url: trimmed,
-                outputDir: "NovelDL-out",
+                outputDir: dir,
                 episodes: 0,
                 fromIndex: "",
                 mode: "bulk"

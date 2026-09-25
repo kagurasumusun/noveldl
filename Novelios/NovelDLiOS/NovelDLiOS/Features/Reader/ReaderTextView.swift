@@ -17,6 +17,27 @@ enum PageTurn: String, CaseIterable {
     static var all: [PageTurn] { [.curl, .fade, .slide, .none] }
 }
 
+/// サイズを完全に固定した UITextView。
+/// 素の UITextView は isScrollEnabled = false のとき sizeThatFits が
+/// 「コンテンツが収まるサイズ」を返すため、SwiftUI がそのサイズを尊重して
+/// 画面より巨大なビューを中央に置いてしまう(左右が切れる・行間が吹む)。
+/// サイズ要求をすべて「確定済みの fixedSize」で答えることで防ぐ。
+final class PageTextView: UITextView {
+    var fixedSize: CGSize = .zero {
+        didSet {
+            if fixedSize != bounds.size {
+                frame = CGRect(origin: .zero, size: fixedSize)
+                invalidateIntrinsicContentSize()
+                setNeedsLayout()
+            }
+        }
+    }
+
+    override var intrinsicContentSize: CGSize { fixedSize }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize { fixedSize }
+}
+
 /// UITextView 本体。行境界に吸着させた 1 スクリーン = 1 ページの横送り。
 /// 余白は左右のマージンのみで、額縁のような箱にはしない。
 final class ScrollBox {
@@ -70,7 +91,7 @@ final class ScrollBox {
     private func rebuildLinesIfNeeded() {
         guard let v = view, let storage = v.textStorage, let lm = v.layoutManager else { return }
         if storage.length == lineCacheLength,
-           v.bounds.width == lineCacheWidth,
+           v.textContainer.size.width == lineCacheWidth,
            v.textContainerInset.top == lineCacheInsetTop,
            !lineTop.isEmpty {
             return
@@ -79,7 +100,7 @@ final class ScrollBox {
         lineTop = []
         lineBottom = []
         lineCacheLength = storage.length
-        lineCacheWidth = v.bounds.width
+        lineCacheWidth = v.textContainer.size.width
         lineCacheInsetTop = v.textContainerInset.top
         if storage.length > 0 {
             let insetTop = v.textContainerInset.top
@@ -103,11 +124,6 @@ final class ScrollBox {
         return i
     }
 
-    /// 最終ページの開始オフセット(本文の末尾を帯に収める行合わせの位置)。
-    private var lastPageStartOffset: CGFloat {
-        lineTop.isEmpty ? minOffset : max(minOffset, lineTop[lastStartLineIndex] - padTop)
-    }
-
     /// 最終ページの開始行(末尾だけを収めるよう後ろから詰めた位置)。
     private var lastStartLineIndex: Int {
         guard !lineTop.isEmpty else { return 0 }
@@ -115,6 +131,11 @@ final class ScrollBox {
         var s = lineTop.count - 1
         while s > 0 && bottom - lineTop[s - 1] <= band { s -= 1 }
         return s
+    }
+
+    /// 最終ページの開始オフセット(本文の末尾を帯に収める行合わせの位置)。
+    private var lastPageStartOffset: CGFloat {
+        lineTop.isEmpty ? minOffset : max(minOffset, lineTop[lastStartLineIndex] - padTop)
     }
 
     /// ページ送りの連鎖(pageDown の詰め方 + 最終ページのクランプ)と同じ並びで、
@@ -246,6 +267,9 @@ struct ReaderTextView: UIViewRepresentable {
     var attributed: NSAttributedString
     var theme: BookTheme
     var box: ScrollBox
+    /// 確定済みの表示サイズ(GeometryReader 由来)。
+    /// 折り返し幅はこの値から計算し、UITextView の自己サイズリングには任せない。
+    var pageSize: CGSize
     var turn: PageTurn = .curl
     var sideMargin: CGFloat = 28
     var swipePaging: Bool = true
@@ -261,7 +285,9 @@ struct ReaderTextView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UITextView {
-        let tv = UITextView()
+        let tv = PageTextView()
+        tv.fixedSize = pageSize
+        tv.frame = CGRect(origin: .zero, size: pageSize)
         tv.backgroundColor = UIColor(theme.background)
         tv.isEditable = false
         tv.isSelectable = false
@@ -273,13 +299,13 @@ struct ReaderTextView: UIViewRepresentable {
         tv.contentInsetAdjustmentBehavior = .never
         // 本文全体をレイアウトさせる(しないと1画面で切れて「本文が出ない」)。
         tv.layoutManager.allowsNonContiguousLayout = false
-        // 幅はビューに追従させる(width: 0 指定だと折り返しが壊れて横にはみ出す)。
-        tv.textContainer.widthTracksTextView = true
+        // 幅は pageSize から確定させる(widthTracksTextView にすると
+        // レイアウト順で幅が振れて折り返しが壊れ、画面より広い本文になる)。
+        tv.textContainer.widthTracksTextView = false
         tv.textContainer.heightTracksTextView = false
-        // 左右のみ本文インセット。上下の余白は contentInset で全ページ均等に確保。
         tv.textContainerInset = UIEdgeInsets(top: 0, left: sideMargin, bottom: 0, right: sideMargin)
         tv.textContainer.lineFragmentPadding = 0
-        tv.textContainer.size = CGSize(width: max(tv.bounds.width, 1),
+        tv.textContainer.size = CGSize(width: max(pageSize.width - sideMargin * 2, 1),
                                        height: CGFloat.greatestFiniteMagnitude)
         tv.contentInset = UIEdgeInsets(top: box.padTop, left: 0, bottom: box.padBottom, right: 0)
         tv.showsVerticalScrollIndicator = false
@@ -321,18 +347,24 @@ struct ReaderTextView: UIViewRepresentable {
         context.coordinator.swipeEnabled = swipePaging
 
         tv.backgroundColor = UIColor(theme.background)
-        // セーフエリア(ノッチ/ホームバー)分を余白に含め、本文を画面内へ収める。
-        // updateUIView の時点では safeAreaInsets が未確定(0)のことがあるため、
-        // 余白は ScrollBox 側で都度取り直す。ここでは「余白が変わる前後で
-        // 同じ本文位置を表示し続ける」よう、先頭位置を基準にオフセットを張り直す。
+
+        // サイズ/余白の確定。回転などで pageSize が変わったときは、
+        // 変更前の先頭行を基準に読書位置を張り直す。
+        let sizeChanged = !pageSize.equalTo(tv.fixedSize)
         let anchorTop = tv.contentOffset.y + box.padTop
+        if sizeChanged {
+            tv.fixedSize = pageSize
+            box.invalidateLines()
+        }
         box.refreshPads()
         tv.contentInset = UIEdgeInsets(top: box.padTop, left: 0, bottom: box.padBottom, right: 0)
-        tv.contentOffset = CGPoint(x: 0, y: anchorTop - box.padTop)
+        if sizeChanged {
+            tv.contentOffset = CGPoint(x: 0, y: anchorTop - box.padTop)
+        }
         tv.textContainerInset = UIEdgeInsets(top: 0, left: sideMargin, bottom: 0, right: sideMargin)
-        tv.textContainer.widthTracksTextView = true
+        tv.textContainer.widthTracksTextView = false
         tv.textContainer.heightTracksTextView = false
-        tv.textContainer.size = CGSize(width: max(tv.bounds.width, 1),
+        tv.textContainer.size = CGSize(width: max(pageSize.width - sideMargin * 2, 1),
                                        height: CGFloat.greatestFiniteMagnitude)
         box.view = tv
         box.turn = turn

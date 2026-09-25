@@ -462,7 +462,7 @@ struct NovelDetailView: View {
         do {
             let options = CoreClient.DownloadOptions(
                 url: item.tocUrl,
-                outputDir: item.outputDir,
+                outputDir: CoreClient.effectiveOutputDir(item.outputDir),
                 episodes: all ? 0 : episodesLimit,
                 fromIndex: all ? "" : fromIndex,
                 mode: mode

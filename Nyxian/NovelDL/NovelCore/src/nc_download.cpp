@@ -994,6 +994,11 @@ Value op_library_refresh(const std::string& root_dir) {
                 ++failed;
                 continue;
             }
+            // 過去のバージョンが保存した相対パス(NovelDL-out など)は
+            // root_dir 基準に直す。相対のままでは CWD(iOS では書き込み不可)
+            // へ向かい、目次の再取得が静かに失敗する。
+            if (!opts.output_dir.empty() && opts.output_dir[0] != '/')
+                opts.output_dir = root_dir + "/" + opts.output_dir;
             op_fetch_toc(opts);
             ++refreshed;
         } catch (...) {

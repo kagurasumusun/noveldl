@@ -98,8 +98,16 @@ final class ReaderMarkup: @unchecked Sendable {
     }
 
     private func appendText(_ raw: String, to out: NSMutableAttributedString, attributes attrs: [NSAttributedString.Key: Any]) {
-        let decoded = decodeEntities(stripTags(raw))
-        guard !decoded.isEmpty else { return }
+        var decoded = decodeEntities(stripTags(raw))
+        // タグ間の生テキストノードに含まれる改行・余白を整える。
+        // そのまま append すると </p> と <p> の間のインデントや改行が空行として
+        // 積み重なり、段落の間に巨大な隙間が空いて見えていた。
+        // (全角空白 U+3000 の字下げは \s では潰さない — ASCII 余白のみ対象)
+        decoded = decoded.replacingOccurrences(of: "[ \\t\\r]*\\n[ \\t\\r]*", with: "\n", options: .regularExpression)
+        while decoded.contains("\n\n\n") {
+            decoded = decoded.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+        }
+        guard !decoded.isEmpty, decoded != "\n" || out.length > 0 else { return }
         out.append(NSAttributedString(string: decoded, attributes: attrs))
     }
 

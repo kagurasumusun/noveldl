@@ -79,6 +79,17 @@ final class CoreClient: Observable, @unchecked Sendable {
         return dir
     }
 
+    /// 保存済みの output_dir を絶対パスに正規化する。
+    /// 初期バージョンは相対パス(NovelDL-out など)を保存しており、iOS では
+    /// 書き込み可能な場所を指さない(追加した小説が本棚に出てこない・
+    /// 続話の自動取得が失敗する原因)。相対のときはライブラリ配下へ解決する。
+    static func effectiveOutputDir(_ path: String) -> String {
+        if path.hasPrefix("/") { return path }
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return libraryRoot().path }
+        return libraryRoot().appendingPathComponent(trimmed, isDirectory: true).path
+    }
+
     // MARK: progress
 
     private func installProgressCallback() {
@@ -169,7 +180,7 @@ final class CoreClient: Observable, @unchecked Sendable {
             _ = try? await download(
                 CoreClient.DownloadOptions(
                     url: item.tocUrl,
-                    outputDir: item.outputDir,
+                    outputDir: CoreClient.effectiveOutputDir(item.outputDir),
                     episodes: 0,
                     fromIndex: "",
                     mode: "bulk"

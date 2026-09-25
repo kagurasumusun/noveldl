@@ -19,11 +19,10 @@ struct ReaderView: View {
     @State private var attributed = NSAttributedString()
     @State private var imageRefs: [ImageRef] = []
     @State private var loadError: String?
-    @State private var showToc = false
-    @State private var showMenu = false
     @State private var detail: LibraryNovelDetail?
     @State private var bookmarked = false
     @State private var hintVisible = false
+    @State private var autoFetching = false
 
     @AppStorage("readerTheme") private var themeRaw = BookTheme.paper.rawValue
     @AppStorage("readerFontSize") private var fontSize = 19.0
@@ -60,36 +59,37 @@ struct ReaderView: View {
         ZStack {
             theme.background.ignoresSafeArea()
 
-            ReaderTextView(
-                attributed: attributed,
-                theme: theme,
-                box: readerBox,
-                turn: turn,
-                sideMargin: max(margin, 12),
-                swipePaging: swipePaging,
-                onCenterTap: {
-                    withAnimation(.easeInOut(duration: 0.22)) { chromeVisible.toggle() }
-                },
-                onTurn: {
-                    // スワイプ/めくりで自動的に隠れる
-                    if chromeVisible {
-                        withAnimation(.easeInOut(duration: 0.25)) { chromeVisible = false }
+            GeometryReader { geo in
+                ReaderTextView(
+                    attributed: attributed,
+                    theme: theme,
+                    box: readerBox,
+                    pageSize: geo.size,
+                    turn: turn,
+                    sideMargin: max(margin, 12),
+                    swipePaging: swipePaging,
+                    onCenterTap: {
+                        withAnimation(.easeInOut(duration: 0.22)) { chromeVisible.toggle() }
+                    },
+                    onTurn: {
+                        // スワイプ/めくりで自動的に隠れる
+                        if chromeVisible {
+                            withAnimation(.easeInOut(duration: 0.25)) { chromeVisible = false }
+                        }
+                    },
+                    onPrevPage: {},
+                    onNextPage: {},
+                    onReachStart: {
+                        if canGoPrev { goChapter(delta: -1) }
+                    },
+                    onReachEnd: {
+                        if canGoNext { goChapter(delta: 1) }
                     }
-                },
-                onPrevPage: {},
-                onNextPage: {},
-                onReachStart: {
-                    if canGoPrev { goChapter(delta: -1) }
-                },
-                onReachEnd: {
-                    if canGoNext { goChapter(delta: 1) }
-                }
-            )
-            // 明示的な frame が無いと UIViewRepresentable の UITextView が
-            // 正しい画面サイズを受け取れず、本文の折り返し幅がおかしくなったり、
-            // タップ判定領域(中央 6 割 / 端 2 割)が画面全体とズレて
-            // 「端が反応しすぎる」「中央タップでバーが出ない」原因になっていた。
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                )
+            }
+            // 表示サイズは GeometryReader の確定値で固定する。UITextView に
+            // 自己サイズリングさせると画面より大きくなり、左右が切れて
+            // 行間も吹んで見えていた(スクリーンショットで確認済みの症状)。
             .ignoresSafeArea()
             .id(chapterIndex)
 
@@ -99,6 +99,10 @@ struct ReaderView: View {
                         .transition(.opacity)
                 }
                 Spacer()
+                if autoFetching {
+                    fetchPill
+                        .transition(.opacity)
+                }
                 if chromeVisible && showFooter {
                     bottomBar
                         .transition(.opacity)
@@ -128,8 +132,12 @@ struct ReaderView: View {
             // 話移動の直後に一度だけ表示。消しタイマーは持たない(手動出没のみ)。
             withAnimation(.easeOut(duration: 0.3)) { chromeVisible = true }
         }
-        .sheet(isPresented: $showToc) { tocSheet }
-        .sheet(isPresented: $showMenu) { menuSheet }
+        .sheet(item: $sheet) { target in
+            switch target {
+            case .toc: tocSheet
+            case .menu: menuSheet
+            }
+        }
         .onAppear {
             if !UserDefaults.standard.bool(forKey: "readerHintShown") {
                 hintVisible = true
@@ -146,7 +154,7 @@ struct ReaderView: View {
 
     private var topBar: some View {
         HStack(spacing: Spacing.s) {
-            chromeButton("list.bullet", "一覧") { showToc = true }
+            chromeButton("list.bullet", "一覧") { sheet = .toc }
             Spacer(minLength: 0)
             VStack(spacing: 1) {
                 Text(title)
@@ -166,7 +174,7 @@ struct ReaderView: View {
                 Haptics.tap()
             }
             chromeButton("square.and.arrow.up", "共有") { share() }
-            chromeButton("gearshape", "設定") { showMenu = true }
+            chromeButton("gearshape", "設定") { sheet = .menu }
         }
         .padding(.horizontal, Spacing.s)
         .padding(.vertical, 6)
@@ -246,6 +254,21 @@ struct ReaderView: View {
             .padding(.vertical, Spacing.s)
             .background(Capsule().fill(theme.background))
             .overlay(Capsule().strokeBorder(theme.ink.opacity(0.15), lineWidth: 1))
+    }
+
+    /// 未取得の話を開いたときの自動取得インジケータ。
+    private var fetchPill: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .scaleEffect(0.7)
+            Text("この話を自動取得中…")
+                .font(AppFont.ui(12, weight: .medium))
+                .foregroundStyle(theme.ink)
+        }
+        .padding(.horizontal, Spacing.m)
+        .padding(.vertical, Spacing.s)
+        .background(Capsule().fill(theme.background.opacity(0.97)))
+        .overlay(Capsule().strokeBorder(theme.ink.opacity(0.15), lineWidth: 1))
     }
 
     // MARK: 読書メニュー(読書時専用)
@@ -331,20 +354,19 @@ struct ReaderView: View {
                 menuSectionHeader("移動", "GO")
                 HStack(spacing: Spacing.s) {
                     QuietButton(title: "目次", systemImage: "list.bullet") {
-                        showMenu = false
-                        showToc = true
+                        sheet = .toc
                     }
                     QuietButton(title: "前の話", systemImage: "chevron.left", disabled: !canGoPrev) {
-                        showMenu = false
+                        sheet = nil
                         goChapter(delta: -1)
                     }
                     QuietButton(title: "次の話", systemImage: "chevron.right", disabled: !canGoNext) {
-                        showMenu = false
+                        sheet = nil
                         goChapter(delta: 1)
                     }
                 }
                 QuietButton(title: "閉じて作品詳細へ", systemImage: "xmark") {
-                    showMenu = false
+                    sheet = nil
                     dismiss()
                 }
                 .padding(.bottom, Spacing.xl)
@@ -364,7 +386,7 @@ struct ReaderView: View {
                     .padding(Spacing.l)
                 ForEach(detail?.chapters ?? [], id: \.index) { ch in
                     Button {
-                        showToc = false
+                        sheet = nil
                         if ch.index != chapterIndex {
                             chapterIndex = ch.index
                         }
@@ -522,11 +544,13 @@ struct ReaderView: View {
             //  core 側は from_index + episodes:1 のスポット取得で、既存話には触れない。
             //  RateLimiter の初回は待ちなしなので体感は数秒以内)
             if (sec?.bodyXhtml ?? "").isEmpty, !tocUrl.isEmpty,
-               let dir = detail?.novel.outputDir, !dir.isEmpty {
+               let rawDir = detail?.novel.outputDir, !rawDir.isEmpty {
+                autoFetching = true
+                defer { autoFetching = false }
                 _ = try? await core.download(
                     CoreClient.DownloadOptions(
                         url: tocUrl,
-                        outputDir: dir,
+                        outputDir: CoreClient.effectiveOutputDir(rawDir),
                         episodes: 1,
                         fromIndex: chapterIndex,
                         mode: "reader"
