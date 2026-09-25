@@ -121,3 +121,32 @@ C++ コアのユニットテストは引き続き **118 passed / 0 failed**。�
 | **`Observation` 標準ライブラリ + 手書き `Observable` 準拠** | `swift/lib/Macros/Sources/ObservationMacros/ObservableMacro.swift` の**展開テンプレート実物**（`ObservationRegistrar().access(self, keyPath:)` / `.withMutation(of:self, keyPath:, mutation)` + 計算プロパティ）を取得し、**マクロが生成するコードと同一**を手書き。依存は Swift 標準ライブラリのみ |
 | `@Environment(CoreClient.self)` + `.environment(core)` | iOS 17 の Observation 経路（元の設計に復帰） |
 | `ForEach(core.library, id: \.novelId)` | Identifiable 非依存・オーバーロード曖昧の排除 |
+
+## 追加修正その4 — 機能・UX 総点検(Task:追加しても dl されない / 全話取得できない / アクセス制限 / 見ずらい・ハリボテ)
+
+### (a)「追加しても dl されない」— 追加 = 自動ダウンロード
+- 根因:追加は目次(TOC)取得のみで本文取得が別操作(しかも「Episodes (0 = all)」の数値入力アラート)に隠れていた。
+- 修正:`LibraryView.importNovel()` / `DiscoverView.add()` は **目次取得 → そのまま全話ダウンロード(episodes: 0, bulk)を自動開始**。追加ダイアログも「追加して全話を取得」に。
+
+### (b)「全話取得できない」— 全話を一押しボタン + 失敗を踏まない bulk
+- 作品詳細の主ボタンを **「全話をダウンロード」(50pt・煉瓦色)** に昇格。話数入力なしで全話一括。
+- C コアの bulk ループは話ごとの失敗を記録して続行(`nc_download.cpp`:fetch/parse 失敗 → `failed++` → `continue`)。既存話は署名比較でスキップ = 再実行で取りこぼし分だけ取得。失敗時は「N 話失敗・再実行で継続」と表示。
+- 範囲指定は副操作に格下げ(空欄・0 = 全話)。
+
+### (c) アクセス制限 — 設計を実装で裏付け + 多層化(強化)
+| 層 | 実装 | 場所 |
+|---|---|---|
+| 話間隔 | RateLimiter(既定 5000ms、`novel_core_set_download_interval_ms`/`NOVELDL_DOWNLOAD_INTERVAL_MS`) | `nc_download.cpp` |
+| **ホスト間隔(新規)** | **全リクエスト共通の最小間隔 既定 800ms(`NOVELDL_MIN_HOST_GAP_MS`)— 目次ページ連打等もペーシング** | `nc_http.cpp` `transport_request` |
+| 429 対応 | `RateLimited` 検出 → **10 秒床**の指数バックオフ(最大 60 秒)+ ジッタ、ホストごとに再試行窓を記憶 | `nc_http.cpp` |
+| 503/障害 | 3 回まで指数バックオフ再試行(3s 床) | `nc_http.cpp` |
+| 失敗耐性 | 話ごとに独立・失敗しても bulk 続行 | `nc_download.cpp` |
+| UI | 設定に「話と話の最小間隔」明示 + 対応方針をフッターに明記、ダウンロード画面にも表示 | `SettingsView` / `QueueView` |
+
+### (d) 見ずらい・ハリボテ/ド素人感 — 言語・文字・色・書影の総入れ替え
+- **UI を日本語化**(本棚/さがす/ダウンロード/設定、全ダイアログ・空状態・エラー文)。英語プレースホルダ文字列の「テンプレ感」を排除。
+- **タイポグラフィ階調を拡大**:補助文 10–11pt → 12–13pt、`Color.secondary` を具体的な `inkSoft`(7:1)/`inkFaint`(5:1)に置換、主文字 `ink`(15:1)。見出しセリフ 26–30pt。
+- **パレットを書籍アプリの静謐さに**:紙地キャンバス + 墨 + 煉瓦の行動色 1 点 + 真鍮の小ラベル。影は 5% に抑制、罫線を主役に。
+- **書影を上製本風に刷新**(「おもちゃのグラデ」の否定):深色の布装丁 8 種(タイトルで決定論的に選択)+ 背のクリーム帯 + 上下の双罫 + セリフ体箔押しタイトル + 下端に読書リボン。
+- 主ボタン `EmberButton(prominent:)`(50pt)/副 `QuietButton`(44pt)の押しやすさ、作品詳細の情報階調(取得済み x/y・ドメインチップ・章行のチェック/改マーク)。
+

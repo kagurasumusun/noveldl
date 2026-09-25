@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings — presets editor, cookies, fetch fallback, reading defaults.
+/// 設定 — 取得間隔(アクセス制限対策)・プリセット・クッキー・読書初期値。
 struct SettingsView: View {
     @Environment(CoreClient.self) private var core: CoreClient
 
@@ -18,10 +18,36 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Parser Presets") {
-                    Text("Site extraction rules live in YAML — new sites need no app release.")
+                Section {
+                    Stepper(value: $intervalMs, in: 1000...30000, step: 500) {
+                        LabeledContent("話と話の最小間隔") {
+                            Text(intervalMs >= 1000 ? "\(intervalMs / 1000)秒 \(intervalMs % 1000)" : "\(intervalMs)ms")
+                                .monospacedDigit()
+                        }
+                    }
+                    .onChange(of: intervalMs) {
+                        core.setDownloadInterval(ms: UInt32(intervalMs))
+                    }
+                    TextField("ブラウザ取得コマンド(対策ページ用)", text: $browserCommand)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(AppFont.ui(14, design: .monospaced))
+                        .onChange(of: browserCommand) {
+                            core.setBrowserFetch(command: browserCommand.isEmpty ? nil : browserCommand)
+                        }
+                } header: {
+                    Text("取得とアクセス制限")
+                } footer: {
+                    Text("サイトに負荷をかけないよう、リクエスト間に必ず間隔を空けます(既定 5 秒)。429 応答時は 10 秒以上のバックオフで再試行します。大量に取得する場合も、この間隔が守られます。")
                         .font(AppFont.ui(12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppPalette.inkSoft)
+                        .lineSpacing(2)
+                }
+
+                Section("解析プリセット") {
+                    Text("抽出ルールは YAML で管理 — 新しいサイトはデータ追加だけで対応できます。")
+                        .font(AppFont.ui(12))
+                        .foregroundStyle(AppPalette.inkSoft)
                     ForEach(presets, id: \.self) { domain in
                         NavigationLink {
                             PresetEditorView(domain: domain)
@@ -29,74 +55,68 @@ struct SettingsView: View {
                             HStack {
                                 Text(domain)
                                     .font(AppFont.ui(14, design: .monospaced))
+                                    .foregroundStyle(AppPalette.ink)
                                 Spacer()
                             }
                         }
                     }
                 }
 
-                Section("Fetching") {
-                    Stepper(value: $intervalMs, in: 1000...30000, step: 500) {
-                        LabeledContent("Min interval") {
-                            Text("\(intervalMs / 1000)s \(intervalMs % 1000)")
-                        }
-                    }
-                    .onChange(of: intervalMs) {
-                        core.setDownloadInterval(ms: UInt32(intervalMs))
-                    }
-                    TextField("Browser fetch command (challenge fallback)", text: $browserCommand)
+                Section {
+                    TextField("ドメイン(例: syosetu.com)", text: $cookieDomain)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .onChange(of: browserCommand) {
-                            core.setBrowserFetch(command: browserCommand.isEmpty ? nil : browserCommand)
-                        }
-                }
-
-                Section("Cookies") {
-                    TextField("domain (example.com)", text: $cookieDomain)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                        .font(AppFont.ui(14, design: .monospaced))
                     TextField("name=value; name2=value2", text: $cookieValue)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    Button("Store Cookie") {
+                        .font(AppFont.ui(14, design: .monospaced))
+                    Button("クッキーを保存") {
                         let d = cookieDomain.trimmingCharacters(in: .whitespaces)
                         let v = cookieValue.trimmingCharacters(in: .whitespaces)
                         guard !d.isEmpty, !v.isEmpty else { return }
                         core.setDomainCookie(domain: d, cookie: v)
-                        statusText = "Stored cookies for \(d)"
+                        statusText = "\(d) のクッキーを保存しました"
                     }
+                } header: {
+                    Text("クッキー")
+                } footer: {
+                    Text("年齢確認(R-18)サイトのログイン状態は、ブラウザで確認済みのクッキーを貼り付けて利用します。")
+                        .font(AppFont.ui(12))
+                        .foregroundStyle(AppPalette.inkSoft)
                 }
 
-                Section("Reading Defaults") {
-                    Picker("Theme", selection: $readerTheme) {
+                Section("読書の初期設定") {
+                    Picker("テーマ", selection: $readerTheme) {
                         ForEach(BookTheme.allCases) { theme in
                             Text(theme.label).tag(theme.rawValue)
                         }
                     }
                     Stepper(value: $readerFontSize, in: 14...28) {
-                        LabeledContent("Text size") { Text("\(Int(readerFontSize))") }
+                        LabeledContent("文字サイズ") { Text("\(Int(readerFontSize))").monospacedDigit() }
                     }
                     Stepper(value: $readerLineSpacing, in: 0...16) {
-                        LabeledContent("Line spacing") { Text("\(Int(readerLineSpacing))") }
+                        LabeledContent("行間") { Text("\(Int(readerLineSpacing))").monospacedDigit() }
                     }
                 }
 
                 if let statusText {
                     Section {
                         Text(statusText)
-                            .font(AppFont.ui(12))
-                            .foregroundStyle(.secondary)
+                            .font(AppFont.ui(13))
+                            .foregroundStyle(AppPalette.inkSoft)
                     }
                 }
 
                 Section {
-                    LabeledContent("Version", value: "Bookmarks 2.0 (C core)")
+                    LabeledContent("バージョン", value: "Bookmarks 2.0(C core)")
                 } footer: {
-                    Text("Powered by novel_core — YAML-driven multi-site downloader.")
+                    Text("novel_core — YAML 駆動のマルチサイト取得エンジン。")
+                        .font(AppFont.ui(12))
+                        .foregroundStyle(AppPalette.inkSoft)
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle("設定")
             .task {
                 presets = (try? await core.listPresets()) ?? []
             }
@@ -104,42 +124,59 @@ struct SettingsView: View {
     }
 }
 
-/// YAML preset editor — site support without shipping code.
+/// プリセット(YAML)ビューア/エディタ。
 struct PresetEditorView: View {
-    let domain: String
     @Environment(CoreClient.self) private var core: CoreClient
+    let domain: String
+
     @State private var yaml = ""
-    @State private var statusText: String?
+    @State private var editorStatus: String?
+    @State private var loaded = false
 
     var body: some View {
-        Form {
-            Section("YAML — \(domain)") {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
                 TextEditor(text: $yaml)
                     .font(AppFont.ui(12, design: .monospaced))
-                    .frame(minHeight: 320)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-            }
-            Section {
-                Button("Save") {
-                    Task {
-                        try? await core.savePreset(domain: domain, yaml: yaml)
-                        statusText = "Saved."
+                    .frame(minHeight: 420)
+                    .padding(10)
+                    .background(CardBackground())
+                if let editorStatus {
+                    Text(editorStatus)
+                        .font(AppFont.ui(13))
+                        .foregroundStyle(AppPalette.inkSoft)
+                }
+                HStack(spacing: 10) {
+                    QuietButton(title: "保存", systemImage: "square.and.arrow.down") {
+                        Task {
+                            do {
+                                try await core.savePreset(domain: domain, yaml: yaml)
+                                editorStatus = "保存しました"
+                            } catch {
+                                editorStatus = error.localizedDescription
+                            }
+                        }
+                    }
+                    QuietButton(title: "削除", systemImage: "trash", tint: AppPalette.emberDeep) {
+                        Task {
+                            do {
+                                try await core.deletePreset(domain: domain)
+                                editorStatus = "削除しました"
+                            } catch {
+                                editorStatus = error.localizedDescription
+                            }
+                        }
                     }
                 }
-                Button("Remove user overlay", role: .destructive) {
-                    Task {
-                        try? await core.deletePreset(domain: domain)
-                        statusText = "Overlay removed — builtin restored."
-                    }
-                }
             }
-            if let statusText {
-                Section { Text(statusText).font(AppFont.ui(12)).foregroundStyle(.secondary) }
-            }
+            .padding(Metrics.gutter)
         }
+        .background(AppPalette.canvas.ignoresSafeArea())
         .navigationTitle(domain)
+        .navigationBarTitleDisplayMode(.inline)
         .task {
+            guard !loaded else { return }
+            loaded = true
             yaml = (try? await core.loadPreset(domain: domain)) ?? ""
         }
     }

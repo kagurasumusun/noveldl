@@ -6,14 +6,14 @@ struct ReaderRoute: Hashable {
     let title: String
 }
 
-/// Novel detail — Kindle "book detail" layout: cover + facts,
-/// Kobo chapter list with download state ticks.
+/// 作品詳細 — 「全話をダウンロード」が主役。範囲指定・書き出しは脇に。
 struct NovelDetailView: View {
     let item: LibraryNovelItem
 
     @Environment(CoreClient.self) private var core: CoreClient
     @State private var detail: LibraryNovelDetail?
     @State private var busy = false
+    @State private var statusText: String?
     @State private var errorText: String?
     @State private var episodesLimit = 0
     @State private var fromIndex = ""
@@ -36,12 +36,15 @@ struct NovelDetailView: View {
         return order.map { ChapterGroup(id: $0, chapters: buckets[$0] ?? []) }
     }
 
+    private var downloaded: Int { detail?.downloadedCount ?? item.downloadedCount ?? 0 }
+    private var total: Int { max(detail?.novel.episodeCount ?? item.episodeCount, 1) }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
                 actions
-                Divider().overlay(Color.black.opacity(0.08))
+                Divider().overlay(AppPalette.hairline)
                 chapterList
             }
             .padding(.horizontal, Metrics.gutter)
@@ -51,19 +54,21 @@ struct NovelDetailView: View {
         .background(AppPalette.canvas.ignoresSafeArea())
         .navigationTitle(item.title)
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Download", isPresented: $showOptions) {
-            TextField("Episodes (0 = all)", text: Binding(
-                get: { String(episodesLimit) },
+        .alert("範囲を指定してダウンロード", isPresented: $showOptions) {
+            TextField("取得話数(空欄・0 = 全話)", text: Binding(
+                get: { episodesLimit == 0 ? "" : String(episodesLimit) },
                 set: { episodesLimit = Int($0) ?? 0 }
             ))
             .keyboardType(.numberPad)
-            TextField("From index", text: $fromIndex)
-            Button("Bulk Download") { Task { await runDownload(mode: "bulk") } }
-            Button("Cancel", role: .cancel) {}
+            TextField("開始話(空欄 = 先頭)", text: $fromIndex)
+                .keyboardType(.numberPad)
+            Button("一括取得") { Task { await runDownload(mode: "bulk") } }
+            Button("読者モード(先頭15話を先行取得)") { Task { await runDownload(mode: "reader") } }
+            Button("キャンセル", role: .cancel) {}
         } message: {
-            Text("Bulk downloads the selected episodes in one pass.")
+            Text("取得話数 0 または空欄で全話をまとめて取得します。失敗した話があっても残りは続行され、次回の再実行で取りこぼし分だけ取得します。")
         }
-        .alert("Detail", isPresented: Binding(
+        .alert("詳細", isPresented: Binding(
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
         )) {
@@ -76,25 +81,31 @@ struct NovelDetailView: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 16) {
-            CoverTile(title: item.title, author: item.author, width: 92)
+            CoverTile(
+                title: item.title,
+                author: item.author,
+                progress: Double(downloaded) / Double(total),
+                width: 92
+            )
+            .shadow(color: AppPalette.shelfShadow, radius: 6, x: 0, y: 4)
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.title)
                     .font(AppFont.serif(21, weight: .semibold))
+                    .foregroundStyle(AppPalette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(item.author)
                     .font(AppFont.ui(14))
-                    .foregroundStyle(.secondary)
-                Text(item.domain)
-                    .font(AppFont.ui(11, weight: .medium))
-                    .foregroundStyle(AppPalette.gold)
-                if let detail {
-                    Text("\(detail.downloadedCount) of \(detail.novel.episodeCount) downloaded")
-                        .font(AppFont.ui(12))
-                        .foregroundStyle(.secondary)
-                    ReadingRibbon(
-                        value: Double(detail.downloadedCount) / Double(max(detail.novel.episodeCount, 1))
-                    )
-                    .frame(width: 140)
+                    .foregroundStyle(AppPalette.inkSoft)
+                InfoChip(text: item.domain)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(downloaded)/\(total) 話を取得済み")
+                        .font(AppFont.ui(13, weight: .semibold))
+                        .foregroundStyle(AppPalette.ink)
+                        .monospacedDigit()
+                    ReadingRibbon(value: Double(downloaded) / Double(total))
+                        .frame(width: 140)
                 }
+                .padding(.top, 2)
             }
             Spacer()
         }
@@ -102,6 +113,39 @@ struct NovelDetailView: View {
 
     private var actions: some View {
         VStack(spacing: 10) {
+            // 主行動:全話をただ押すだけ。
+            EmberButton(
+                title: busy
+                    ? "ダウンロード中…"
+                    : (downloaded >= total ? "未取得・更新分を確認して取得" : "全話をダウンロード"),
+                systemImage: "arrow.down.circle.fill",
+                prominent: true
+            ) {
+                Task { await runDownload(mode: "bulk", all: true) }
+            }
+            .disabled(busy)
+
+            if let statusText {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text(statusText)
+                        .font(AppFont.ui(13))
+                        .foregroundStyle(AppPalette.inkSoft)
+                    Spacer()
+                }
+            }
+
+            HStack(spacing: 10) {
+                QuietButton(title: "範囲を指定…", systemImage: "slider.horizontal.3") {
+                    showOptions = true
+                }
+                .disabled(busy)
+                QuietButton(title: "書き出し", systemImage: "square.and.arrow.up") {
+                    Task { await exportZip() }
+                }
+                .disabled(busy)
+            }
+
             if let first = detail?.chapters.first(where: { $0.bodyDownloaded == true })
                 ?? detail?.chapters.first {
                 NavigationLink(
@@ -110,22 +154,32 @@ struct NovelDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "book")
                         Text(detail?.chapters.contains(where: { $0.bodyDownloaded == true }) == true
-                             ? "Continue Reading" : "Preview")
+                             ? "読む(続きから)" : "読む(先頭)")
                     }
                     .font(AppFont.ui(15, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppPalette.ember)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(AppPalette.ember, in: RoundedRectangle(cornerRadius: Metrics.cardRadius))
+                    .frame(height: Metrics.controlHeightSmall)
+                    .background(
+                        RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                            .fill(AppPalette.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                            .strokeBorder(AppPalette.ember.opacity(0.45), lineWidth: 1)
+                    )
                 }
             }
-            HStack(spacing: 10) {
-                QuietButton(title: busy ? "Working…" : "Download", systemImage: "arrow.down.circle") {
-                    showOptions = true
-                }
-                .disabled(busy)
-                QuietButton(title: "Export", systemImage: "square.and.arrow.up") {
-                    Task { await exportZip() }
+
+            if core.progress.running {
+                HStack {
+                    Text("サイトに負荷をかけない間隔で取得中(設定で変更可)")
+                        .font(AppFont.ui(11))
+                        .foregroundStyle(AppPalette.inkFaint)
+                    Spacer()
+                    Button("中止") { core.cancel() }
+                        .font(AppFont.ui(13, weight: .semibold))
+                        .foregroundStyle(AppPalette.ember)
                 }
             }
         }
@@ -148,11 +202,11 @@ struct NovelDetailView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Text(ch.index)
                                 .font(AppFont.ui(11, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppPalette.inkFaint)
                                 .frame(width: 34, alignment: .trailing)
                             Text(ch.subtitle)
                                 .font(AppFont.serif(15))
-                                .foregroundStyle(Color(red: 0.13, green: 0.12, blue: 0.1))
+                                .foregroundStyle(AppPalette.ink)
                             Spacer()
                             if ch.bodyDownloaded == true {
                                 Image(systemName: "checkmark.circle.fill")
@@ -174,7 +228,7 @@ struct NovelDetailView: View {
                         .padding(.vertical, 10)
                     }
                     .buttonStyle(.plain)
-                    Divider().overlay(Color.black.opacity(0.06))
+                    Divider().overlay(AppPalette.hairline)
                 }
             }
         }
@@ -188,20 +242,28 @@ struct NovelDetailView: View {
         }
     }
 
-    private func runDownload(mode: String) async {
+    /// all: true なら話数指定を無視して全話(失敗分は再実行で拾う)。
+    private func runDownload(mode: String, all: Bool = false) async {
         busy = true
-        defer { busy = false }
+        statusText = all ? "全話をダウンロード中…" : "ダウンロード中…"
+        defer {
+            busy = false
+            statusText = nil
+        }
         do {
             let options = CoreClient.DownloadOptions(
                 url: item.tocUrl,
                 outputDir: item.outputDir,
-                episodes: episodesLimit,
-                fromIndex: fromIndex,
+                episodes: all ? 0 : episodesLimit,
+                fromIndex: all ? "" : fromIndex,
                 mode: mode
             )
-            _ = try await core.download(options)
+            let result = try await core.download(options)
             await reload()
             await core.reloadLibrary()
+            if result.failed > 0 {
+                errorText = "\(result.saved)話を取得・\(result.updated)話を更新(\(result.failed)話は失敗。「全話をダウンロード」の再実行で続きから取得します)"
+            }
         } catch {
             errorText = error.localizedDescription
         }
@@ -210,7 +272,7 @@ struct NovelDetailView: View {
     private func exportZip() async {
         do {
             let result = try await core.exportZip(novelId: item.novelId)
-            errorText = "Exported \(result.files) files to \(result.zipPath)"
+            errorText = "\(result.files)ファイルを書き出しました: \(result.zipPath)"
         } catch {
             errorText = error.localizedDescription
         }

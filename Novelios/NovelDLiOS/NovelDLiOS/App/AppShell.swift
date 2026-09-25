@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Kobo-style shell: quiet chrome, one ember accent, four destinations.
+/// シェル — 静かな下部タブ、行動色は控えめに。
 struct AppShell: View {
     enum Tab: Hashable { case library, discover, activity, settings }
 
@@ -11,25 +11,25 @@ struct AppShell: View {
         TabView(selection: $tab) {
             LibraryView()
                 .tabItem {
-                    Label("Shelf", systemImage: "books.vertical")
+                    Label("本棚", systemImage: "books.vertical")
                 }
                 .tag(Tab.library)
 
             DiscoverView()
                 .tabItem {
-                    Label("Discover", systemImage: "sparkle.magnifyingglass")
+                    Label("さがす", systemImage: "sparkle.magnifyingglass")
                 }
                 .tag(Tab.discover)
 
             QueueView()
                 .tabItem {
-                    Label("Activity", systemImage: "arrow.down.circle")
+                    Label("ダウンロード", systemImage: "arrow.down.circle")
                 }
                 .tag(Tab.activity)
 
             SettingsView()
                 .tabItem {
-                    Label("Settings", systemImage: "gearshape")
+                    Label("設定", systemImage: "gearshape")
                 }
                 .tag(Tab.settings)
         }

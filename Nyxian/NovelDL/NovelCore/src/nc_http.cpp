@@ -163,9 +163,39 @@ std::string fetch_via_command(const std::string& command, const std::string& url
     return out;
 }
 
+// アクセス制限対策: ホストごとの最小リクエスト間隔(全リクエスト共通の土台)。
+// エピソード逐次取得の RateLimiter に加え、目次ページ連打なども同一ホストに
+// 対して最低間隔を空けて送る。NOVELDL_MIN_HOST_GAP_MS(既定 800ms、0 で無効)。
+std::map<std::string, std::chrono::steady_clock::time_point> g_host_last_req;
+
+int min_host_gap_ms() {
+    const char* env = std::getenv("NOVELDL_MIN_HOST_GAP_MS");
+    return env ? std::atoi(env) : 800;
+}
+
+void host_gap_wait(const std::string& host) {
+    if (host.empty()) return;
+    int gap = min_host_gap_ms();
+    if (gap <= 0) return;
+    std::chrono::steady_clock::time_point deadline;
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        auto it = g_host_last_req.find(host);
+        if (it != g_host_last_req.end())
+            deadline = it->second + std::chrono::milliseconds(gap);
+    }
+    while (std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_host_last_req[host] = std::chrono::steady_clock::now();
+    }
+}
+
 HttpResponse transport_request(const std::string& url,
                                const std::vector<std::pair<std::string, std::string>>& headers,
                                int timeout) {
+    host_gap_wait(url_host(url));
     TransportFn fn;
     {
         std::lock_guard<std::mutex> lock(g_mutex);

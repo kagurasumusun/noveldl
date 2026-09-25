@@ -48,11 +48,11 @@ struct ReaderView: View {
                         .tint(theme.secondaryInk)
                 } else if pages.isEmpty {
                     VStack(spacing: 10) {
-                        Text("This chapter has no body yet.")
+                        Text("この話の本文はまだ取得されていません")
                             .font(AppFont.serif(17))
                             .foregroundStyle(theme.ink)
-                        Text("Download it from the book detail page.")
-                            .font(AppFont.ui(12))
+                        Text("作品詳細から全話をダウンロードしてください")
+                            .font(AppFont.ui(13))
                             .foregroundStyle(theme.secondaryInk)
                     }
                 } else {
@@ -70,13 +70,13 @@ struct ReaderView: View {
                     Spacer()
                     HStack(spacing: 10) {
                         Text(pageLabel)
-                            .font(AppFont.ui(10, design: .monospaced))
+                            .font(AppFont.ui(12, design: .monospaced))
                             .foregroundStyle(theme.secondaryInk)
                             .layoutPriority(1)
                         ReadingRibbon(value: progressRatio)
                             .frame(minWidth: 48, maxWidth: 130)
                         Text(chapterLabel)
-                            .font(AppFont.ui(10))
+                            .font(AppFont.ui(13))
                             .foregroundStyle(theme.secondaryInk)
                             .lineLimit(1)
                     }
@@ -138,7 +138,7 @@ struct ReaderView: View {
                         .font(AppFont.serif(14, weight: .medium))
                         .lineLimit(1)
                     Text(chapterTitle)
-                        .font(AppFont.ui(10))
+                        .font(AppFont.ui(13))
                         .opacity(0.75)
                         .lineLimit(1)
                 }
@@ -202,11 +202,11 @@ struct ReaderView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             if let group = ch.chapter, !group.isEmpty {
                                 Text(group)
-                                    .font(AppFont.ui(10, weight: .semibold))
+                                    .font(AppFont.ui(12, weight: .semibold))
                                     .foregroundStyle(AppPalette.gold)
                             }
                             Text(ch.subtitle)
-                                .font(AppFont.serif(15))
+                                .font(AppFont.serif(16))
                                 .foregroundStyle(.primary)
                         }
                         Spacer()
@@ -223,7 +223,7 @@ struct ReaderView: View {
                     }
                 }
             }
-            .navigationTitle("Contents")
+            .navigationTitle("目次")
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
@@ -231,7 +231,7 @@ struct ReaderView: View {
 
     private var typeSheet: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Text("Typography")
+            Text("文字とレイアウト")
                 .font(AppFont.serif(20, weight: .semibold))
 
             HStack(spacing: 14) {
@@ -277,13 +277,13 @@ struct ReaderView: View {
             }
 
             Stepper(value: $fontSize, in: 14...28) {
-                LabeledContent("Text size") { Text("\(Int(fontSize))") }
+                LabeledContent("文字サイズ") { Text("\(Int(fontSize))") }
             }
             Stepper(value: $lineSpacing, in: 0...16) {
-                LabeledContent("Line spacing") { Text("\(Int(lineSpacing))") }
+                LabeledContent("行間") { Text("\(Int(lineSpacing))") }
             }
             Stepper(value: $sideMargin, in: 20...56, step: 4) {
-                LabeledContent("Margins") { Text("\(Int(sideMargin))") }
+                LabeledContent("余白") { Text("\(Int(sideMargin))") }
             }
 
             Spacer()
@@ -310,7 +310,7 @@ struct ReaderView: View {
 
     private var chapterLabel: String {
         guard let idx = Int(chapterIndex) else { return "" }
-        return "Ch \(idx)"
+        return "\(idx) 話"
     }
 
     private func loadChapter() async {

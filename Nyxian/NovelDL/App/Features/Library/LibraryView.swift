@@ -1,21 +1,42 @@
 import SwiftUI
 
-/// The bookshelf. Cover-forward grid with a "continue" hero —
-/// Kobo shelf geometry with Kindle home calmness.
+/// 本棚 — カバー主役の書棚グリッド + 「追加 = 自動ダウンロード」。
 struct LibraryView: View {
     @Environment(CoreClient.self) private var core: CoreClient
     @State private var refreshing = false
     @State private var importing = false
     @State private var importUrl = ""
     @State private var errorText: String?
+    @State private var activeStatus: String?
     @State private var columns = [GridItem(.adaptive(minimum: 108), spacing: 16)]
-
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    SectionBanner(title: "Shelf", subtitle: "\(core.library.count) works")
+                    SectionBanner(
+                        title: "本棚",
+                        subtitle: core.library.isEmpty
+                            ? "作品はまだありません"
+                            : "\(core.library.count)作品・全\(core.library.reduce(0) { $0 + $1.episodeCount })話"
+                    )
+
+                    if let activeStatus {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text(activeStatus)
+                                .font(AppFont.ui(14, weight: .medium))
+                                .foregroundStyle(AppPalette.ink)
+                            Spacer()
+                            if core.progress.running {
+                                Text("\(core.progress.done)/\(core.progress.total)")
+                                    .font(AppFont.ui(13, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(AppPalette.ember)
+                            }
+                        }
+                        .padding(12)
+                        .background(CardBackground())
+                    }
 
                     if core.library.isEmpty {
                         emptyShelf
@@ -35,6 +56,7 @@ struct LibraryView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel("URL から追加")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -51,19 +73,20 @@ struct LibraryView: View {
                             Image(systemName: "arrow.clockwise")
                         }
                     }
+                    .accessibilityLabel("更新を確認")
                 }
             }
             .refreshable { await core.reloadLibrary() }
-            .alert("Add from URL", isPresented: $importing) {
-                TextField("TOC URL", text: $importUrl)
+            .alert("URL から追加", isPresented: $importing) {
+                TextField("目次ページの URL", text: $importUrl)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
-                Button("Fetch & Add") { Task { await importNovel() } }
-                Button("Cancel", role: .cancel) {}
+                Button("追加して全話を取得") { Task { await importNovel() } }
+                Button("キャンセル", role: .cancel) {}
             } message: {
-                Text("Paste the table-of-contents URL of a supported site.")
+                Text("対応サイトの目次 URL を貼り付けてください。目次を取得したあと、そのまま全話のダウンロードを開始します。")
             }
-            .alert("Shelf", isPresented: Binding(
+            .alert("本棚", isPresented: Binding(
                 get: { errorText != nil },
                 set: { if !$0 { errorText = nil } }
             )) {
@@ -85,13 +108,15 @@ struct LibraryView: View {
         VStack(spacing: 12) {
             Image(systemName: "books.vertical")
                 .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text("Your shelf is empty")
-                .font(AppFont.serif(19))
-            Text("Find works in Discover or paste a TOC URL with +.")
+                .foregroundStyle(AppPalette.inkFaint)
+            Text("URL から作品を追加できます")
+                .font(AppFont.serif(19, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+            Text("「+」から対応サイトの目次 URL を貼ると、目次と全話をまとめて取得します。")
                 .font(AppFont.ui(13))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppPalette.inkSoft)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
@@ -102,22 +127,26 @@ struct LibraryView: View {
             ForEach(core.library, id: \.novelId) { item in
                 NavigationLink(value: item) {
                     VStack(alignment: .leading, spacing: 8) {
-                        CoverTile(title: item.title, author: item.author)
+                        let total = max(item.episodeCount, 1)
+                        let done = item.downloadedCount ?? 0
+                        CoverTile(
+                            title: item.title,
+                            author: item.author,
+                            progress: Double(done) / Double(total)
+                        )
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.title)
-                                .font(AppFont.serif(14, weight: .medium))
-                                .foregroundStyle(Color(red: 0.13, green: 0.12, blue: 0.1))
+                                .font(AppFont.serif(14, weight: .semibold))
+                                .foregroundStyle(AppPalette.ink)
                                 .lineLimit(2)
                             Text(item.author)
-                                .font(AppFont.ui(11))
-                                .foregroundStyle(.secondary)
+                                .font(AppFont.ui(12))
+                                .foregroundStyle(AppPalette.inkSoft)
                                 .lineLimit(1)
-                            let total = max(item.episodeCount, 1)
-                            let done = item.downloadedCount ?? 0
                             ReadingRibbon(value: Double(done) / Double(total))
-                            Text("\(done)/\(total) episodes")
-                                .font(AppFont.ui(10))
-                                .foregroundStyle(.secondary)
+                            Text("\(done)/\(total) 話")
+                                .font(AppFont.ui(11, weight: .medium))
+                                .foregroundStyle(AppPalette.inkFaint)
                         }
                     }
                 }
@@ -126,6 +155,7 @@ struct LibraryView: View {
         }
     }
 
+    /// 追加 = 目次取得 → 自動で全話ダウンロード。「追加しても dl されない」を解消。
     private func importNovel() async {
         let url = importUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         importUrl = ""
@@ -134,10 +164,28 @@ struct LibraryView: View {
             let dir = CoreClient.libraryRoot()
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
                 .path
+            activeStatus = "目次を取得中…"
             let toc = try await core.fetchToc(url: url, outputDir: dir)
             await core.reloadLibrary()
-            _ = toc
+            // ダウンロードは保存先の正(登録済みライブラリの outputDir)を使う。
+            let outputDir = core.library.first(where: { $0.novelId == toc.novelId })?.outputDir ?? dir
+            activeStatus = "全話をダウンロード中…"
+            let result = try await core.download(
+                CoreClient.DownloadOptions(
+                    url: url,
+                    outputDir: outputDir,
+                    episodes: 0,
+                    fromIndex: "",
+                    mode: "bulk"
+                )
+            )
+            activeStatus = nil
+            if result.failed > 0 {
+                errorText = "\(result.saved)話を取得・\(result.updated)話を更新しました(\(result.failed)話は失敗。再実行で続きから取得できます)"
+            }
+            await core.reloadLibrary()
         } catch {
+            activeStatus = nil
             errorText = error.localizedDescription
         }
     }
