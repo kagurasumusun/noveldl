@@ -649,6 +649,7 @@ Value op_download(const DownloadOptions& opts) {
         set_progress(total, downloaded, skipped, failed, ch.subtitle, true);
         std::string sig = ch.signature();
         auto state_it = states.find(ch.index);
+        bool was_done = state_it != states.end() && state_it->second.second;
         bool needs = true;
         if (state_it != states.end()) {
             auto& [stored_sig, body_done] = state_it->second;
@@ -739,7 +740,7 @@ Value op_download(const DownloadOptions& opts) {
         if (should_flush) flush();
 
         // 新規取得と更新(改稿等の再取得)を分けて数える。
-        if (state_it != states.end() && state_it->second.second) ++updated;
+        if (was_done) ++updated;
         else ++downloaded;
         set_progress(total, downloaded, skipped, failed, ch.subtitle, true);
     }
