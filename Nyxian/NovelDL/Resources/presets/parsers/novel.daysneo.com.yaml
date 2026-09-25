@@ -1,0 +1,35 @@
+name: NOVEL DAYS
+domain: novel.daysneo.com
+encoding: UTF-8
+top_url: https://novel.daysneo.com
+sitename: NOVEL DAYS
+access:
+  profile: chrome_desktop
+  referer: toc_parent
+
+toc_url_pattern: "https://novel.daysneo.com/works/{ncode}.html"
+toc_sources:
+  - source: selector
+    selector: "div.contents a[href], div.contents h4"
+    priority: 10
+    chapter_header_selector: "h4"
+    href_pattern: "/works/episode/[0-9a-f]{32}\\.html$"
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+      subupdate: "span.date"
+    description: "NOVEL DAYS 目次（h4 章見出し対応）"
+
+body_selectors:
+  - selector: "div.episode div.inner"
+    priority: 10
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "div.detail h2, h2"
+  author: "div.author a span.f18px, div.author a"
+  story: "p.readmore"
+
+append_title_to_folder_name: yes
+confirm_over18: no
+version: 1.0

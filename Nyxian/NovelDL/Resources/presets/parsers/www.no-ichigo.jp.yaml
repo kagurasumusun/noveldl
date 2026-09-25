@@ -1,0 +1,49 @@
+name: 野いちご
+domain: www.no-ichigo.jp
+encoding: UTF-8
+top_url: https://www.no-ichigo.jp
+sitename: 野いちご
+access:
+  profile: safari_mobile
+  referer: toc_parent
+
+# スターズ出版系（野いちご・ノベマ！・berry's cafe は共通プラットフォーム）
+# 目次: .bookChapterList に章 li → ページ ul の二段。全ページを平坦に取得する。
+toc_url_pattern: "https://www.no-ichigo.jp/book/{ncode}"
+toc_sources:
+  - source: selector
+    selector: ".bookChapterList a[href]"
+    priority: 10
+    href_pattern: "/book/[a-z0-9]+/\\d+$"
+    index_from_href_regex: "(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "野いちご目次（章・ページ両対応）"
+
+body_selectors:
+  - selector: "article.bookText > div"
+    priority: 10
+    extract: "inner_html"
+  - selector: "div.bookContent div.bookBody"
+    priority: 10
+    extract: "inner_html"
+  - selector: "div.bookBody"
+    priority: 9
+    extract: "inner_html"
+
+introduction_selectors:
+  - selector: "div.chapterName"
+    priority: 5
+    extract: "text"
+
+novel_info_selectors:
+  title: ".title-wrap .title h2, .title-wrap .title"
+  author: ".contributor a, .contributor"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+title_strip_pattern: "【書籍化原作】|【書籍化】"
+confirm_over18: no
+version: 1.0

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Nyxian ksurface 権限ブロブ（jailed 既定セット。NXProject.m の
+	     createProjectAtURL の #if !JAILBREAK_ENV 分と同じ値）。
+	     NovelDL はネットワーク取得とファイル保存のみで完結するため、
+	     プロセス生成・昇格系は全て既定の NO のまま。 -->
+	<key>com.nyxian.pe.get_task_allowed</key>
+	<true/>
+	<key>com.nyxian.pe.task_for_pid</key>
+	<false/>
+	<key>com.nyxian.pe.process_enumeration</key>
+	<false/>
+	<key>com.nyxian.pe.process_kill</key>
+	<false/>
+	<key>com.nyxian.pe.process_spawn</key>
+	<false/>
+	<key>com.nyxian.pe.process_spawn_signed_only</key>
+	<false/>
+	<key>com.nyxian.pe.process_spawn_inherite_entitlements</key>
+	<false/>
+	<key>com.nyxian.pe.process_elevate</key>
+	<false/>
+	<key>com.nyxian.pe.host_manager</key>
+	<false/>
+	<key>com.nyxian.pe.credentials_manager</key>
+	<false/>
+	<key>com.nyxian.pe.platform</key>
+	<false/>
+	<key>com.nyxian.pe.platform_root</key>
+	<false/>
+</dict>
+</plist>

@@ -1,47 +1,47 @@
-# NovelDL for Nyxian
+# NovelDL — Nyxian プロジェクト
 
-[Nyxian](https://github.com/emexlab/Nyxian)（emexLabs 製）— **iPhone/iPad 単体でネイティブ iOS アプリを
-ビルド・実行できるオンデバイス IDE** — 向けのプロジェクトです。Mac / Xcode は不要で、
-ネットワーク接続なし（SDK 取得後）でもビルドできます。
+**Nyxian**（[emexlab/Nyxian](https://github.com/emexlab/Nyxian) — emexLabs 製）は、
+**Mac 不要で iPhone/iPad 単体**に iOS アプリをビルド・実行できるオンデバイス IDE。
+非ジェイルブレイク端末上で、同梱の iOS 26 SDK・LLVM/Clang/Swift ツールチェーン
+（CoreCompiler/MDK）とカーネル仮想化レイヤ **ksurface**（NSExtension 実行）を使って
+C / Objective-C / C++ / Objective-C++ / Swift のネイティブアプリをビルド・即実行する。
+対応 iOS 18.0〜27.x・SDK 取得後は完全オフラインで開発可能。
 
-## Nyxian 仕様（調査結果の要点）
+## Nyxian のプロジェクト形式（重要: Makefile ではない）
 
-| 項目 | 内容 |
-|------|------|
-| 開発元 | emexLabs（旧 ProjectNyxian）— https://github.com/emexlab/Nyxian |
-| 形態 | iOS アプリ内 IDE + ユーザー空間マイクロカーネル（ksurface）でネイティブコード実行 |
-| 対応 OS | iOS 18.0 〜 27.x（非ジェイルブレイク、証明書署名方式） |
-| 対応言語 | C / Objective-C / C++ / Objective-C++ / **Swift**（LLVM/clang・Swift 6.4 同梱） |
-| SDK | iOS 26.x SDK をバンドル（`NYXIAN_SDK_ROOT` 配下の iPhoneOS.sdk） |
-| ビルドシステム | **標準 Makefile**（clang/ld/codesign、依存追跡つき） |
-| 実行モデル | コンパイル済みバイナリは NSExtension 経由でサンドボックス実行 |
-| 署名 | `NYXIAN_DEVELOPER_IDENTITY`（開発者証明書）で codesign |
-| 配備 | `nyxian-install Payload/<App>.app` |
-| オフライン | SDK/リソース取得後は完全オフラインで開発可能 |
+Nyxian のビルドは **Makefile ではなく**、`NXProject` が読む独自の
+**`Config/Project.plist`（AvisR2 形式 — `NXProjectFormat: NXAvixR2`）** と、
+`LindChain/Builder` → `MDKPhaseEngine` による自動ビルドパイプラインで行われる。
 
-## このプロジェクトの構成
+| ファイル | 役割 |
+|----------|------|
+| `Config/Project.plist` | プロジェクト定義（形式 `NXAvixR2`）。`NXExecutable` / `NXDeploymentTarget` / `NXClangFlags` / `NXSwiftFlags` / `NXBundleInfo`（Info.plist 相当）など。`$(SRCROOT)` `$(SDKROOT)` `$(BSROOT)` `$(CACHEROOT)` 変数展開に対応 |
+| `Config/Entitlements.plist` | ksurface 権限ブロブ（`com.nyxian.pe.*`）。本プロジェクトは jailed 既定セット |
+| `Config/NovelDL-Bridging-Header.h` | Swift ↔ C ABI ブリッジ（`-import-objc-header` で指定） |
+| `App/` `NovelCore/`（任意の場所） | ソースはプロジェクト配下から**自動収集**（`.swift` / `.c` / `.cpp` / `.m` / `.mm`）。`Config/` と `Resources/` はコンパイル対象外 |
+| `Resources/` | リソース（サイト対応 YAML `presets/`）。アプリスキームのバンドルに同梱 |
 
-- `Makefile` — Nyxian の Makefile 規約に準拠（`NYXIAN_SDK_ROOT` / `NYXIAN_DEVELOPER_IDENTITY` /
-  `nyxian-install`）。`../novel_core`（C++ コア）と `../Novelios/NovelDLiOS`（SwiftUI アプリ）を
-  相対パスで取り込みます。
-- `Info.plist` — アプリバンドル用（Nyxian は Xcode の Info.plist 自動生成がないため静的 plist）。
-- 依存ライブラリは **システムの libsqlite3 のみ**。zstd は使わず生バイト保存
-  （コアを `NC_HAVE_ZSTD` 未定義でコンパイル）。HTTP は同梱の **NSURLSession 転送**
-  （`novel_core/src/apple/nc_http_apple.m`）— curl 不要。
-- サイト対応 YAML（`novel_core/presets/`）は `.app/presets` にバンドルされ、
-  C/C++ を触らずにサイト追加できます。
+ビルドはエディタの ▶（Build & Run）ひとつ。依存解析（`MDKDependencyScanner`）と
+mtime 比較によるインクリメンタルビルド、zsign による署名、`Payload/<名>.app`
+作成まで自動。リポジトリ内の Makefile は **Nyxian IDE 自体を Mac でビルドする
+ためのもの**であり、ユーザー プロジェクトの形式とは無関係。
 
-## ビルド手順（Nyxian 上で）
+## このプロジェクトの中身
 
-```sh
-cd Nyxian
-make            # コア(C++) → 静的 lib → SwiftUI アプリ → 署名 → Payload/NovelDL.app
-make install    # nyxian-install でテスト環境に配備
-```
+- **NovelCore/** — 小説取得・整形 C++ コア（C ABI `novel_core.h` を公開）。
+  zstd なし（生バイト保存）・curl なし（`src/apple/nc_http_apple.m` の
+  NSURLSession 転送を使用）・依存はシステム libsqlite3 のみ。
+- **App/** — SwiftUI アプリ（Kindle/Kobo 風のマットな紙デザイン。Liquid Glass 不使用）。
+  **iPhone 12 mini（375×812pt）** で詰まらないことを前提にレイアウト済み。
+- **Resources/presets/** — サイト対応 YAML（22 サイト・`extends` 共通化）。
+  C/C++ を触らずにサイト追加可能。コア組み込みプリセットから初回起動時に
+  ライブラリへシードされる。
 
-## デバッグのヒント
+## 使い方
 
-- コンパイルエラーが出る場合: Nyxian の SDK バージョンと `MIN_IOS`（既定 18.0）を確認。
-- Swift が使えない古い Nyxian の場合: `Novelios/` の SwiftUI ではなく、
-  `novel_core/include/novel_core.h`（C ABI）から Objective-C++ で UI を組んでください。
-  コアは C ABI の JSON エンベロープで完結しているため、UI 技術を問わず接続できます。
+1. `NovelDL/` フォルダごと iPhone の Files 等で Nyxian のプロジェクト領域へ転送
+   （AirDrop / ファイル共有）。
+2. Nyxian でプロジェクトを開き ▶ をタップ → ビルド → ksurface 上で即実行。
+3. プレビュー端末: **iPhone 12 mini**。
+
+ソースをリポジトリ側で更新したら `python3 Nyxian/sync_project.py` で再同期。

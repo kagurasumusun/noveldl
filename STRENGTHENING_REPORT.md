@@ -53,26 +53,28 @@
 - 新モックアップも「マット・ガラス/ブラー/グロス禁止」で生成（添付2点）。
 - 今後の変更でもこの方針を維持する旨を Theme.swift のデザイン言語コメントに明記。
 
-## 6. 「nyxian用のプロジェクトにして」→ **`Nyxian/` に作成しました**
+## 6. 「nyxian用のプロジェクトにして」→ **`Nyxian/NovelDL/` を正しい形式（AvisR2）で作成しました**
 
-**Nyxian 調査結果**（emexLabs 製・https://github.com/emexlab/Nyxian）:
+**Nyxian 調査結果（一次ソース = emexlab/Nyxian 実装コード NXProject.m / NXCodeTemplate.m / Builder.swift）**:
 
 | 項目 | 仕様 |
 |------|------|
-| 正体 | iPhone/iPad 単体でネイティブiOSアプリをビルド・実行する**オンデバイスIDE**（非ジェイルブレイク、証明書署名＋ユーザー空間マイクロカーネル ksurface でネイティブコード実行） |
-| 対応 | iOS 18.0〜27.x / **C・ObjC・C++・ObjC++・Swift**（LLVM/clang・Swift 6.4 同梱） |
-| SDK | iOS 26.x SDK 同梱（`NYXIAN_SDK_ROOT`/iPhoneOS.sdk） |
-| ビルド | **標準 Makefile**（clang→ld→codesign、依存追跡） |
-| 配備 | `nyxian-install Payload/<App>.app` |
-| 特徴 | SDK取得後は完全オフラインで開発可能、NSExtension 経由でサンドボックス実行 |
+| 正体 | emexLabs（旧 ProjectNyxian）製の**オンデバイス iOS IDE**。非ジェイルブレイク端末上で、同梱 iOS 26 SDK・LLVM/Clang/Swift（CoreCompiler/MDK）＋カーネル仮想化層 **ksurface**（NSExtension 実行）によりネイティブアプリをビルド・即実行 |
+| 対応 | iOS 18.0〜27.x / **C・ObjC・C++・ObjC++・Swift**（Swift 6.4 同梱） |
+| **プロジェクト形式** | **Makefile ではない。** `Config/Project.plist`（**AvisR2 形式** `NXProjectFormat: NXAvixR2`）＋`Config/Entitlements.plist`（`com.nyxian.pe.*` 権限ブロブ）。`$(SRCROOT)/$(SDKROOT)/$(BSROOT)/$(CACHEROOT)` 変数展開付き |
+| ビルド | プロジェクト配下からソースを**自動収集**（`.swift/.c/.cpp/.m/.mm`。`Config/` と `Resources/` は除外）→ `LindChain/Builder` → `MDKPhaseEngine`（依存解析＋インクリメンタル）→ Mach-O → zsign 署名 → `Payload/<名>.app`。▶ひとつで完結 |
 
-**成果物 `Nyxian/`**:
-- `Makefile` — Nyxian規約準拠（`NYXIAN_SDK_ROOT` / `NYXIAN_DEVELOPER_IDENTITY` / `nyxian-install`）。novel_core（C++、`NC_HAVE_ZSTD`なし＝sqlite3システムライブラリのみ）→ SwiftUIアプリ（swiftc）→ 署名 → Payload 化まで自動。
-- `Info.plist` — 静的バンドル plist（Xcode の自動生成なし環境向け）。
-- `README.md` — Nyxian仕様まとめとビルド手順。
-- HTTP は同梱の NSURLSession 転送（`nc_http_apple.m`）を使用＝curl 不要。サイト対応 YAML は `.app/presets` にバンドル。
+**成果物 `Nyxian/NovelDL/`**（このフォルダをそのまま端末へ転送して Nyxian で開く）:
+- `Config/Project.plist` — AvisR2。`NXClangFlags`/`NXSwiftFlags` は公式テンプレートの基本フラグ＋C++ コア用（`-lc++`・`-lsqlite3`・CoreText/SwiftUI）と `-import-objc-header`
+- `Config/Entitlements.plist` — jailed 既定権限セット
+- `Config/NovelDL-Bridging-Header.h` — Swift ↔ C ABI（相対パス）
+- `App/`（SwiftUI）+ `NovelCore/`（C++ コア、curl・zstd なし）+ `Resources/presets/`（YAML）
+- `Nyxian/sync_project.py` — リポジトリから再同期。`Nyxian/README.md` に実仕様を記載
 
-## 検証
+※ 検証: コアは clang 既定の gnu++17 でコンパイル可能（`-std` 指定不要＝混成ビルドと完全互換）。zstd は iOS 非標準のため不使用（生バイト保存）。HTTP は同梱 NSURLSession 転送。
 
-- ユニットテスト: **118 passed, 0 failed**（年齢ゲート自動通過テスト4件追加）
-- 実DLテスト: なろう / なろうR-18 / 野いちご / monogatary ほかで **PASS 確認済み**（前回 12/17、hameln-r18 行を追加して18行に）
+## 1+. 対応端末 = **iPhone 12 mini（375×812pt）** への適合
+
+- `CoverTile` の表紙が固定 108pt で、12 mini の 2 列グリッド（列幅 ≈ 160pt）に埋まらない → **列幅追従（2:3 アスペクト）に修正**。詳細ヘッダの 92pt 明示幅も維持
+- タイポシート 430pt・タップゾーン・下部リボン伸縮は 812pt 画面に適合済み（前回修正のまま）
+- モックアップ 2 点を **iPhone 12 mini 本体（5.4 インチ・ノッチ）**で再生成（マット・Liquid Glass 不使用）

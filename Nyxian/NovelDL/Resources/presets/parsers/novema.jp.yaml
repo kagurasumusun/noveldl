@@ -1,0 +1,9 @@
+extends: www.no-ichigo.jp
+name: ノベマ！
+domain: novema.jp
+encoding: UTF-8
+top_url: https://novema.jp
+sitename: ノベマ！
+toc_url_pattern: "https://novema.jp/book/{ncode}"
+confirm_over18: no
+version: 1.0

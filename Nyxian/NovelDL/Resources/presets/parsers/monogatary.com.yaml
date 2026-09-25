@@ -1,0 +1,42 @@
+name: monogatary.com
+domain: monogatary.com
+encoding: UTF-8
+top_url: https://monogatary.com
+sitename: monogatary.com
+access:
+  profile: chrome_desktop
+
+# サイトは JS シェルのみ。取得 URL を REST API に変換して JSON を解析する。
+metadata:
+  fetch_url_template: "https://monogatary.com/api/story/{id}"
+
+toc_url_pattern: "https://monogatary.com/story/{ncode}"
+toc_sources:
+  - source: json
+    priority: 10
+    href_pattern: "api/episode/"
+    list_path: "episodes"
+    title_path: "episodeTitle"
+    index_path: "episodeId"
+    href_path: "episodeId"
+    href_template: "https://monogatary.com/api/episode/{href}"
+    description: "monogatary JSON API 一覧"
+
+body_selectors:
+  - json_path: "body"
+    priority: 10
+  - json_path: "episodeContents.episode"
+    priority: 9
+  - json_path: "episode_text"
+    priority: 8
+
+novel_info_selectors:
+  title: "$.storyTitle"
+  author: "$.user.nickname"
+  story: "$.description"
+
+append_title_to_folder_name: yes
+# overFifteen 年齢制限作品対応
+confirm_over18: yes
+over18_cookie: "over_fifteen=yes"
+version: 1.0

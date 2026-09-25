@@ -1,0 +1,36 @@
+name: ステキブンゲイ
+domain: sutekibungei.com
+encoding: UTF-8
+top_url: https://sutekibungei.com
+sitename: ステキブンゲイ
+access:
+  profile: chrome_desktop
+
+# Nuxt SSR。話一覧は a.v-list-item--link[href^=/novels/uuid/uuid]、
+# 本文は div#episodeBody（SSR 出力）。
+toc_url_pattern: "https://sutekibungei.com/novels/{ncode}"
+toc_sources:
+  - source: selector
+    selector: "a.v-list-item--link"
+    priority: 10
+    href_pattern: "/novels/[0-9a-f-]{36}/[0-9a-f-]{36}$"
+    item_selectors:
+      subtitle: ".text-left"
+      href: ":self::attr(href)"
+      subupdate: ".v-list-item__subtitle"
+    description: "ステキブンゲイ話一覧"
+
+body_selectors:
+  - selector: "#episodeBody"
+    priority: 10
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: ".font-weight-bold.subtitle-1, h1"
+  author: ".subtitle-2.wrap a, .subtitle-2.wrap"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+title_strip_pattern: " - ステキブンゲイ| -ステキブンゲイ"
+confirm_over18: no
+version: 1.0

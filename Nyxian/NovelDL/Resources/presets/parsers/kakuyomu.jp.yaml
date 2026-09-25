@@ -1,0 +1,43 @@
+name: カクヨム
+domain: kakuyomu.jp
+encoding: UTF-8
+top_url: https://kakuyomu.jp
+sitename: カクヨム
+
+access:
+  profile: safari_desktop
+
+toc_url_pattern: "https://kakuyomu.jp/works/{ncode}"
+toc_sources:
+  - source: regex
+    priority: 10
+    pattern: '"__typename":"Episode","id":"([^"]+)","title":"([^"]+)"'
+    id_group: 1
+    title_group: 2
+    href_template: "episodes/{id}"
+
+  - source: selector
+    selector: "a[href*='/episodes/']"
+    priority: 5
+    extract: "list"
+    description: "フォールバック: エピソードURLアンカー直抽出"
+    href_pattern: "^/works/\\d+/episodes/\\d+$"
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+
+body_selectors:
+  - selector: "div.widget-episodeBody.js-episode-body"
+    priority: 10
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "h1 a[href^='/works/']"
+  author: ".partialGiftWidgetActivityName a, a[href^='/users/']"
+# ------------------------------------------------------------
+# 横断検索メタ情報
+confirm_over18: no
+append_title_to_folder_name: yes
+title_strip_pattern: null
+webnovels_site: kakuyomu
+version: 2.2

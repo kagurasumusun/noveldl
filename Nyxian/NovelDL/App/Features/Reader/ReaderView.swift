@@ -1,0 +1,414 @@
+import SwiftUI
+
+/// Reader — Kindle page serenity with Kobo's control drawer.
+/// Tap the page edge to page; tap the top for chrome.
+struct ReaderView: View {
+    let novelId: String
+    let startAt: String
+    let title: String
+
+    @Environment(CoreClient.self) private var core
+    @Environment(\.dismiss) private var dismiss
+
+    @AppStorage("readerTheme") private var themeRaw = BookTheme.paper.rawValue
+    @AppStorage("readerFontSize") private var fontSize = 19.0
+    @AppStorage("readerLineSpacing") private var lineSpacing = 6.0
+    @AppStorage("readerSideMargin") private var sideMargin = 34.0
+    @AppStorage("readerFontDesign") private var fontDesign = "serif"
+
+    @State private var chapterIndex: String
+    @State private var chapterTitle = ""
+    @State private var pages: [NSAttributedString] = []
+    @State private var pageIndex = 0
+    @State private var chapters: [ChapterMeta] = []
+    @State private var showChrome = false
+    @State private var showToc = false
+    @State private var showType = false
+    @State private var loading = true
+
+    private var theme: BookTheme { BookTheme(rawValue: themeRaw) ?? .paper }
+
+    init(novelId: String, startAt: String, title: String) {
+        self.novelId = novelId
+        self.startAt = startAt
+        self.title = title
+        // Resume the last reading position when one is stored.
+        let saved = ReadingPositionStore.load(novelId)
+        _chapterIndex = State(initialValue: saved?.chapter ?? startAt)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                theme.background.ignoresSafeArea()
+
+                if loading {
+                    ProgressView()
+                        .tint(theme.secondaryInk)
+                } else if pages.isEmpty {
+                    VStack(spacing: 10) {
+                        Text("This chapter has no body yet.")
+                            .font(AppFont.serif(17))
+                            .foregroundStyle(theme.ink)
+                        Text("Download it from the book detail page.")
+                            .font(AppFont.ui(12))
+                            .foregroundStyle(theme.secondaryInk)
+                    }
+                } else {
+                    PageCanvas(
+                        pages: pages,
+                        pageIndex: $pageIndex,
+                        background: UIColor(theme.background),
+                        onSwipeNext: nextPage,
+                        onSwipePrevious: previousPage
+                    )
+                    .ignoresSafeArea()
+                }
+
+                VStack {
+                    Spacer()
+                    HStack(spacing: 10) {
+                        Text(pageLabel)
+                            .font(AppFont.ui(10, design: .monospaced))
+                            .foregroundStyle(theme.secondaryInk)
+                            .layoutPriority(1)
+                        ReadingRibbon(value: progressRatio)
+                            .frame(minWidth: 48, maxWidth: 130)
+                        Text(chapterLabel)
+                            .font(AppFont.ui(10))
+                            .foregroundStyle(theme.secondaryInk)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 18)
+                    .opacity(showChrome ? 0.0 : 1.0)
+                }
+
+                if showChrome {
+                    chrome(size: geo.size)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                withAnimation(.easeOut(duration: 0.18)) { showChrome.toggle() }
+            }
+            .simultaneousGesture(
+                SpatialTapGesture(count: 1)
+                    .onEnded { value in
+                        // Kindle page zones: left third = back, right third = next,
+                        // center = show/hide chrome. Phone-sized hit targets.
+                        let x = value.location.x
+                        let w = geo.size.width
+                        if x < w / 3 {
+                            previousPage()
+                        } else if x > w * 2 / 3 {
+                            nextPage()
+                        } else {
+                            withAnimation(.easeOut(duration: 0.18)) { showChrome.toggle() }
+                        }
+                    }
+            )
+        }
+        .statusBarHidden(!showChrome)
+        .task(id: chapterIndex) { await loadChapter() }
+        .onChange(of: pageIndex) { _, newValue in
+            ReadingPositionStore.save(novelId, chapter: chapterIndex, page: newValue)
+        }
+        .onChange(of: chapterIndex) { _, newValue in
+            ReadingPositionStore.save(novelId, chapter: newValue, page: 0)
+        }
+        .onDisappear {
+            ReadingPositionStore.save(novelId, chapter: chapterIndex, page: pageIndex)
+        }
+    }
+
+    // MARK: chrome
+
+    private func chrome(size: CGSize) -> some View {
+        VStack {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                Spacer()
+                VStack(spacing: 1) {
+                    Text(title)
+                        .font(AppFont.serif(14, weight: .medium))
+                        .lineLimit(1)
+                    Text(chapterTitle)
+                        .font(AppFont.ui(10))
+                        .opacity(0.75)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Button { showToc = true } label: {
+                    Image(systemName: "list.bullet")
+                }
+            }
+            .foregroundStyle(theme.ink)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(theme.background.opacity(0.97))
+
+            Spacer()
+
+            HStack(spacing: 12) {
+                Button(action: previousPage) {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 32, height: 32)
+                }
+                Slider(
+                    value: Binding(
+                        get: { Double(pageIndex) },
+                        set: { pageIndex = Int($0) }
+                    ),
+                    in: 0...Double(max(pages.count - 1, 1))
+                )
+                .tint(AppPalette.ember)
+                Button(action: nextPage) {
+                    Image(systemName: "chevron.right")
+                        .frame(width: 32, height: 32)
+                }
+                Button { showType = true } label: {
+                    Text("Aa")
+                        .font(AppFont.serif(17, weight: .semibold))
+                }
+            }
+            .foregroundStyle(theme.ink)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .background(theme.background.opacity(0.97))
+        }
+        .transition(.opacity)
+        .sheet(isPresented: $showToc) {
+            tocSheet
+        }
+        .sheet(isPresented: $showType) {
+            typeSheet
+        }
+    }
+
+    private var tocSheet: some View {
+        NavigationStack {
+            List(chapters, id: \.index) { ch in
+                Button {
+                    chapterIndex = ch.index
+                    pageIndex = 0
+                    showToc = false
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            if let group = ch.chapter, !group.isEmpty {
+                                Text(group)
+                                    .font(AppFont.ui(10, weight: .semibold))
+                                    .foregroundStyle(AppPalette.gold)
+                            }
+                            Text(ch.subtitle)
+                                .font(AppFont.serif(15))
+                                .foregroundStyle(.primary)
+                        }
+                        Spacer()
+                        if ch.bodyDownloaded == true {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(AppPalette.gold)
+                                .font(.system(size: 12))
+                        }
+                        if ch.index == chapterIndex {
+                            Image(systemName: "book.fill")
+                                .foregroundStyle(AppPalette.ember)
+                                .font(.system(size: 12))
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Contents")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var typeSheet: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            Text("Typography")
+                .font(AppFont.serif(20, weight: .semibold))
+
+            HStack(spacing: 14) {
+                ForEach(BookTheme.allCases) { option in
+                    Button {
+                        themeRaw = option.rawValue
+                    } label: {
+                        Text(option.label)
+                            .font(AppFont.ui(13, weight: .medium))
+                            .foregroundStyle(option.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(option.background)
+                            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Metrics.cardRadius)
+                                    .strokeBorder(
+                                        themeRaw == option.rawValue ? AppPalette.ember : .clear,
+                                        lineWidth: 2)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            HStack(spacing: 10) {
+                ForEach(["serif", "sans", "mono"], id: \.self) { design in
+                    Button {
+                        fontDesign = design
+                    } label: {
+                        Text(design == "serif" ? "Mincho" : design == "sans" ? "Gothic" : "Mono")
+                            .font(.system(size: 15, design: design == "serif" ? .serif : design == "sans" ? .default : .monospaced))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(theme.background)
+                            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Metrics.cardRadius)
+                                    .strokeBorder(fontDesign == design ? AppPalette.ember : .clear, lineWidth: 2))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Stepper(value: $fontSize, in: 14...28) {
+                LabeledContent("Text size") { Text("\(Int(fontSize))") }
+            }
+            Stepper(value: $lineSpacing, in: 0...16) {
+                LabeledContent("Line spacing") { Text("\(Int(lineSpacing))") }
+            }
+            Stepper(value: $sideMargin, in: 20...56, step: 4) {
+                LabeledContent("Margins") { Text("\(Int(sideMargin))") }
+            }
+
+            Spacer()
+        }
+        .padding(24)
+        .presentationDetents([.height(430), .medium])
+        .onChange(of: fontSize) { Task { await repaginate() } }
+        .onChange(of: lineSpacing) { Task { await repaginate() } }
+        .onChange(of: sideMargin) { Task { await repaginate() } }
+        .onChange(of: fontDesign) { Task { await repaginate() } }
+    }
+
+    // MARK: data
+
+    private var pageLabel: String {
+        guard !pages.isEmpty else { return "" }
+        return "\(pageIndex + 1) / \(pages.count)"
+    }
+
+    private var progressRatio: Double {
+        guard !pages.isEmpty else { return 0 }
+        return Double(pageIndex + 1) / Double(pages.count)
+    }
+
+    private var chapterLabel: String {
+        guard let idx = Int(chapterIndex) else { return "" }
+        return "Ch \(idx)"
+    }
+
+    private func loadChapter() async {
+        loading = true
+        defer { loading = false }
+        do {
+            let section = try await core.section(novelId: novelId, index: chapterIndex)
+            chapterTitle = section.subtitle
+            let body = [section.introXhtml, section.bodyXhtml, section.postXhtml]
+                .compactMap { $0 }
+                .joined(separator: "\n")
+            let detail = try? await core.novelDetail(novelId)
+            chapters = detail?.chapters ?? []
+            await paginate(body: body)
+        } catch {
+            pages = []
+        }
+    }
+
+    private func repaginate() async {
+        guard !pages.isEmpty else { return }
+        // rebuild from source (chapter reload keeps it simple + correct)
+        await loadChapter()
+    }
+
+    private func paginate(body: String) async {
+        let style = ReaderMarkup.Style(
+            fontSize: fontSize,
+            lineSpacing: lineSpacing,
+            ink: UIColor(theme.ink),
+            maxWidth: 300,
+            design: fontDesign)
+        let markup = ReaderMarkup().parse(body, style: style)
+        let bounds = UIScreen.main.bounds.size
+        let side = CGFloat(sideMargin)
+        let page = PagePaginator.paginate(
+            markup,
+            pageSize: CGSize(width: bounds.width, height: bounds.height),
+            insets: UIEdgeInsets(top: 54, left: side, bottom: 64, right: side))
+        self.pages = page
+        let saved = ReadingPositionStore.load(novelId)
+        self.pageIndex = (saved?.chapter == chapterIndex) ? min(saved?.page ?? 0, max(page.count - 1, 0)) : 0
+    }
+
+    private func nextPage() {
+        guard !pages.isEmpty else { return }
+        if pageIndex + 1 < pages.count {
+            pageIndex += 1
+        } else {
+            advanceChapter(delta: 1)
+        }
+    }
+
+    private func previousPage() {
+        if pageIndex > 0 {
+            pageIndex -= 1
+        } else {
+            advanceChapter(delta: -1)
+        }
+    }
+
+    private func advanceChapter(delta: Int) {
+        guard let pos = chapters.firstIndex(where: { $0.index == chapterIndex }),
+            chapters.indices.contains(pos + delta)
+        else { return }
+        chapterIndex = chapters[pos + delta].index
+        pageIndex = 0
+    }
+}
+
+
+/// Kindle-style reading position: resumes each book where the reader left off.
+enum ReadingPositionStore {
+    private static let key = "readingPositions"
+
+    struct Position: Codable {
+        var chapter: String
+        var page: Int
+    }
+
+    private static var all: [String: Position] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: key),
+                let map = try? JSONDecoder().decode([String: Position].self, from: data)
+            else { return [:] }
+            return map
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: key)
+            }
+        }
+    }
+
+    static func load(_ novelId: String) -> Position? { all[novelId] }
+
+    static func save(_ novelId: String, chapter: String, page: Int) {
+        var map = all
+        map[novelId] = Position(chapter: chapter, page: page)
+        all = map
+    }
+}

@@ -1,0 +1,44 @@
+name: ネオページ
+domain: www.neopage.com
+encoding: UTF-8
+top_url: https://www.neopage.com
+sitename: ネオページ
+access:
+  profile: chrome_desktop
+  referer: toc_parent
+
+# 章行: a[href*=/chapter/]/（m.neopage.com 絶対URLにも対応）
+toc_url_pattern: "https://www.neopage.com/book/{ncode}"
+toc_sources:
+  - source: selector
+    selector: "a[href*='/chapter/']"
+    priority: 10
+    href_pattern: "/chapter/\\d+/\\d+$"
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "ネオページ章リスト"
+
+metadata:
+  chapter_fetch_url_template: "https://www.neopage.com/v1/book/content/{id}"
+
+body_selectors:
+  - json_path: "data.content"
+    priority: 12
+  - json_path: "content"
+    priority: 11
+  - selector: ".formate-manuscript"
+    priority: 10
+    extract: "inner_html"
+  - selector: ".reading-content-wrap .content"
+    priority: 8
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: ".header-title-wrap .title, h1 .title"
+  author: ".author a, .author"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+confirm_over18: no
+version: 1.0

@@ -1,0 +1,46 @@
+name: ソリスピア
+domain: solispia.com
+encoding: UTF-8
+top_url: https://solispia.com
+sitename: 小説投稿サイトSolispia
+access:
+  profile: safari_mobile
+
+# 章: details.chapter-group > summary（chapter_header_selector で章見出しを更新）
+# 話: a.row-link（data-subtitle 属性と .textleft テキスト）
+toc_url_pattern: "https://solispia.com/title/{ncode}"
+toc_sources:
+  - source: selector
+    selector: "details.chapter-group summary, details.chapter-group a.row-link, a.row-link"
+    priority: 10
+    chapter_header_selector: "summary.chapter-summary, .chapter-summary"
+    href_pattern: "/novel/\\d+$"
+    index_from_href_regex: "/novel/(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ".textleft"
+      href: ":self::attr(href)"
+      subupdate: ".date"
+    description: "ソリスピア目次（章グループ＋話リンク）"
+
+body_selectors:
+  - selector: "#novelBody, .novel-body"
+    priority: 10
+    extract: "inner_html"
+  - selector: ".episode-body, .episode-content"
+    priority: 8
+    extract: "inner_html"
+  - selector: "article"
+    priority: 4
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "h1"
+  author: ".author a, [itemprop='author']"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+# R-18切替対応（レーティングクッキー）
+confirm_over18: yes
+over18_cookie: "over18=yes"
+version: 1.0
