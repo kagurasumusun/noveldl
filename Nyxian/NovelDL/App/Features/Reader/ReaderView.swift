@@ -60,6 +60,7 @@ struct ReaderView: View {
                         pages: pages,
                         pageIndex: $pageIndex,
                         background: UIColor(theme.background),
+                        insets: pageInsets,
                         onSwipeNext: nextPage,
                         onSwipePrevious: previousPage
                     )
@@ -298,6 +299,12 @@ struct ReaderView: View {
 
     // MARK: data
 
+    /// ページ送りと描画で必ず同じ余白を使う(ズレると本文が欠ける)。
+    private var pageInsets: UIEdgeInsets {
+        let side = CGFloat(sideMargin)
+        return UIEdgeInsets(top: 54, left: side, bottom: 64, right: side)
+    }
+
     private var pageLabel: String {
         guard !pages.isEmpty else { return "" }
         return "\(pageIndex + 1) / \(pages.count)"
@@ -345,11 +352,10 @@ struct ReaderView: View {
             design: fontDesign)
         let markup = ReaderMarkup().parse(body, style: style)
         let bounds = UIScreen.main.bounds.size
-        let side = CGFloat(sideMargin)
         let page = PagePaginator.paginate(
             markup,
             pageSize: CGSize(width: bounds.width, height: bounds.height),
-            insets: UIEdgeInsets(top: 54, left: side, bottom: 64, right: side))
+            insets: pageInsets)
         self.pages = page
         let saved = ReadingPositionStore.load(novelId)
         self.pageIndex = (saved?.chapter == chapterIndex) ? min(saved?.page ?? 0, max(page.count - 1, 0)) : 0

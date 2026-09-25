@@ -69,9 +69,8 @@ struct QueueView: View {
     private func stat(_ label: String, _ value: Int, _ color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("\(value)")
-                .font(AppFont.serif(22, weight: .semibold))
+                .font(AppFont.serif(22, weight: .semibold).monospacedDigit())
                 .foregroundStyle(color)
-                .monospacedDigit()
             Text(label)
                 .font(AppFont.ui(12, weight: .medium))
                 .foregroundStyle(AppPalette.inkSoft)

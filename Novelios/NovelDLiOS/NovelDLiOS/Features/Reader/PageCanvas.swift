@@ -8,6 +8,7 @@ struct PageCanvas: UIViewRepresentable {
     let pages: [NSAttributedString]
     @Binding var pageIndex: Int
     let background: UIColor
+    var insets: UIEdgeInsets = UIEdgeInsets(top: 54, left: 34, bottom: 64, right: 34)
     var onSwipeNext: () -> Void
     var onSwipePrevious: () -> Void
 
@@ -19,6 +20,7 @@ struct PageCanvas: UIViewRepresentable {
         let view = PageCanvasView()
         view.backgroundColor = background
         view.coordinator = context.coordinator
+        view.insets = insets
         let next = UISwipeGestureRecognizer(
             target: context.coordinator, action: #selector(Coordinator.swipeNext))
         next.direction = .left
@@ -27,13 +29,14 @@ struct PageCanvas: UIViewRepresentable {
         prev.direction = .right
         view.addGestureRecognizer(next)
         view.addGestureRecognizer(prev)
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped))
-        view.addGestureRecognizer(tap)
+        // 注:タップは SwiftUI 側のゾーン判定に一本化する(UIKit のタップを
+        // 入れると二重発火して「タップしただけで次話へ」の事故になる)。
         return view
     }
 
     func updateUIView(_ view: PageCanvasView, context: Context) {
         view.backgroundColor = background
+        view.insets = insets
         view.pages = pages
         view.pageIndex = pageIndex
         view.setNeedsDisplay()
@@ -45,16 +48,14 @@ struct PageCanvas: UIViewRepresentable {
 
         @objc func swipeNext() { parent.onSwipeNext() }
         @objc func swipePrev() { parent.onSwipePrevious() }
-        @objc func tapped() { parent.onSwipeNext() }
     }
 }
 
 final class PageCanvasView: UIView {
     var pages: [NSAttributedString] = []
     var pageIndex = 0
+    var insets = UIEdgeInsets(top: 54, left: 34, bottom: 64, right: 34)
     weak var coordinator: PageCanvas.Coordinator?
-
-    private let inset = UIEdgeInsets(top: 54, left: 34, bottom: 64, right: 34)
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext(),
@@ -63,7 +64,7 @@ final class PageCanvasView: UIView {
         ctx.setFillColor(backgroundColor?.cgColor ?? UIColor.white.cgColor)
         ctx.fill(rect)
 
-        let contentRect = rect.inset(by: inset)
+        let contentRect = rect.inset(by: insets)
         guard contentRect.width > 8, contentRect.height > 8 else { return }
 
         let page = pages[pageIndex]
@@ -74,9 +75,11 @@ final class PageCanvasView: UIView {
             NSDictionary() as CFDictionary)
 
         ctx.textMatrix = .identity
-        ctx.translateBy(x: 0, y: rect.height)
+        // CoreText は下原点。コンテンツ矩形内で上下だけ反転し、パス座標
+        // (UIKit 上原点)の位置にそのまま収まるようにする(以前の変換だと
+        // 本文が画面外に描画されて「本文が読めない」状態になっていた)。
+        ctx.translateBy(x: 0, y: contentRect.minY + contentRect.maxY)
         ctx.scaleBy(x: 1, y: -1)
-        ctx.translateBy(x: contentRect.minX, y: rect.height - contentRect.maxY)
         CTFrameDraw(frame, ctx)
     }
 }

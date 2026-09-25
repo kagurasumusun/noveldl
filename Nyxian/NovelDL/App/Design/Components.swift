@@ -39,7 +39,7 @@ struct CoverTile: View {
     private var cloth: Color {
         var h: UInt64 = 5381
         for b in (title + "|" + author).utf8 {
-            h = (h &* 33) &^ UInt64(b)
+            h = (h &* 33) ^ UInt64(b)
         }
         return Self.cloths[Int(h % UInt64(Self.cloths.count))]
     }

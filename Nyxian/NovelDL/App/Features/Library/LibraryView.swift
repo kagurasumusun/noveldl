@@ -14,12 +14,7 @@ struct LibraryView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    SectionBanner(
-                        title: "本棚",
-                        subtitle: core.library.isEmpty
-                            ? "作品はまだありません"
-                            : "\(core.library.count)作品・全\(core.library.reduce(0) { $0 + $1.episodeCount })話"
-                    )
+                    SectionBanner(title: "本棚", subtitle: shelfSubtitle)
 
                     if let activeStatus {
                         HStack(spacing: 10) {
@@ -102,6 +97,13 @@ struct LibraryView: View {
             }
         }
         .task { await core.reloadLibrary() }
+    }
+
+    private var shelfSubtitle: String {
+        if core.library.isEmpty { return "作品はまだありません" }
+        let works = core.library.count
+        let episodes = core.library.reduce(0) { $0 + $1.episodeCount }
+        return "\(works)作品・全\(episodes)話"
     }
 
     private var emptyShelf: some View {

@@ -99,9 +99,8 @@ struct NovelDetailView: View {
                 InfoChip(text: item.domain)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(downloaded)/\(total) 話を取得済み")
-                        .font(AppFont.ui(13, weight: .semibold))
+                        .font(AppFont.ui(13, weight: .semibold).monospacedDigit())
                         .foregroundStyle(AppPalette.ink)
-                        .monospacedDigit()
                     ReadingRibbon(value: Double(downloaded) / Double(total))
                         .frame(width: 140)
                 }
