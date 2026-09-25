@@ -11,7 +11,7 @@ struct ReaderRoute: Hashable {
 struct NovelDetailView: View {
     let item: LibraryNovelItem
 
-    @Environment(CoreClient.self) private var core
+    @EnvironmentObject private var core
     @State private var detail: LibraryNovelDetail?
     @State private var busy = false
     @State private var errorText: String?
@@ -19,7 +19,12 @@ struct NovelDetailView: View {
     @State private var fromIndex = ""
     @State private var showOptions = false
 
-    private var groupedChapters: [(String, [ChapterMeta])] {
+    private struct ChapterGroup: Identifiable {
+        let id: String
+        let chapters: [ChapterMeta]
+    }
+
+    private var groupedChapters: [ChapterGroup] {
         let chapters = detail?.chapters ?? []
         var order: [String] = []
         var buckets: [String: [ChapterMeta]] = [:]
@@ -28,7 +33,7 @@ struct NovelDetailView: View {
             if buckets[key] == nil { order.append(key) }
             buckets[key, default: []].append(ch)
         }
-        return order.map { ($0, buckets[$0] ?? []) }
+        return order.map { ChapterGroup(id: $0, chapters: buckets[$0] ?? []) }
     }
 
     var body: some View {
@@ -128,15 +133,15 @@ struct NovelDetailView: View {
 
     private var chapterList: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(groupedChapters, id: \.0) { group, chapters in
-                if !group.isEmpty {
-                    Text(group)
+            ForEach(groupedChapters) { group in
+                if !group.id.isEmpty {
+                    Text(group.id)
                         .font(AppFont.ui(12, weight: .semibold))
                         .foregroundStyle(AppPalette.gold)
                         .padding(.top, 18)
                         .padding(.bottom, 6)
                 }
-                ForEach(chapters, id: \.index) { ch in
+                ForEach(group.chapters, id: \.index) { ch in
                     NavigationLink(
                         value: ReaderRoute(novelId: item.novelId, index: ch.index, title: item.title)
                     ) {

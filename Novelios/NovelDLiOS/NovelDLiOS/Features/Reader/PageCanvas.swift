@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import CoreText
 
 /// CoreText page canvas — slices an NSAttributedString into pages and

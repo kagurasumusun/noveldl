@@ -2,12 +2,12 @@ import SwiftUI
 
 @main
 struct NovelDLApp: App {
-    @State private var core = CoreClient.shared
+    private let core = CoreClient.shared
 
     var body: some Scene {
         WindowGroup {
             AppShell()
-                .environment(core)
+                .environmentObject(core)
                 .task {
                     core.bootstrap()
                 }

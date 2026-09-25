@@ -1,14 +1,15 @@
 import Foundation
-import Observation
+import Combine
 
 /// Swift 6 bridge over the novel_core C ABI.
 /// All core calls are synchronous + blocking → always hop through `run`.
-@Observable
-final class CoreClient: @unchecked Sendable {
+/// Nyxian は Swift マクロ（@Observable 等）のプラグインを展開できないため、
+/// マクロ不要な ObservableObject + @Published で観測する。
+final class CoreClient: ObservableObject, @unchecked Sendable {
     static let shared = CoreClient()
 
-    var progress = ProgressSnapshot(total: 0, done: 0, skipped: 0, failed: 0, running: false, current: "")
-    var library: [LibraryNovelItem] = []
+    @Published var progress = ProgressSnapshot(total: 0, done: 0, skipped: 0, failed: 0, running: false, current: "")
+    @Published var library: [LibraryNovelItem] = []
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -66,7 +67,10 @@ final class CoreClient: @unchecked Sendable {
         body()
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, _ body: () -> UnsafeMutablePointer<CChar>?) async throws -> T {
+    private func decode<T: Decodable & Sendable>(
+        _ type: T.Type,
+        _ body: @escaping @Sendable () -> UnsafeMutablePointer<CChar>?
+    ) async throws -> T {
         try await run {
             let result = self.call(body)
             switch result {

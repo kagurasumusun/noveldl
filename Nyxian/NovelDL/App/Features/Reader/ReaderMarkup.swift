@@ -49,7 +49,7 @@ final class ReaderMarkup: @unchecked Sendable {
         }
         let ns = text as NSString
         var cursor = 0
-        for m in re.matches(in: text) {
+        for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
             if m.range.location > cursor {
                 appendText(ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor)), to: out, attributes: attrs)
             }
@@ -84,7 +84,7 @@ final class ReaderMarkup: @unchecked Sendable {
         let ns = inner as NSString
         let re = try! NSRegularExpression(
             pattern: #"(?is)<rb[^>]*>(.*?)</rb>\s*<rt[^>]*>(.*?)</rt>|<rt[^>]*>(.*?)</rt>"#)
-        guard let m = re.firstMatch(in: inner) else {
+        guard let m = re.firstMatch(in: inner, range: NSRange(location: 0, length: ns.length)) else {
             return NSAttributedString(string: decodeEntities(stripTags(inner)), attributes: attrs)
         }
         var base = ""
@@ -103,8 +103,8 @@ final class ReaderMarkup: @unchecked Sendable {
 
     private func rubyText(base: String, ruby: String, attributes attrs: [NSAttributedString.Key: Any]) -> NSAttributedString {
         let annotation = CTRubyAnnotationCreateWithAttributes(
-            .auto, .auto, .before, .center,
-            (ruby as CFString))
+            .auto, .auto, .before,
+            (ruby as CFString), nil)
         var rubyAttrs = attrs
         rubyAttrs[rubyKey] = annotation
         return NSAttributedString(string: base, attributes: rubyAttrs)
@@ -130,7 +130,8 @@ final class ReaderMarkup: @unchecked Sendable {
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
         let semaphore = DispatchSemaphore(value: 0)
-        var result: Data?
+        // URLSession コールバックは @Sendable — キャプチャ var への同時書き込みを避ける
+        nonisolated(unsafe) var result: Data?
         URLSession.shared.dataTask(with: request) { data, _, _ in
             result = data
             semaphore.signal()
@@ -155,7 +156,8 @@ final class ReaderMarkup: @unchecked Sendable {
             let re = try? NSRegularExpression(pattern: "&#(x?)([0-9a-fA-F]+);")
             let ns = out as NSString
             var replaced = out
-            re?.matches(in: out).reversed().forEach { m in
+            re?.matches(in: out, range: NSRange(location: 0, length: (out as NSString).length))
+                .reversed().forEach { m in
                 let hex = ns.substring(with: m.range(at: 1)) == "x"
                 let digits = ns.substring(with: m.range(at: 2))
                 let value = UInt32(digits, radix: hex ? 16 : 10)

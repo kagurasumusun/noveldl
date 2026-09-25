@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Reader — Kindle page serenity with Kobo's control drawer.
 /// Tap the page edge to page; tap the top for chrome.
@@ -7,7 +8,7 @@ struct ReaderView: View {
     let startAt: String
     let title: String
 
-    @Environment(CoreClient.self) private var core
+    @EnvironmentObject private var core
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("readerTheme") private var themeRaw = BookTheme.paper.rawValue

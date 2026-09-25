@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Discover — webnovels.jp meta search across the preset-defined sites.
 struct DiscoverView: View {
-    @Environment(CoreClient.self) private var core
+    @EnvironmentObject private var core
     @State private var query = ""
     @State private var results: [SearchResultItem] = []
     @State private var searching = false

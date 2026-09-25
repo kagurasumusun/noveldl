@@ -78,3 +78,17 @@
 - `CoverTile` の表紙が固定 108pt で、12 mini の 2 列グリッド（列幅 ≈ 160pt）に埋まらない → **列幅追従（2:3 アスペクト）に修正**。詳細ヘッダの 92pt 明示幅も維持
 - タイポシート 430pt・タップゾーン・下部リボン伸縮は 812pt 画面に適合済み（前回修正のまま）
 - モックアップ 2 点を **iPhone 12 mini 本体（5.4 インチ・ノッチ）**で再生成（マット・Liquid Glass 不使用）
+
+## 7. Nyxian ビルドエラーの修正（マクロ不可・Swift 6・DiscoverView）
+
+Nyxian の swiftc は **Xcode/Swift のマクロ・プラグインを展開できない**ため、リポジトリ全体を
+「マクロゼロ」に是正。報告されたエラーの正体と修正：
+
+| エラー | 正体 | 修正 |
+|--------|------|------|
+| Xcode のマクロが使えない | `@Observable`（Observation マクロ = プラグイン展開が必要） | **`ObservableObject` + `@Published`** に置換（`@Environment(CoreClient.self)` → `@EnvironmentObject`、`.environment` → `.environmentObject`）。プロパティラッパのみ＝マクロ不要 |
+| escaping / non-escaping closure | `decode` の non-escaping な `body` が `Task.detached` 用の **@escaping @Sendable クロージャに捕獲**される | `body` を `@escaping @Sendable` に、`T: Decodable & Sendable` に変更（Swift 6 の Sendable 検査も通過） |
+| DiscoverView の do/catch と呼び出し関数のエラー | 上記 2 つの**連鎖エラー**（`core.search` 等が型検査不能になり呼び出し元に表示された） | 根治で解消 |
+| 「など」 | (a) `ForEach(id: \.0)` — **タプル keypath は Swift で非対応**（NovelDetailView）→ `Identifiable` struct に変更 (b) `NSRegularExpression.matches(in:)` の **`range:` 引数欠落**（ReaderMarkup 3 か所） (c) `CTRubyAnnotationCreateWithAttributes` の**引数不一致**（正しい 5 引数版に修正） (d) `URLSession` の @Sendable コールバックが `var` を捕獲 → `nonisolated(unsafe)` 化 (e) UIKit 型使用ファイルの **`import UIKit` 補完**（ReaderView / PageCanvas） | 全修正済み |
+
+C++ コアのユニットテストは引き続き **118 passed / 0 failed**。修正は `Nyxian/sync_project.py` 済み。
