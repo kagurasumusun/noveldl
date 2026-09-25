@@ -6,20 +6,18 @@ struct ReaderRoute: Hashable {
     let title: String
 }
 
-/// 作品詳細 — 書影と装丁情報を主役にした「本の紹介頁」。
-/// あらすじ・進捗・取得操作・目次を一枚の紙面として構成。
+/// 作品詳細 — 書誌・あらすじ・操作・目次を一枚の紙面として構成。
 struct NovelDetailView: View {
     let item: LibraryNovelItem
 
     @Environment(CoreClient.self) private var core: CoreClient
+    @Environment(\.dismiss) private var dismiss
     @State private var detail: LibraryNovelDetail?
     @State private var synopsis: String?
     @State private var synopsisExpanded = false
     @State private var busy = false
     @State private var statusText: String?
     @State private var errorText: String?
-    @State private var episodesLimit = 0
-    @State private var fromIndex = ""
     @State private var showOptions = false
 
     private struct ChapterGroup: Identifiable {
@@ -44,7 +42,7 @@ struct NovelDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: Spacing.l) {
                 heroCard
                 if let synopsis, !synopsis.isEmpty {
                     synopsisCard(synopsis)
@@ -52,27 +50,14 @@ struct NovelDetailView: View {
                 actionCard
                 chapterSection
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.horizontal, Spacing.l)
+            .padding(.top, Spacing.s)
             .padding(.bottom, 40)
         }
         .background(AppPalette.canvas.ignoresSafeArea())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("範囲を指定してダウンロード", isPresented: $showOptions) {
-            TextField("取得話数(空欄・0 = 全話)", text: Binding(
-                get: { episodesLimit == 0 ? "" : String(episodesLimit) },
-                set: { episodesLimit = Int($0) ?? 0 }
-            ))
-            .keyboardType(.numberPad)
-            TextField("開始話(空欄 = 先頭)", text: $fromIndex)
-                .keyboardType(.numberPad)
-            Button("一括取得") { Task { await runDownload(mode: "bulk") } }
-            Button("読者モード(先頭15話を先行取得)") { Task { await runDownload(mode: "reader") } }
-            Button("キャンセル", role: .cancel) {}
-        } message: {
-            Text("取得話数 0 または空欄で全話をまとめて取得します。失敗した話があっても残りは続行され、次回の再実行で取りこぼし分だけ取得します。")
-        }
+        .sheet(isPresented: $showOptions) { optionsSheet }
         .alert("詳細", isPresented: Binding(
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
@@ -84,10 +69,10 @@ struct NovelDetailView: View {
         .task { await reload() }
     }
 
-    // MARK: 書影 + 装丁情報
+    // MARK: 書誌
 
     private var heroCard: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: Spacing.l) {
             CoverTile(
                 title: item.title,
                 author: item.author,
@@ -96,7 +81,7 @@ struct NovelDetailView: View {
             )
             .shadow(color: AppPalette.shelfShadow, radius: 8, x: 0, y: 6)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Spacing.s) {
                 Text(item.title)
                     .font(AppFont.serif(21, weight: .semibold))
                     .foregroundStyle(AppPalette.ink)
@@ -105,13 +90,13 @@ struct NovelDetailView: View {
                 Text(item.author)
                     .font(AppFont.ui(15))
                     .foregroundStyle(AppPalette.inkSoft)
-                HStack(spacing: 6) {
+                HStack(spacing: Spacing.s) {
                     InfoChip(text: item.domain)
                     if let updated = item.updatedAt, !updated.isEmpty {
                         InfoChip(text: "更新 \(shortDate(updated))")
                     }
                 }
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
                     HStack {
                         Text("取得済み")
                             .font(AppFont.ui(12))
@@ -126,17 +111,17 @@ struct NovelDetailView: View {
                     }
                     ReadingRibbon(value: Double(downloaded) / Double(total))
                 }
-                .padding(.top, 4)
+                .padding(.top, Spacing.xs)
             }
         }
-        .padding(16)
-        .background(CardBackground())
+        .padding(Spacing.l)
+        .background(PaperBackground())
     }
 
     // MARK: あらすじ
 
     private func synopsisCard(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Spacing.s) {
             Text("あらすじ")
                 .font(AppFont.serif(17, weight: .semibold))
                 .foregroundStyle(AppPalette.ink)
@@ -148,36 +133,37 @@ struct NovelDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
             if text.count > 90 {
                 Button {
-                    synopsisExpanded.toggle()
+                    withAnimation(.easeOut(duration: 0.18)) { synopsisExpanded.toggle() }
                 } label: {
                     Text(synopsisExpanded ? "閉じる" : "もっと読む")
                         .font(AppFont.ui(13, weight: .semibold))
                         .foregroundStyle(AppPalette.ember)
                 }
+                .buttonStyle(PressableButtonStyle())
             }
         }
-        .padding(16)
+        .padding(Spacing.l)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(CardBackground())
+        .background(PaperBackground())
     }
 
     // MARK: 操作
 
     private var actionCard: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Spacing.m) {
             EmberButton(
                 title: busy
                     ? "ダウンロード中…"
                     : (downloaded >= total ? "未取得・更新分を確認して取得" : "全話をダウンロード"),
                 systemImage: "arrow.down.circle.fill",
-                prominent: true
+                prominent: true,
+                disabled: busy
             ) {
-                Task { await runDownload(mode: "bulk", all: true) }
+                Task { await runDownload(all: true) }
             }
-            .disabled(busy)
 
             if let statusText {
-                HStack(spacing: 8) {
+                HStack(spacing: Spacing.s) {
                     ProgressView()
                     Text(statusText)
                         .font(AppFont.ui(13))
@@ -209,17 +195,16 @@ struct NovelDetailView: View {
                             .strokeBorder(AppPalette.ember.opacity(0.45), lineWidth: 1)
                     )
                 }
+                .buttonStyle(PressableButtonStyle())
             }
 
-            HStack(spacing: 10) {
-                QuietButton(title: "範囲を指定…", systemImage: "slider.horizontal.3") {
+            HStack(spacing: Spacing.m) {
+                QuietButton(title: "範囲を指定…", systemImage: "slider.horizontal.3", disabled: busy) {
                     showOptions = true
                 }
-                .disabled(busy)
-                QuietButton(title: "書き出し", systemImage: "square.and.arrow.up") {
+                QuietButton(title: "書き出し", systemImage: "square.and.arrow.up", disabled: busy) {
                     Task { await exportZip() }
                 }
-                .disabled(busy)
             }
 
             if core.progress.running {
@@ -231,17 +216,43 @@ struct NovelDetailView: View {
                     Button("中止") { core.cancel() }
                         .font(AppFont.ui(13, weight: .semibold))
                         .foregroundStyle(AppPalette.ember)
+                        .buttonStyle(PressableButtonStyle())
                 }
             }
         }
-        .padding(16)
-        .background(CardBackground())
+        .padding(Spacing.l)
+        .background(PaperBackground())
+    }
+
+    // MARK: 範囲指定シート(アラートの数値入力を廃止)
+
+    private var optionsSheet: some View {
+        OptionsSheetBody(
+            episodesLimit: episodesLimitBinding,
+            fromIndex: fromIndexBinding,
+            onBulk: {
+                showOptions = false
+                Task { await runDownload() }
+            },
+            onReader: {
+                showOptions = false
+                Task { await runDownload(mode: "reader") }
+            }
+        )
+    }
+
+    private var episodesLimitBinding: Binding<Int> {
+        Binding(get: { episodesLimit }, set: { episodesLimit = $0 })
+    }
+
+    private var fromIndexBinding: Binding<String> {
+        Binding(get: { fromIndex }, set: { fromIndex = $0 })
     }
 
     // MARK: 目次
 
     private var chapterSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Spacing.m) {
             HStack {
                 Text("目次")
                     .font(AppFont.serif(19, weight: .semibold))
@@ -252,7 +263,7 @@ struct NovelDetailView: View {
                     .foregroundStyle(AppPalette.inkSoft)
                     .monospacedDigit()
             }
-            .padding(.top, 6)
+            .padding(.top, Spacing.s)
 
             VStack(spacing: 0) {
                 ForEach(groupedChapters) { group in
@@ -261,16 +272,16 @@ struct NovelDetailView: View {
                             .font(AppFont.ui(12, weight: .semibold))
                             .foregroundStyle(AppPalette.gold)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 14)
-                            .padding(.top, 16)
-                            .padding(.bottom, 4)
+                            .padding(.horizontal, Spacing.l)
+                            .padding(.top, Spacing.l)
+                            .padding(.bottom, Spacing.xs)
                             .background(AppPalette.canvas)
                     }
                     ForEach(group.chapters, id: \.index) { ch in
                         NavigationLink(
                             value: ReaderRoute(novelId: item.novelId, index: ch.index, title: item.title)
                         ) {
-                            HStack(spacing: 12) {
+                            HStack(spacing: Spacing.m) {
                                 Text(ch.index)
                                     .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
                                     .foregroundStyle(AppPalette.inkFaint)
@@ -279,7 +290,7 @@ struct NovelDetailView: View {
                                     .font(AppFont.serif(15))
                                     .foregroundStyle(AppPalette.ink)
                                     .lineLimit(2)
-                                Spacer(minLength: 8)
+                                Spacer(minLength: Spacing.s)
                                 if ch.bodyDownloaded == true {
                                     Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 13))
@@ -297,16 +308,16 @@ struct NovelDetailView: View {
                                         )
                                 }
                             }
-                            .padding(.horizontal, 14)
+                            .padding(.horizontal, Spacing.l)
                             .padding(.vertical, 12)
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
-                        Divider().overlay(AppPalette.hairline).padding(.leading, 14)
+                        .buttonStyle(PressableButtonStyle())
+                        RowDivider(leading: Spacing.l)
                     }
                 }
             }
-            .background(CardBackground())
+            .background(PaperBackground())
         }
     }
 
@@ -323,8 +334,7 @@ struct NovelDetailView: View {
         String(s.prefix(10))
     }
 
-    /// all: true なら話数指定を無視して全話(失敗分は再実行で拾う)。
-    private func runDownload(mode: String, all: Bool = false) async {
+    private func runDownload(mode: String = "bulk", all: Bool = false) async {
         busy = true
         statusText = all ? "全話をダウンロード中…" : "ダウンロード中…"
         defer {
@@ -357,5 +367,61 @@ struct NovelDetailView: View {
         } catch {
             errorText = error.localizedDescription
         }
+    }
+}
+
+/// 範囲指定シート本体(数値ステッパー + 開始話)。
+private struct OptionsSheetBody: View {
+    @Binding var episodesLimit: Int
+    @Binding var fromIndex: String
+    let onBulk: () -> Void
+    let onReader: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.l) {
+            HStack {
+                Text("範囲を指定")
+                    .font(AppFont.serif(22, weight: .semibold))
+                    .foregroundStyle(AppPalette.ink)
+                Spacer()
+            }
+            Text("取得話数 0 で全話をまとめて取得します。失敗した話は再実行で続きから取得されます。")
+                .font(AppFont.ui(13))
+                .foregroundStyle(AppPalette.inkSoft)
+                .lineSpacing(3)
+
+            VStack(spacing: Spacing.s) {
+                StepperRow(label: "取得話数(0 = 全話)", value: Binding(
+                    get: { Double(episodesLimit) },
+                    set: { episodesLimit = Int($0) }
+                ), range: 0...5000, step: 1)
+                RowDivider()
+                HStack(spacing: Spacing.m) {
+                    Text("開始話(空欄 = 先頭)")
+                        .font(AppFont.ui(15))
+                        .foregroundStyle(AppPalette.ink)
+                    Spacer()
+                    TextField("1", text: $fromIndex)
+                        .keyboardType(.numberPad)
+                        .font(AppFont.ui(15).monospacedDigit())
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                }
+                .frame(height: Metrics.rowHeight)
+            }
+            .padding(Spacing.m)
+            .background(PaperBackground())
+
+            EmberButton(title: "一括取得", systemImage: "arrow.down.circle.fill", prominent: true) {
+                onBulk()
+            }
+            QuietButton(title: "読者モード(先頭15話を先行取得)", systemImage: "book") {
+                onReader()
+            }
+            Spacer()
+        }
+        .padding(Spacing.xl)
+        .presentationDetents([.height(480)])
+        .presentationCornerRadius(20)
     }
 }

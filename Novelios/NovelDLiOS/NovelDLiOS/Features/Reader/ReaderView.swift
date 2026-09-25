@@ -176,14 +176,7 @@ struct ReaderView: View {
                     Image(systemName: "chevron.left")
                         .frame(width: 32, height: 32)
                 }
-                Slider(
-                    value: Binding(
-                        get: { Double(pageIndex) },
-                        set: { pageIndex = Int($0) }
-                    ),
-                    in: 0...Double(max(pages.count - 1, 1))
-                )
-                .tint(AppPalette.ember)
+                PageSlider(value: $pageIndex, count: pages.count)
                 Button(action: nextPage) {
                     Image(systemName: "chevron.right")
                         .frame(width: 32, height: 32)
@@ -352,34 +345,23 @@ struct ReaderView: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                ForEach(["serif", "sans", "mono"], id: \.self) { design in
-                    Button {
-                        fontDesign = design
-                    } label: {
-                        Text(design == "serif" ? "Mincho" : design == "sans" ? "Gothic" : "Mono")
-                            .font(.system(size: 15, design: design == "serif" ? .serif : design == "sans" ? .default : .monospaced))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(theme.background)
-                            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: Metrics.cardRadius)
-                                    .strokeBorder(fontDesign == design ? AppPalette.ember : .clear, lineWidth: 2))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            SegmentTabs(
+                titles: ["明朝", "ゴシック", "等幅"],
+                selection: Binding(
+                    get: { ["serif", "sans", "mono"].firstIndex(of: fontDesign) ?? 0 },
+                    set: { fontDesign = ["serif", "sans", "mono"][$0] }
+                )
+            )
 
-            Stepper(value: $fontSize, in: 14...28) {
-                LabeledContent("文字サイズ") { Text("\(Int(fontSize))") }
+            VStack(spacing: 0) {
+                StepperRow(label: "文字サイズ", value: $fontSize, range: 14...28)
+                RowDivider()
+                StepperRow(label: "行間", value: $lineSpacing, range: 0...16)
+                RowDivider()
+                StepperRow(label: "余白", value: $sideMargin, range: 20...56, step: 4)
             }
-            Stepper(value: $lineSpacing, in: 0...16) {
-                LabeledContent("行間") { Text("\(Int(lineSpacing))") }
-            }
-            Stepper(value: $sideMargin, in: 20...56, step: 4) {
-                LabeledContent("余白") { Text("\(Int(sideMargin))") }
-            }
+            .padding(Spacing.m)
+            .background(PaperBackground())
 
             Spacer()
         }
@@ -457,6 +439,7 @@ struct ReaderView: View {
 
     private func nextPage() {
         guard !pages.isEmpty else { return }
+        Haptics.tap()
         if pageIndex + 1 < pages.count {
             pageIndex += 1
         } else {
@@ -465,6 +448,8 @@ struct ReaderView: View {
     }
 
     private func previousPage() {
+        guard !pages.isEmpty else { return }
+        Haptics.tap()
         if pageIndex > 0 {
             pageIndex -= 1
         } else {
