@@ -19,6 +19,8 @@ struct NovelDetailView: View {
     @State private var statusText: String?
     @State private var errorText: String?
     @State private var showOptions = false
+    @State private var episodesLimit = 0
+    @State private var fromIndex = ""
 
     private struct ChapterGroup: Identifiable {
         let id: String
