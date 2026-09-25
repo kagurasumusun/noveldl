@@ -10,7 +10,6 @@ struct LibraryView: View {
     @State private var errorText: String?
     @State private var columns = [GridItem(.adaptive(minimum: 108), spacing: 16)]
 
-    private let progress = [\LibraryNovelItemBodyProgress]() // placeholder for type-checker
 
     var body: some View {
         NavigationStack {

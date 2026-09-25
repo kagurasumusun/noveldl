@@ -61,6 +61,10 @@ struct AccessSettings {
     std::vector<std::pair<std::string, std::string>> headers;
     std::optional<std::string> cookies;
     bool browser_fallback = false;
+    // 年齢ゲート(「18歳以上ですか？」等のクリック確認)を自動通過する。
+    bool confirm_over18 = false;
+    // ゲート内の「はい」リンク抽出正規表現(省略時日本語既定)。
+    std::string age_gate_link_regex;
     static AccessSettings from_preset(const Value& preset);
 };
 

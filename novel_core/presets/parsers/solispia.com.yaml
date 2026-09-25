@@ -40,5 +40,7 @@ novel_info_selectors:
   story: "meta[name='description']::attr(content)"
 
 append_title_to_folder_name: yes
-confirm_over18: no
+# R-18切替対応（レーティングクッキー）
+confirm_over18: yes
+over18_cookie: "over18=yes"
 version: 1.0

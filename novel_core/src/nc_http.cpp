@@ -1,6 +1,7 @@
 // nc_http.cpp — fetch pipeline over a pluggable transport.
 #include "nc_http.h"
 #include "nc_config.h"
+#include "nc_regex.h"
 
 #include <chrono>
 #include <cstdio>
@@ -174,6 +175,50 @@ HttpResponse transport_request(const std::string& url,
     return fn(url, headers, timeout);
 }
 
+bool looks_like_age_gate(const std::string& body) {
+    return contains_ci(body, "18\xe6\xad\xb3\xe4\xbb\xa5\xe4\xb8\x8a\xe3\x81\xa7\xe3\x81\x99\xe3\x81\x8b") ||   // 18歳以上ですか
+           contains_ci(body, "\xe5\xb9\xb4\xe9\xbd\xa2\xe7\xa2\xba\xe8\xaa\x8d") ||                                 // 年齢確認
+           contains_ci(body, "\xe9\x96\xb2\xe8\xa6\xa7\xe7\xa2\xba\xe8\xaa\x8d") ||                                 // 閲覧確認
+           contains_ci(body, "R18\xe9\x96\xb2\xe8\xa6\xa7\xe7\xa2\xba\xe8\xaa\x8d");                               // R18閲覧確認
+}
+
+// ゲートページ内の承認リンク(「はい」/Yes 等)を抽出する。
+std::optional<std::string> age_gate_link(const std::string& body,
+                                         const std::string& custom_regex) {
+    std::string pat = custom_regex.empty()
+                          ? "href=\"([^\"]+)\"[^>]*>[^<]*(?:\xe3\x81\xaf\xe3\x81\x84|Yes|Enter|18)"  // はい|Yes|Enter|18
+                          : custom_regex;
+    try {
+        Regex re(pat, true, true);  // dotall + icase
+        auto m = re.search(body);
+        if (!m) return std::nullopt;
+        auto g = m->get(1);
+        if (!g || g->empty()) return std::nullopt;
+        return *g;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::string cookie_header_from_set_cookies(const std::string& existing,
+                                           const std::string& set_cookies) {
+    std::string out = existing;
+    size_t pos = 0;
+    while (pos < set_cookies.size()) {
+        size_t nl = set_cookies.find('\n', pos);
+        std::string line = set_cookies.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
+        pos = nl == std::string::npos ? set_cookies.size() : nl + 1;
+        size_t eq = line.find('=');
+        size_t semi = line.find(';');
+        if (eq == std::string::npos) continue;
+        std::string nv = trim(line.substr(0, semi == std::string::npos ? line.size() : semi));
+        if (nv.empty()) continue;
+        if (!out.empty()) out += "; ";
+        out += nv;
+    }
+    return out;
+}
+
 std::string decode_body(std::string body, const std::string& /*content_type*/) {
     // Encoding: presets declare UTF-8 for all supported sites; Shift_JIS sites
     // can convert through their own preset-level hooks.  Keep as-is here.
@@ -297,12 +342,47 @@ std::string HttpClient::fetch(const std::string& url,
             // primary attempt
             std::string body;
             bool challenged = false;
+            bool age_gate_attempted = false;
             try {
                 HttpResponse resp =
                     transport_request(url, browser_headers(profiles[0], url, access, referer_url), 30);
                 if (resp.status == 429) throw FetchError(FetchErrorKind::RateLimited, "429");
                 if (resp.status == 503) throw FetchError(FetchErrorKind::Suspend, "503");
                 if (resp.status == 404) throw FetchError(FetchErrorKind::NotFound, "404");
+                // 年齢ゲート(「18歳以上ですか？」等)は confirm_over18 有効時に
+                // 「はい」リンクを一度だけ自動クリックして通過を試みる。
+                if (access && access->confirm_over18 && !age_gate_attempted &&
+                    looks_like_age_gate(resp.body)) {
+                    age_gate_attempted = true;
+                    if (auto gate = age_gate_link(resp.body, access->age_gate_link_regex)) {
+                        std::string gate_url = url_absolute(url, *gate);
+                        std::string extra;
+                        try {
+                            HttpResponse g = transport_request(
+                                gate_url,
+                                browser_headers(profiles[0], gate_url, access, url), 30);
+                            extra = cookie_header_from_set_cookies("", g.set_cookies);
+                        } catch (...) {
+                        }
+                        auto hdrs2 = browser_headers(profiles[0], url, access, referer_url);
+                        if (!extra.empty()) {
+                            bool merged = false;
+                            for (auto& kv : hdrs2) {
+                                if (lower(kv.first) == "cookie") {
+                                    kv.second += "; " + extra;
+                                    merged = true;
+                                }
+                            }
+                            if (!merged) hdrs2.emplace_back("Cookie", extra);
+                        }
+                        HttpResponse resp2 = transport_request(url, hdrs2, 30);
+                        if (resp2.status >= 200 && resp2.status < 300 &&
+                            !looks_like_age_gate(resp2.body))
+                            return decode_body(resp2.body, "");
+                    }
+                    throw FetchError(FetchErrorKind::Challenge,
+                                     "age confirmation gate (click-through failed)");
+                }
                 if (challenge_sample(resp.body, false))
                     throw FetchError(FetchErrorKind::Challenge, "challenge page");
                 if (resp.status >= 200 && resp.status < 300) {

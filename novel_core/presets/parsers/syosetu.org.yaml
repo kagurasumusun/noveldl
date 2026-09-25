@@ -18,7 +18,6 @@ access:
     sec-fetch-dest: document
     sec-fetch-user: "?1"
   cookies:
-    - over18=off
     - _ga=1
 
 # 専用 HamelnParser と同等に table tr を順走査して章見出し・改稿フラグを保持する。
@@ -87,7 +86,9 @@ novel_info_selectors:
   story: "div.hidden.content, div#maind div.ss:nth-of-type(2)"
 # ------------------------------------------------------------
 # 横断検索メタ情報
-confirm_over18: no
+# R-18作品: confirm_over18 で年齢クッキーを注入（一般作品には無害）
+confirm_over18: yes
+over18_cookie: "over18=on"
 append_title_to_folder_name: yes
 title_strip_pattern: null
 webnovels_site: hameln

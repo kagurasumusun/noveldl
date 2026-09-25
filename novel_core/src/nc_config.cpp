@@ -175,15 +175,19 @@ Value load_effective_preset(const std::string& domain) {
     }
     combined = resolve_extends(std::move(combined));
 
-    // 年齢制限サイト: confirm_over18 が真なら over18=yes を必ず送る
+    // 年齢制限サイト: confirm_over18 が真なら年齢クッキーを必ず送る。
+    // クッキー名と値は over18_cookie: "name=value" でサイトごとに差し替え可
+    // (省略時 "over18=yes" — なろうR-18/ハーメルン等の syosetu 系)。
     if (combined.get_bool("confirm_over18", false)) {
+        std::string over18 = combined.get_str("over18_cookie", "over18=yes");
+        std::string key = over18.substr(0, over18.find('=') + 1);
         Value cookies = Value::array();
         bool has = false;
         if (const Value* access = combined.get("access")) {
             if (const Value* c = access->get("cookies")) {
                 for (const Value& item : c->arr) {
-                    if (item.is_str() && item.as_str().find("over18=") != std::string::npos) {
-                        cookies.push(Value::string("over18=yes"));
+                    if (item.is_str() && item.as_str().compare(0, key.size(), key) == 0) {
+                        cookies.push(Value::string(over18));
                         has = true;
                     } else {
                         cookies.push(item);
@@ -191,7 +195,7 @@ Value load_effective_preset(const std::string& domain) {
                 }
             }
         }
-        if (!has) cookies.push(Value::string("over18=yes"));
+        if (!has) cookies.push(Value::string(over18));
         Value new_access = Value::map_();
         if (const Value* access = combined.get("access")) new_access = *access;
         new_access.set("cookies", std::move(cookies));

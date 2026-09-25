@@ -36,5 +36,7 @@ novel_info_selectors:
   story: "$.description"
 
 append_title_to_folder_name: yes
-confirm_over18: no
+# overFifteen 年齢制限作品対応
+confirm_over18: yes
+over18_cookie: "over_fifteen=yes"
 version: 1.0

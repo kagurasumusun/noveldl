@@ -129,8 +129,27 @@ novel_info_selectors:
   story: "meta[name='description']::attr(content)"
 
 append_title_to_folder_name: yes
-confirm_over18: no
+# R-18(大人向け)作品対応
+confirm_over18: yes
+over18_cookie: "over_fifteen=yes"
+# 年齢ゲート「はい」リンク抽出（既定の日本語パターンで可。必要なら上書き）
+age_gate_link_regex: "href=\"([^\"]+)\"[^>]*>[^<]*(?:はい|Yes|Enter|18)"
 version: 1.0
+)NC"},
+        {"parsers", "h.syosetu.org", R"NC(
+# ハーメルン R-18（h.syosetu.org サブドメイン）
+# 一般側(syosetu.org)と同じ目次構造を継承し、年齢ゲート自動通過だけを有効化。
+extends: syosetu.org
+name: ハーメルン(R-18)
+domain: h.syosetu.org
+top_url: https://h.syosetu.org
+sitename: ハーメルン(R-18)
+
+toc_url_pattern: "https://h.syosetu.org/novel/{ncode}/"
+
+# 「R18閲覧確認ページ」の「はい」リンク(?cookie_set=r18)を自動クリック
+confirm_over18: yes
+age_gate_link_regex: "href=\"([^\"]*cookie_set[^\"]*)\""
 )NC"},
         {"parsers", "kakuyomu.jp", R"NC(
 name: カクヨム
@@ -266,7 +285,9 @@ novel_info_selectors:
   story: "$.description"
 
 append_title_to_folder_name: yes
-confirm_over18: no
+# overFifteen 年齢制限作品対応
+confirm_over18: yes
+over18_cookie: "over_fifteen=yes"
 version: 1.0
 )NC"},
         {"parsers", "ncode.syosetu.com", R"NC(
@@ -499,6 +520,11 @@ novel_info_rules:
 # 横断検索メタ情報
 webnovels_site: novelup
 append_title_to_folder_name: yes
+# R-18作品対応（年齢確認クッキー。必要なら over18_cookie で差替）
+confirm_over18: yes
+over18_cookie: "r18=1"
+# 年齢ゲート「はい」リンク抽出（既定の日本語パターンで可。必要なら上書き）
+age_gate_link_regex: "href=\"([^\"]+)\"[^>]*>[^<]*(?:はい|Yes|Enter|18)"
 )NC"},
         {"parsers", "novema.jp", R"NC(
 extends: www.no-ichigo.jp
@@ -554,7 +580,9 @@ novel_info_selectors:
   story: "meta[name='description']::attr(content)"
 
 append_title_to_folder_name: yes
-confirm_over18: no
+# R-18切替対応（レーティングクッキー）
+confirm_over18: yes
+over18_cookie: "over18=yes"
 version: 1.0
 )NC"},
         {"parsers", "sutekibungei.com", R"NC(
@@ -616,7 +644,6 @@ access:
     sec-fetch-dest: document
     sec-fetch-user: "?1"
   cookies:
-    - over18=off
     - _ga=1
 
 # 専用 HamelnParser と同等に table tr を順走査して章見出し・改稿フラグを保持する。
@@ -685,7 +712,9 @@ novel_info_selectors:
   story: "div.hidden.content, div#maind div.ss:nth-of-type(2)"
 # ------------------------------------------------------------
 # 横断検索メタ情報
-confirm_over18: no
+# R-18作品: confirm_over18 で年齢クッキーを注入（一般作品には無害）
+confirm_over18: yes
+over18_cookie: "over18=on"
 append_title_to_folder_name: yes
 title_strip_pattern: null
 webnovels_site: hameln
@@ -800,7 +829,12 @@ novel_info_selectors:
   story: "div.p-content-info__abstract, div.abstract"
 
 append_title_to_folder_name: yes
-confirm_over18: no
+# R-18(大人向け)作品対応。クッキー名はサイト側の年齢確認クッキーに合わせて
+# over18_cookie: "name=value" で差し替え可能（C/C++変更不要）。
+confirm_over18: yes
+over18_cookie: "adult_check=1"
+# 年齢ゲート「はい」リンク抽出（既定の日本語パターンで可。必要なら上書き）
+age_gate_link_regex: "href=\"([^\"]+)\"[^>]*>[^<]*(?:はい|Yes|Enter|18)"
 version: 1.0
 )NC"},
         {"parsers", "www.aozora.gr.jp", R"NC(

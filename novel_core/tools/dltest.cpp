@@ -89,6 +89,7 @@ const SiteTest kSites[] = {
     {"narou-r18", "https://novel18.syosetu.com/n2451kn/", "小説になろう(R-18/年齢制限)"},
     {"kakuyomu", "https://kakuyomu.jp/works/822139846234329769", "カクヨム"},
     {"hameln", "https://syosetu.org/novel/261939/", "ハーメルン"},
+    {"hameln-r18", "https://h.syosetu.org/novel/261939/", "ハーメルン(R-18/年齢ゲート自動通過)"},
     {"novelup", "https://novelup.plus/story/805623797", "ノベルアップ＋"},
     {"akatsuki", "https://www.akatsuki-novels.com/stories/index/novel_id~10044", "暁"},
     {"no-ichigo", "https://www.no-ichigo.jp/book/n1179797", "野いちご"},

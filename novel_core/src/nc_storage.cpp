@@ -12,7 +12,9 @@
 #include <map>
 #include <mutex>
 #include <sqlite3.h>
+#if defined(NC_HAVE_ZSTD)
 #include <zstd.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -257,6 +259,7 @@ std::string domain_from_novel_id(const std::string& novel_id) {
 
 } // namespace
 
+#if defined(NC_HAVE_ZSTD)
 std::string compress_zstd_str(const std::string& s) {
     size_t bound = ZSTD_compressBound(s.size());
     std::string out(bound, '\0');
@@ -293,6 +296,14 @@ std::string decompress_zstd_dict(const std::string& blob, const std::string& dic
     out.resize(rc);
     return out;
 }
+#else
+// NC_HAVE_ZSTD 未定義ビルド (Nyxian 等): 生バイトで保存する。
+std::string compress_zstd_str(const std::string& s) { return s; }
+std::string decompress_zstd_str(const std::string& blob) { return blob; }
+std::string decompress_zstd_dict(const std::string& blob, const std::string& /*dictionary*/) {
+    return blob;
+}
+#endif
 
 std::string library_database_path(const std::string& output_dir) {
     fs::path p(output_dir);

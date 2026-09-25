@@ -1,4 +1,4 @@
-﻿test_replace
+test_replace
 whiteleaf
 
 ［＃改ページ］

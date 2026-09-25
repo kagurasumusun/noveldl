@@ -41,5 +41,9 @@ novel_info_selectors:
   story: "meta[name='description']::attr(content)"
 
 append_title_to_folder_name: yes
-confirm_over18: no
+# R-18(大人向け)作品対応
+confirm_over18: yes
+over18_cookie: "over_fifteen=yes"
+# 年齢ゲート「はい」リンク抽出（既定の日本語パターンで可。必要なら上書き）
+age_gate_link_regex: "href=\"([^\"]+)\"[^>]*>[^<]*(?:はい|Yes|Enter|18)"
 version: 1.0

@@ -1,0 +1,13 @@
+# ハーメルン R-18（h.syosetu.org サブドメイン）
+# 一般側(syosetu.org)と同じ目次構造を継承し、年齢ゲート自動通過だけを有効化。
+extends: syosetu.org
+name: ハーメルン(R-18)
+domain: h.syosetu.org
+top_url: https://h.syosetu.org
+sitename: ハーメルン(R-18)
+
+toc_url_pattern: "https://h.syosetu.org/novel/{ncode}/"
+
+# 「R18閲覧確認ページ」の「はい」リンク(?cookie_set=r18)を自動クリック
+confirm_over18: yes
+age_gate_link_regex: "href=\"([^\"]*cookie_set[^\"]*)\""

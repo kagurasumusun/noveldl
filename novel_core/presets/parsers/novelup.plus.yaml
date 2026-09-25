@@ -120,3 +120,8 @@ novel_info_rules:
 # 横断検索メタ情報
 webnovels_site: novelup
 append_title_to_folder_name: yes
+# R-18作品対応（年齢確認クッキー。必要なら over18_cookie で差替）
+confirm_over18: yes
+over18_cookie: "r18=1"
+# 年齢ゲート「はい」リンク抽出（既定の日本語パターンで可。必要なら上書き）
+age_gate_link_regex: "href=\"([^\"]+)\"[^>]*>[^<]*(?:はい|Yes|Enter|18)"

@@ -67,16 +67,19 @@ struct ReaderView: View {
 
                 VStack {
                     Spacer()
-                    HStack {
+                    HStack(spacing: 10) {
                         Text(pageLabel)
                             .font(AppFont.ui(10, design: .monospaced))
                             .foregroundStyle(theme.secondaryInk)
+                            .layoutPriority(1)
                         ReadingRibbon(value: progressRatio)
-                            .frame(width: 110)
+                            .frame(minWidth: 48, maxWidth: 130)
                         Text(chapterLabel)
                             .font(AppFont.ui(10))
                             .foregroundStyle(theme.secondaryInk)
+                            .lineLimit(1)
                     }
+                    .padding(.horizontal, 22)
                     .padding(.bottom, 18)
                     .opacity(showChrome ? 0.0 : 1.0)
                 }
@@ -89,6 +92,22 @@ struct ReaderView: View {
             .onTapGesture(count: 2) {
                 withAnimation(.easeOut(duration: 0.18)) { showChrome.toggle() }
             }
+            .simultaneousGesture(
+                SpatialTapGesture(count: 1)
+                    .onEnded { value in
+                        // Kindle page zones: left third = back, right third = next,
+                        // center = show/hide chrome. Phone-sized hit targets.
+                        let x = value.location.x
+                        let w = geo.size.width
+                        if x < w / 3 {
+                            previousPage()
+                        } else if x > w * 2 / 3 {
+                            nextPage()
+                        } else {
+                            withAnimation(.easeOut(duration: 0.18)) { showChrome.toggle() }
+                        }
+                    }
+            )
         }
         .statusBarHidden(!showChrome)
         .task(id: chapterIndex) { await loadChapter() }
@@ -134,9 +153,10 @@ struct ReaderView: View {
 
             Spacer()
 
-            HStack(spacing: 18) {
+            HStack(spacing: 12) {
                 Button(action: previousPage) {
                     Image(systemName: "chevron.left")
+                        .frame(width: 32, height: 32)
                 }
                 Slider(
                     value: Binding(
@@ -148,6 +168,7 @@ struct ReaderView: View {
                 .tint(AppPalette.ember)
                 Button(action: nextPage) {
                     Image(systemName: "chevron.right")
+                        .frame(width: 32, height: 32)
                 }
                 Button { showType = true } label: {
                     Text("Aa")
@@ -267,7 +288,7 @@ struct ReaderView: View {
             Spacer()
         }
         .padding(24)
-        .presentationDetents([.height(340)])
+        .presentationDetents([.height(430), .medium])
         .onChange(of: fontSize) { Task { await repaginate() } }
         .onChange(of: lineSpacing) { Task { await repaginate() } }
         .onChange(of: sideMargin) { Task { await repaginate() } }

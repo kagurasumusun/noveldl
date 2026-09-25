@@ -1019,6 +1019,9 @@ AccessSettings AccessSettings::from_preset(const Value& preset) {
         }
         if (!parts.empty()) out.cookies = join(parts, "; ");
     }
+    out.confirm_over18 = preset.get_bool("confirm_over18", false);
+    out.age_gate_link_regex =
+        preset.get_str("age_gate_link_regex", "");
     out.browser_fallback = access->get_bool("browser_fallback", false);
     if (const Value* fallback = access->get("fallback"))
         if (fallback->get_str("on_challenge") == "browser_fetch_command")

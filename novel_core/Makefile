@@ -2,7 +2,7 @@
 # All project includes are relative — no -I search paths for local headers.
 CXX ?= g++
 CC ?= gcc
-CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wno-unused-parameter -DNDEBUG
+CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wno-unused-parameter -DNDEBUG -DNC_HAVE_ZSTD
 CPPFLAGS += -DNOVEL_CORE_SCRIPT_DIR_DEFAULT='"$(CURDIR)"'
 LDLIBS += -lsqlite3 -lzstd -lcurl -lpthread
 

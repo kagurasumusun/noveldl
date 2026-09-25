@@ -85,6 +85,7 @@ void novel_core_set_http_transport(nc_http_transport_fn fn, void* userdata) {
             std::free(raw.final_url);
         }
         if (raw.set_cookies) {
+            resp.set_cookies = raw.set_cookies;
             // replay captured Set-Cookie lines into the per-domain cookie jar
             std::string host = url.substr(0, url.find('/'));
             size_t scheme = host.find("://");

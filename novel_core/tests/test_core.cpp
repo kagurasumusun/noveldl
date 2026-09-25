@@ -4,6 +4,7 @@
 #include "../src/nc_config.h"
 #include "../src/nc_download.h"
 #include "../src/nc_html.h"
+#include "../src/nc_http.h"
 #include "../src/nc_regex.h"
 #include "../src/nc_rules.h"
 #include "../src/nc_storage.h"
@@ -467,6 +468,62 @@ static void test_urls() {
     CHECK_EQ(url_path_query("https://a.example/x?y=1#z"), std::string("/x?y=1"));
 }
 
+
+// ── 年齢ゲート自動通過 (confirm_over18 + 「はい」リンク自動クリック) ──────────
+static void test_age_gate_flow() {
+    static int novel_hits = 0;
+    static bool gate_clicked = false;
+    static bool sent_r18_cookie = false;
+    novel_hits = 0;
+    gate_clicked = false;
+    sent_r18_cookie = false;
+
+    const std::string kGate =
+        "<html><head><title>R18\351\226\262\350\246\247\347\242\272\350\252\215\343\203\232\343\203\274\343\202\270</title></head><body>"
+        "<div>\343\201\202\343\201\252\343\201\237\343\201\25718\346\255\263\344\273\245\344\270\212\343\201\247\343\201\231\343\201\213\357\274\237</div>"
+        "<a href=\"https://example.test/?cookie_set=r18\">\343\201\257\343\201\204</a>"
+        "</body></html>";
+    const std::string kContent =
+        "<html><body><div class=\"honbun\">\346\234\254\346\226\207\343\203\206\343\202\271\343\203\210</div></body></html>";
+
+    set_transport([&](const std::string& url,
+                      const std::vector<std::pair<std::string, std::string>>& headers,
+                      int) -> HttpResponse {
+        HttpResponse r;
+        if (url.find("cookie_set") != std::string::npos) {
+            gate_clicked = true;
+            r.status = 200;
+            r.body = "ok";
+            r.set_cookies = "r18=ok; path=/";
+            return r;
+        }
+        ++novel_hits;
+        bool has = false;
+        for (auto& kv : headers)
+            if (kv.first == "Cookie" && kv.second.find("r18=ok") != std::string::npos) has = true;
+        if (has && gate_clicked) {
+            sent_r18_cookie = has;
+            r.status = 200;
+            r.body = kContent;
+        } else {
+            r.status = 200;
+            r.body = kGate;
+        }
+        return r;
+    });
+
+    AccessSettings access;
+    access.confirm_over18 = true;
+    HttpClient http;
+    std::string body =
+        http.fetch("https://example.test/novel/1/", access, std::nullopt);
+    CHECK(gate_clicked);          // 「はい」リンクが自動クリックされた
+    CHECK(sent_r18_cookie);       // ゲート応答のクッキーが再送された
+    CHECK(novel_hits >= 2);       // 再取得が走った
+    CHECK(body.find("\346\234\254\346\226\207") != std::string::npos);  // 本文が取れた
+    set_transport(nullptr);
+}
+
 int main() {
 #define RUN(f) do { std::printf("[run] %s\n", #f); std::fflush(stdout); f(); } while(0)
     RUN(test_yaml);
@@ -491,6 +548,7 @@ int main() {
     RUN(test_section_sort_key);
     RUN(test_urls);
 
+    test_age_gate_flow();
     std::printf("%d passed, %d failed\n", g_passed, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -14,6 +14,8 @@ struct HttpResponse {
     int status = 0;
     std::string body;
     std::string final_url;
+    // newline-separated "name=value; domain=...; path=/" (optional)
+    std::string set_cookies;
 };
 
 // transport: (url, headers, timeout) -> response.  Throw Error on network fail.
