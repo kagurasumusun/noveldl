@@ -1,0 +1,122 @@
+name: NovelUp+
+domain: novelup.plus
+encoding: UTF-8
+top_url: https://novelup.plus
+sitename: NovelUp+
+
+access_extends: common/access_browser_fallback
+
+access:
+  # Keep Nokogiri access identical to the domain NovelUp+ route.
+  profile: chrome_desktop
+  referer: "https://novelup.plus/"
+  headers:
+    sec-fetch-site: same-origin
+
+# 専用 NovelUpPlusParser と同等に story 一覧・Next.js JSON埋め込み・ページングを扱う。
+toc_url_pattern: "https://novelup.plus/story/{id}"
+toc_sources:
+  - source: selector
+    selector: "div.episodeList div.episodeListItem"
+    priority: 10
+    extract: "list"
+    chapter_row_class: "chapter"
+    description: "episodeListItemを順走査しchapter行を見出しとして保持"
+    item_selectors:
+      subtitle: "a.episodeTitle[href]"
+      href: "a.episodeTitle[href]::attr(href)"
+
+  - source: selector
+    selector: "a[href^='/story/'], a[href*='novelup.plus/story/']"
+    priority: 5
+    extract: "list"
+    href_pattern: "^/story/\\d+/\\d+$"
+    description: "フォールバック: storyアンカー直抽出"
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+
+  - source: json
+    selector: "script#__NEXT_DATA__"
+    href_pattern: "^/story/\\d+/\\d+$"
+    path_key: "path"
+    url_key: "url"
+    title_key: "title"
+    name_key: "name"
+    path_only: true
+    allowed_hosts:
+      - novelup.plus
+      - www.novelup.plus
+  - source: json
+    selector: "script[type='application/ld+json']"
+    href_pattern: "^/story/\\d+/\\d+$"
+    path_key: "path"
+    url_key: "url"
+    title_key: "title"
+    name_key: "name"
+    path_only: true
+    allowed_hosts:
+      - novelup.plus
+      - www.novelup.plus
+
+  - source: page
+    mode: all_links
+    selector: ".pager a[href*='?p='], .pager a[href*='?page='], .pagination a[href*='?p='], .pagination a[href*='?page='], a[href^='/story/'][href*='?p='], a[href^='/story/'][href*='?page=']"
+    href: ":self::attr(href)"
+    href_pattern: "^(?:/story/\\d+)?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)|^/story/\\d+\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)"
+    description: "NovelUp+: ページャ内の全目次ページリンクを列挙"
+  - source: page
+    mode: next_link
+    selector: "link[rel='next'], a[rel='next'], .pager a.next, a.c-pager__item--next, .pagination .next a[href], li.next a[href], a.next[href], a[aria-label='Next'][href], a[aria-label='次へ'][href]"
+    href: ":self::attr(href)"
+    href_pattern: "^(?:/story/\\d+)?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)|^/story/\\d+\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)"
+    description: "フォールバック: 次ページリンクを順次辿る"
+  - source: page
+    mode: next_link
+    selector: "a[href*='?p='], a[href*='?page=']"
+    href: ":self::attr(href)"
+    href_pattern: "^(?:/story/\\d+)?\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)|^/story/\\d+\\?(?:p=[2-9]\\d*|.*page=[2-9]\\d*)"
+    text_pattern: "(?i)^(次へ|next|>|＞)$"
+    description: "フォールバック: ラベル付きクエリリンク"
+
+body_selectors:
+  - selector: "p#episode_content"
+    priority: 10
+    extract: "inner_html"
+  - selector: "div#episode-content"
+    priority: 9
+    extract: "inner_html"
+  - selector: "div.episode-content"
+    priority: 8
+    extract: "inner_html"
+  - selector: "article"
+    priority: 7
+    extract: "inner_html"
+  - selector: "main article"
+    priority: 6
+    extract: "inner_html"
+
+introduction_selectors:
+  - selector: "div.novel_foreword"
+    priority: 10
+    extract: "inner_html"
+
+postscript_selectors:
+  - selector: "div.novel_afterword"
+    priority: 10
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "meta[property='og:title']::attr(content)"
+  author: "meta[name='author']::attr(content)"
+
+novel_info_rules:
+  source_selector: "meta[property='og:title']::attr(content)"
+  title_split_delimiter: "（"
+  author_from_source_regex: true
+  author_regex: "^(.+?)（(.+?)）"
+  author_capture_group: 2
+# ------------------------------------------------------------
+# 横断検索メタ情報
+webnovels_site: novelup
+append_title_to_folder_name: yes

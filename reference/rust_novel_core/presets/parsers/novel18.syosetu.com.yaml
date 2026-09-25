@@ -1,0 +1,23 @@
+extends: common/syosetu_2024
+name: 小説家になろう（18禁）
+domain: novel18.syosetu.com
+encoding: UTF-8
+top_url: https://novel18.syosetu.com
+sitename: 小説家になろう（18禁）
+access:
+  profile: safari_mobile
+  cookies:
+    - over18=yes
+
+# toc_sources は common/syosetu_2024 から継承し、サイト別YAMLで上書き可能。
+toc_url_pattern: "https://novel18.syosetu.com/{ncode}/"
+novel_info_url_pattern: "https://novel18.syosetu.com/novelview/infotop/ncode/{ncode}/"
+novel_info_selectors:
+  title: "h1.p-infotop-title a, title"
+  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername"
+  story: "dd.p-infotop-data__value"
+
+last_successful_selectors: {}
+# ------------------------------------------------------------
+# 横断検索メタ情報
+confirm_over18: yes
