@@ -39,6 +39,15 @@ struct ReaderView: View {
     @State private var lastHTML = ""
     @State private var readerBox = ScrollBox()
 
+    /// 目次/メニューは 1 つの sheet(item:) で出し分ける。
+    /// 同じビューに .sheet(isPresented:) を 2 つ付けると環境によって
+    /// 片方しか提示されない(目次メニューが出ない原因)。
+    private enum ReaderSheet: Int, Identifiable {
+        case toc, menu
+        var id: Int { rawValue }
+    }
+    @State private var sheet: ReaderSheet?
+
     private var theme: BookTheme { BookTheme(rawValue: themeRaw) ?? .paper }
     private var turn: PageTurn { PageTurn(rawValue: pageTurnRaw) ?? .curl }
     private var chapters: [ChapterMeta] { detail?.chapters ?? [] }
