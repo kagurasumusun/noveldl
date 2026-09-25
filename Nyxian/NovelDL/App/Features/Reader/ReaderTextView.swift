@@ -115,6 +115,7 @@ struct ReaderTextView: UIViewRepresentable {
     var sideMargin: CGFloat = 28
     var swipePaging: Bool = true
     var onCenterTap: () -> Void = {}
+    var onTurn: () -> Void = {}
     var onPrevPage: () -> Void = {}
     var onNextPage: () -> Void = {}
     var onReachStart: () -> Void = {}
@@ -162,6 +163,7 @@ struct ReaderTextView: UIViewRepresentable {
     func updateUIView(_ tv: UITextView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.onCenterTap = onCenterTap
+        context.coordinator.onTurn = onTurn
         context.coordinator.onPrevPage = onPrevPage
         context.coordinator.onNextPage = onNextPage
         context.coordinator.onReachStart = onReachStart
@@ -187,6 +189,7 @@ struct ReaderTextView: UIViewRepresentable {
         var swipeEnabled = true
         var applied = NSAttributedString()
         var onCenterTap: () -> Void = {}
+        var onTurn: () -> Void = {}
         var onPrevPage: () -> Void = {}
         var onNextPage: () -> Void = {}
         var onReachStart: () -> Void = {}
@@ -195,6 +198,7 @@ struct ReaderTextView: UIViewRepresentable {
         init(parent: ReaderTextView) {
             self.parent = parent
             self.onCenterTap = parent.onCenterTap
+            self.onTurn = parent.onTurn
             self.onPrevPage = parent.onPrevPage
             self.onNextPage = parent.onNextPage
             self.onReachStart = parent.onReachStart
@@ -203,6 +207,7 @@ struct ReaderTextView: UIViewRepresentable {
 
         @objc func swipedNext() {
             guard swipeEnabled else { return }
+            onTurn()
             if !(box?.pageDown() ?? false) {
                 onReachEnd()  // 最後のページから次へ = 次の話へ
             }
@@ -210,6 +215,7 @@ struct ReaderTextView: UIViewRepresentable {
 
         @objc func swipedPrev() {
             guard swipeEnabled else { return }
+            onTurn()
             if !(box?.pageUp() ?? false) {
                 onReachStart()  // 最初のページから前へ = 前の話へ
             }
@@ -220,8 +226,10 @@ struct ReaderTextView: UIViewRepresentable {
             let p = gesture.location(in: tv)
             let w = tv.bounds.width
             if p.x < w * 0.28 {
+                onTurn()
                 if !(box?.pageUp() ?? false) { onReachStart() }
             } else if p.x > w * 0.72 {
+                onTurn()
                 if !(box?.pageDown() ?? false) { onReachEnd() }
             } else {
                 onCenterTap()

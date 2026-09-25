@@ -228,11 +228,6 @@ std::string safe_path_component(const std::string& input) {
     return out.empty() ? "novel-empty" : out;
 }
 
-std::string novel_shard_dir(const std::string& root_dir, const std::string& domain,
-                            const std::string& novel_id) {
-    return root_dir + "/" + kNovelsDirName + "/" + safe_path_component(domain) + "/" +
-           safe_path_component(novel_id);
-}
 
 size_t shard_number(const std::string& chapter_index) {
     std::string digits;
@@ -258,6 +253,12 @@ std::string domain_from_novel_id(const std::string& novel_id) {
 }
 
 } // namespace
+
+std::string novel_shard_dir(const std::string& root_dir, const std::string& domain,
+                            const std::string& novel_id) {
+    return root_dir + "/" + kNovelsDirName + "/" + safe_path_component(domain) + "/" +
+           safe_path_component(novel_id);
+}
 
 #if defined(NC_HAVE_ZSTD)
 std::string compress_zstd_str(const std::string& s) {

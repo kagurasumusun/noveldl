@@ -43,6 +43,8 @@ public:
 
     ParsedToc parse_toc(const std::string& html) const;
     std::vector<std::string> parse_toc_page_hrefs(const std::string& html) const;
+    /// 本文中の画像 URL を抽出する(既定は <img src=...> / image_pattern で上書き可)。
+    std::vector<std::string> parse_image_srcs(const std::string& html) const;
     ParsedSection parse_section(const std::string& html) const;
 
     const Value& preset() const { return preset_; }

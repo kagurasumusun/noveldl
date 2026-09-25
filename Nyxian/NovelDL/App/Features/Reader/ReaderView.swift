@@ -68,6 +68,12 @@ struct ReaderView: View {
                 onCenterTap: {
                     withAnimation(.easeInOut(duration: 0.22)) { chromeVisible.toggle() }
                 },
+                onTurn: {
+                    // スワイプ/めくりで自動的に隠れる
+                    if chromeVisible {
+                        withAnimation(.easeInOut(duration: 0.25)) { chromeVisible = false }
+                    }
+                },
                 onPrevPage: {},
                 onNextPage: {},
                 onReachStart: {
@@ -109,8 +115,13 @@ struct ReaderView: View {
             }
         }
         .statusBarHidden(!chromeVisible)
-        .persistentSystemOverlays(.hidden, when: .hidden)
-        .task(id: chapterIndex) { await load() }
+        .persistentSystemOverlays(chromeVisible ? .automatic : .hidden)
+        .task(id: chapterIndex) {
+            await load()
+            withAnimation(.easeOut(duration: 0.3)) { chromeVisible = true }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            withAnimation(.easeInOut(duration: 0.4)) { chromeVisible = false }
+        }
         .sheet(isPresented: $showToc) { tocSheet }
         .sheet(isPresented: $showMenu) { menuSheet }
         .onAppear {
@@ -118,7 +129,7 @@ struct ReaderView: View {
                 hintVisible = true
                 UserDefaults.standard.set(true, forKey: "readerHintShown")
                 Task {
-                    try? await Task.sleep(nanoseconds: 4_500_000_000)
+                    try? await Task.sleep(nanoseconds: 3_500_000_000)
                     withAnimation(.easeOut(duration: 0.4)) { hintVisible = false }
                 }
             }
@@ -202,6 +213,10 @@ struct ReaderView: View {
         Button {
             act()
             Haptics.tap()
+            // ボタン操作でもバーは自動で引っ込む
+            if chromeVisible {
+                withAnimation(.easeInOut(duration: 0.25)) { chromeVisible = false }
+            }
         } label: {
             VStack(spacing: 1) {
                 Image(systemName: system)
@@ -437,7 +452,7 @@ struct ReaderView: View {
     }
 
     private func share() {
-        let urlText = (detail?.novel.sourceUrl).map { "\($0) (\(title) \(chapterLabel))" } ?? title
+        let urlText = (detail?.novel.tocUrl).map { "\($0) (\(title) \(chapterLabel))" } ?? title
         let av = UIActivityViewController(activityItems: [urlText], applicationActivities: nil)
         if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let root = scene.keyWindow?.rootViewController {
@@ -491,12 +506,12 @@ struct ReaderView: View {
         }
         loadBookmark()
         do {
-            let section = try await core.section(novelId: novelId, index: chapterIndex)
+            let sec = try await core.section(novelId: novelId, index: chapterIndex)
             let meta = chapters.first { $0.index == chapterIndex }
             chapterTitle = meta?.subtitle ?? ""
             chapterLabel = "\(pos + 1)/\(total)話"
             chapterProgress = Double(pos + 1) / Double(total)
-            let html = section.body.isEmpty ? "本文はまだ取得されていません。作品詳細から取得してください。" : section.body
+            let html = sec.bodyXhtml.isEmpty ? "本文はまだ取得されていません。作品詳細から取得してください。" : sec.bodyXhtml
             lastHTML = html
             let result = markup.parse(html, style: currentStyle())
             attributed = result.text
@@ -510,7 +525,7 @@ struct ReaderView: View {
     /// 挿絵を非同期に実画像へ差し替える(読書の応答性を落とさない)。
     private func loadImages(_ refs: [ImageRef]) async {
         let width = UIScreen.main.bounds.width - max(margin, 12) * 2
-        let base = URL(string: detail?.novel.sourceUrl ?? "")
+        let base = URL(string: detail?.novel.tocUrl ?? "")
         for ref in refs {
             guard let url = ReaderImageStore.resolve(ref.src, base: base) else { continue }
             if let img = await ReaderImageStore.shared.load(url) {
@@ -531,8 +546,13 @@ enum ReaderImageStore {
 
         func load(_ url: URL) async -> UIImage? {
             if let hit = cache.object(forKey: url as NSURL) { return hit }
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let img = UIImage(data: data) else { return nil }
+            var img: UIImage?
+            if url.isFileURL {
+                img = UIImage(contentsOfFile: url.path)
+            } else if let (data, _) = try? await URLSession.shared.data(from: url) {
+                img = UIImage(data: data)
+            }
+            guard let img else { return nil }
             let scaled = downscale(img, maxW: 1200)
             cache.setObject(scaled, forKey: url as NSURL)
             return scaled
@@ -540,6 +560,8 @@ enum ReaderImageStore {
     }
 
     static func resolve(_ src: String, base: URL?) -> URL? {
+        if src.hasPrefix("file://") { return URL(string: src) }
+        if src.hasPrefix("/") { return URL(fileURLWithPath: src) }
         if src.hasPrefix("http://") || src.hasPrefix("https://") { return URL(string: src) }
         guard let base else { return nil }
         return URL(string: src, relativeTo: base)?.absoluteURL

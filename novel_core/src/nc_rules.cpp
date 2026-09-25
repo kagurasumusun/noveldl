@@ -942,6 +942,22 @@ std::vector<std::string> generic_next_page_hrefs(const std::string& html) {
 }
 }  // namespace
 
+std::vector<std::string> RulesParser::parse_image_srcs(const std::string& html) const {
+    std::string custom = preset_.is_map() ? preset_.get_str("image_pattern", "") : "";
+    std::string pattern = custom.empty()
+                              ? std::string(R"(<img\b[^>]*\bsrc\s*=\s*[\"']([^\"']+)[\"'])")
+                              : custom;
+    Regex re(pattern, false, true);
+    std::vector<std::string> out;
+    std::set<std::string> seen;
+    for (auto& m : re.find_all(html)) {
+        std::string src = m.get_or(1, "");
+        if (src.empty() || src.rfind("data:", 0) == 0) continue;
+        if (seen.insert(src).second) out.push_back(src);
+    }
+    return out;
+}
+
 std::vector<std::string> RulesParser::parse_toc_page_hrefs(const std::string& html) const {
     Engine e{compile_rules(preset_)};
     auto hrefs = e.parse_toc_page_hrefs(html);

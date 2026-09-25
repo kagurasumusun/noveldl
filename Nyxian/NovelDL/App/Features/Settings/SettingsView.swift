@@ -78,10 +78,10 @@ struct SettingsView: View {
             ) { result in
                 Task { await importYAML(from: result) }
             }
-            .onChange(of: showNewPreset) { shown in
+            .onChange(of: showNewPreset) { _, shown in
                 if !shown { Task { await refresh() } }
             }
-            .onChange(of: importedDraft) { draft in
+            .onChange(of: importedDraft) { _, draft in
                 if draft == nil { Task { await refresh() } }
             }
             .task { await refresh() }

@@ -483,6 +483,21 @@ static void test_toc_next_page_detection() {
     CHECK(hrefs3.empty());
 }
 
+static void test_image_srcs() {
+    // 既定: <img src=...> を抽出(data: は除外)。
+    RulesParser empty(Value::map_());
+    auto srcs = empty.parse_image_srcs(
+        "<p>あ</p><img src=\"/a/b.png\" alt><img data:x src='https://e/f.jpg'>"
+        "<img src=\"data:image/png;base64,xx\">");
+    CHECK(srcs.size() == 2 && srcs[0] == "/a/b.png" && srcs[1] == "https://e/f.jpg");
+
+    // image_pattern で抽出ルールを上書きできる(サイトごとの対応)。
+    Value preset = preset_of("image_pattern: \"cdn[.]example/([a-z0-9]+[.]png)\"");
+    RulesParser custom(preset);
+    auto srcs2 = custom.parse_image_srcs("<img src=\"cdn.example/abc123.png\">");
+    CHECK(srcs2.size() == 1 && srcs2[0] == "abc123.png");
+}
+
 static void test_urls() {
     CHECK_EQ(url_absolute("https://a.example/works/1", "/e/2"), std::string("https://a.example/e/2"));
     CHECK_EQ(url_absolute("https://a.example/works/1", "2.html"),
@@ -555,6 +570,7 @@ int main() {
     RUN(test_json);
     RUN(test_regex);
     RUN(test_html_select);
+    RUN(test_image_srcs);
     RUN(test_toc_next_page_detection);
     RUN(test_rules_injection);
     RUN(test_rules_page_range);

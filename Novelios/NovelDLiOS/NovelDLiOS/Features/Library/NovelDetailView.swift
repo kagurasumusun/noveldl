@@ -73,8 +73,10 @@ struct NovelDetailView: View {
                 image: core.covers[item.novelId]
             )
 
+            // 詳細の表示項目:サイト名・話数・最終更新の3点を常に(タイトル/著者は表紙に)
             HStack(spacing: Spacing.s) {
-                InfoChip(text: item.domain)
+                InfoChip(text: SiteCatalog.name(for: item.domain))
+                InfoChip(text: "全\(total)話")
                 if let updated = item.updatedAt, !updated.isEmpty {
                     InfoChip(text: "更新 \(shortDate(updated))")
                 }
@@ -266,9 +268,9 @@ struct NovelDetailView: View {
 
             VStack(spacing: 0) {
                 let visible = Array(flatChapters.prefix(chapterLimit))
-                ForEach(Array(visible.enumerated()), id: \.element.index) { pair in
-                    let ch = pair.element
-                    if pair.offset == 0 || visible[pair.offset - 1].chapter != ch.chapter {
+                ForEach(visible.indices, id: \.self) { i in
+                    let ch = visible[i]
+                    if i == 0 || visible[i - 1].chapter != ch.chapter {
                         if let group = ch.chapter, !group.isEmpty {
                             Text(group)
                                 .font(AppFont.ui(12, weight: .semibold))

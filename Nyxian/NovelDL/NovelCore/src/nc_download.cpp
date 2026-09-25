@@ -179,6 +179,71 @@ struct TocResult {
     std::string author;
 };
 
+namespace {
+std::string image_ext_for(const std::string& url) {
+    std::string path = url;
+    auto q = path.find_first_of("?#");
+    if (q != std::string::npos) path = path.substr(0, q);
+    auto dot = path.rfind('.');
+    if (dot != std::string::npos) {
+        std::string ext = path.substr(dot + 1);
+        for (auto& c : ext) c = (char)::tolower((unsigned char)c);
+        if (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "webp")
+            return ext == "jpeg" ? "jpg" : ext;
+    }
+    return "jpg";
+}
+
+void rewrite_src(std::string& fragment, const std::string& src, const std::string& local) {
+    for (char q : {'"', '\''}) {
+        std::string old_s = std::string(1, q) + src + std::string(1, q);
+        std::string new_s = std::string(1, q) + local + std::string(1, q);
+        size_t pos = 0;
+        while ((pos = fragment.find(old_s, pos)) != std::string::npos) {
+            fragment.replace(pos, old_s.size(), new_s);
+            pos += new_s.size();
+        }
+    }
+}
+
+/// 本文フラグメント内の画像を取得してローカル保存し、src を保存先パスに書き換える。
+void fetch_section_images(HttpClient& http, const AccessSettings& access,
+                          const RulesParser& parser, const std::string& join_base,
+                          const std::string& img_dir, const std::string& chapter_index,
+                          std::vector<std::string*>& fragments) {
+    std::vector<std::string> srcs;
+    for (auto* frag : fragments) {
+        if (!frag || frag->empty()) continue;
+        for (auto& src : parser.parse_image_srcs(*frag)) srcs.push_back(src);
+    }
+    if (srcs.empty()) return;
+    std::error_code ec;
+    fs::create_directories(img_dir, ec);
+    size_t n = 0;
+    for (auto& src : srcs) {
+        if (++n > 30) break;  // 1 話ぶんの上限
+        try {
+            std::string abs = url_absolute(join_base, src);
+            std::string data = http.fetch(abs, access, join_base);
+            char name[64];
+            std::snprintf(name, sizeof name, "%s_%02zu.%s", chapter_index.c_str(), n,
+                          image_ext_for(src).c_str());
+            std::string local = img_dir + "/" + name;
+            {
+                std::ofstream f(local, std::ios::binary);
+                if (!f) continue;
+                f.write(data.data(), (std::streamsize)data.size());
+            }
+            for (auto* frag : fragments) {
+                if (frag) rewrite_src(*frag, src, local);
+            }
+        } catch (const std::exception&) {
+            // 画像の失敗で本文取得は失敗させない
+        }
+    }
+}
+}  // namespace
+
 TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const std::string& domain,
                           const Value& preset, const std::string& initial_html,
                           const std::function<void(const TocResult&)>& on_page) {
@@ -507,6 +572,25 @@ Value op_download(const DownloadOptions& opts) {
                          "解析失敗: " + ch.subtitle, true);
             continue;
         }
+        // 挿絵・画像は取得時にローカル保存(小説追加=全話取得に伴って揃う)。
+        {
+            std::string join_base = opts.url;
+            {
+                std::string path = url_path(join_base);
+                auto sl = path.rfind('/');
+                std::string last = sl == std::string::npos ? path : path.substr(sl + 1);
+                if (!join_base.empty() && join_base.back() != '/' &&
+                    !last.empty() && last.find('.') == std::string::npos)
+                    join_base += '/';
+            }
+            std::vector<std::string*> frags = {&sec.body};
+            if (sec.introduction) frags.push_back(&*sec.introduction);
+            if (sec.postscript) frags.push_back(&*sec.postscript);
+            fetch_section_images(http, access, parser, join_base,
+                                 novel_shard_dir(opts.output_dir, domain, novel_id) + "/img",
+                                 ch.index, frags);
+        }
+
         SectionUpsert up;
         up.novel_id = novel_id;
         up.chapter_index = ch.index;

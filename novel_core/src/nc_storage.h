@@ -52,6 +52,8 @@ struct SectionUpsert {
 };
 
 std::string library_database_path(const std::string& output_dir);
+std::string novel_shard_dir(const std::string& root_dir, const std::string& domain,
+                            const std::string& novel_id);
 std::string novel_id_from_toc_url(const std::string& toc_url);
 double section_sort_key(const std::string& chapter_index);
 std::string compress_zstd_str(const std::string& s);

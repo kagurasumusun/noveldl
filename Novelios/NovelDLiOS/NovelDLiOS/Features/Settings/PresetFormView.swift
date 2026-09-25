@@ -187,7 +187,7 @@ struct PresetFormView: View {
                 titles: ["全年齢", "R-18あり", "R-18専"],
                 selection: $r18Mode
             )
-            .onChange(of: r18Mode) { mode in
+            .onChange(of: r18Mode) { _, mode in
                 fields["confirm_over18"] = mode == 0 ? "false" : "true"
             }
         }
