@@ -485,8 +485,8 @@ struct ReaderView: View {
                     if autoPlaying {
                         RowDivider()
                         StepperRow(label: "めくる間隔",
-                                   value: Binding(get: { Int(autoSeconds) },
-                                                  set: { autoSeconds = Double($0) }),
+                                   value: Binding(get: { autoSeconds },
+                                                  set: { autoSeconds = $0 }),
                                    range: 3...30, step: 1, suffix: "秒")
                     }
                 }
