@@ -24,10 +24,19 @@ enum PresetYAML {
             "# フォームで入力した内容がこの YAML として保存されます。",
             "",
         ]
-        for key in order {
-            guard let value = fields[key], !value.isEmpty else { continue }
+        func append(_ key: String) {
+            guard let value = fields[key], !value.isEmpty else { return }
             let needsQuote = value.contains(": ") || value.hasPrefix(" ")
             lines.append(needsQuote ? "\(key): \"\(value)\"" : "\(key): \(value)")
+        }
+        var seen = Set<String>()
+        for key in order {
+            seen.insert(key)
+            append(key)
+        }
+        // インポート由来の未知キーも失わないよう残す。
+        for key in fields.keys.sorted() where !seen.contains(key) {
+            append(key)
         }
         return lines.joined(separator: "\n") + "\n"
     }
@@ -57,6 +66,8 @@ struct PresetFormView: View {
     @Environment(\.dismiss) private var dismiss
 
     let domain: String?
+    /// インポートした YAML(あればこれを下書きとして開く)。
+    var importedYAML: String? = nil
 
     @State private var fields: [String: String] = [:]
     @State private var showRaw = false
@@ -232,7 +243,11 @@ struct PresetFormView: View {
     }
 
     private func load() async {
-        if let domain, let yaml = try? await core.loadPreset(domain: domain) {
+        if let imported = importedYAML {
+            fields = PresetYAML.parse(imported)
+            rawText = imported
+            message = "読み込みました。内容を確認して保存してください"
+        } else if let domain, let yaml = try? await core.loadPreset(domain: domain) {
             fields = PresetYAML.parse(yaml)
             rawText = yaml
         } else {

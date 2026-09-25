@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 設定 — 取得の間隔・対応サイト(分類表示)・情報。
 /// サイトの追加/編集はフォーム式の YAML エディタ(項目を埋めるだけ)。
@@ -10,6 +11,8 @@ struct SettingsView: View {
     @State private var over18: Set<String> = []
     @State private var editTarget: String?
     @State private var showNewPreset = false
+    @State private var showImporter = false
+    @State private var importedDraft: String?
 
     var body: some View {
         NavigationStack {
@@ -58,21 +61,56 @@ struct SettingsView: View {
             .sheet(isPresented: $showNewPreset) {
                 PresetFormView(domain: nil)
             }
-            .task {
-                guard presets.isEmpty else { return }
-                presets = (try? await core.listPresets()) ?? []
-                var marks: Set<String> = []
-                for domain in presets {
-                    if let yaml = try? await core.loadPreset(domain: domain) {
-                        let fields = PresetYAML.parse(yaml)
-                        if SiteCatalog.r18Kind(domain: domain, presetOver18: fields["confirm_over18"] == "true") > 0 {
-                            marks.insert(domain)
-                        }
-                    }
+            .sheet(isPresented: Binding(
+                get: { importedDraft != nil },
+                set: { if !$0 { importedDraft = nil } }
+            )) {
+                PresetFormView(domain: nil, importedYAML: importedDraft)
+            }
+            .fileImporter(
+                isPresented: $showImporter,
+                allowedContentTypes: [
+                    UTType(filenameExtension: "yml") ?? .plainText,
+                    UTType(filenameExtension: "yaml") ?? .plainText,
+                    .plainText,
+                ],
+                allowsMultipleSelection: false
+            ) { result in
+                Task { await importYAML(from: result) }
+            }
+            .onChange(of: showNewPreset) { shown in
+                if !shown { Task { await refresh() } }
+            }
+            .onChange(of: importedDraft) { draft in
+                if draft == nil { Task { await refresh() } }
+            }
+            .task { await refresh() }
+        }
+    }
+
+    private func refresh() async {
+        presets = (try? await core.listPresets()) ?? []
+        var marks: Set<String> = []
+        for domain in presets {
+            if let yaml = try? await core.loadPreset(domain: domain) {
+                let fields = PresetYAML.parse(yaml)
+                if SiteCatalog.r18Kind(domain: domain, presetOver18: fields["confirm_over18"] == "true") > 0 {
+                    marks.insert(domain)
                 }
-                over18 = marks
             }
         }
+        over18 = marks
+    }
+
+    /// ファイルから YAML を読み込み、編集フォームを開く。
+    private func importYAML(from result: Result<[URL], Error>) async {
+        guard case .success(let urls) = result, let url = urls.first else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let text = try? String(contentsOf: url, encoding: .utf8), !text.isEmpty else {
+            return
+        }
+        importedDraft = text
     }
 
     // MARK: 対応サイト(分類)
@@ -84,14 +122,24 @@ struct SettingsView: View {
                     .font(AppFont.serif(17, weight: .semibold))
                     .foregroundStyle(AppPalette.ink)
                 Spacer()
-                Button {
-                    showNewPreset = true
-                } label: {
-                    Label("追加", systemImage: "plus")
-                        .font(AppFont.ui(13, weight: .semibold))
-                        .foregroundStyle(AppPalette.ember)
+                HStack(spacing: Spacing.l) {
+                    Button {
+                        showImporter = true
+                    } label: {
+                        Label("YML読込", systemImage: "square.and.arrow.down")
+                            .font(AppFont.ui(13, weight: .semibold))
+                            .foregroundStyle(AppPalette.ember)
+                    }
+                    .buttonStyle(PressableButtonStyle(haptic: false))
+                    Button {
+                        showNewPreset = true
+                    } label: {
+                        Label("追加", systemImage: "plus")
+                            .font(AppFont.ui(13, weight: .semibold))
+                            .foregroundStyle(AppPalette.ember)
+                    }
+                    .buttonStyle(PressableButtonStyle(haptic: false))
                 }
-                .buttonStyle(PressableButtonStyle(haptic: false))
             }
             .padding(.horizontal, Spacing.l)
             .padding(.top, Spacing.l)
