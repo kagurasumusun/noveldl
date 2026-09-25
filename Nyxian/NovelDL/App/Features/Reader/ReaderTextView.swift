@@ -119,7 +119,7 @@ final class ScrollBox {
             if let f0 = text.attribute(.font, at: 0, effectiveRange: nil) as? UIFont {
                 keyParts.append(String(Int(f0.pointSize * 10)))
                 // 書体(明朝/ゴシック)の変更はサイズだけでは検知できない
-                keyParts.append(f0.familyName ?? f0.fontName)
+                keyParts.append(f0.familyName)
             }
             if let fm = text.attribute(.font, at: mid, effectiveRange: nil) as? UIFont {
                 keyParts.append(String(Int(fm.pointSize * 10)))

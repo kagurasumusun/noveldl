@@ -76,7 +76,7 @@ final class ReaderMarkup: @unchecked Sendable {
         para.lineSpacing = 2
         para.paragraphSpacing = style.lineSpacing + 18
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: Self.jpSerif(min(style.fontSize + 2, 26)),
+            .font: Style.jpSerif(min(style.fontSize + 2, 26)),
             .foregroundColor: style.ink.withAlphaComponent(0.62),
             .paragraphStyle: para,
         ]
@@ -89,7 +89,7 @@ final class ReaderMarkup: @unchecked Sendable {
         para.alignment = .center
         para.paragraphSpacing = style.lineSpacing + 6
         return NSAttributedString(string: "\n※\n", attributes: [
-            .font: Self.jpSerif(max(style.fontSize - 4, 12)),
+            .font: Style.jpSerif(max(style.fontSize - 4, 12)),
             .foregroundColor: style.ink.withAlphaComponent(0.45),
             .paragraphStyle: para,
         ])
