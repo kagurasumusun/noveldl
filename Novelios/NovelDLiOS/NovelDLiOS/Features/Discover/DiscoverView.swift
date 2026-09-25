@@ -326,7 +326,7 @@ struct DiscoverView: View {
         .buttonStyle(PressableButtonStyle(haptic: true))
     }
 
-    /// 追加 = 目次取得 → 自動で全話ダウンロード。
+    /// 追加 = 目次の取り込みのみ。本文の取得は読み始めたとき(リーダー)に行う。
     private func add(_ hit: SearchResultItem) async {
         // 並走ガード(別ジョブの中止状態/進捗を壊さない)。
         guard !core.progress.running else {
@@ -344,18 +344,8 @@ struct DiscoverView: View {
                 .path
             let toc = try await core.fetchToc(url: hit.url, outputDir: dir)
             await core.reloadLibrary()
-            let outputDir = core.library.first(where: { $0.novelId == toc.novelId })?.outputDir ?? dir
-            _ = try await core.download(
-                CoreClient.DownloadOptions(
-                    url: hit.url,
-                    outputDir: outputDir,
-                    episodes: 0,
-                    fromIndex: "",
-                    mode: "bulk"
-                )
-            )
             Haptics.success()
-            await core.reloadLibrary()
+            errorText = "「\(toc.title)」を本棚に追加しました(目次のみ)。\n読み始めると続きを自動で取得します。"
         } catch {
             errorText = error.localizedDescription
         }

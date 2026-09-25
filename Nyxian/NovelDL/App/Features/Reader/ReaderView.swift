@@ -154,6 +154,8 @@ struct ReaderView: View {
             await load()
             // 話移動の直後に一度だけ表示。消しタイマーは持たない(手動出没のみ)。
             withAnimation(.easeOut(duration: 0.3)) { chromeVisible = true }
+            // この作品の残りを背景で取得する(リーダーが開いている間だけ)。
+            await startNovelDownload()
         }
         .sheet(item: $sheet) { target in
             switch target {
@@ -181,6 +183,9 @@ struct ReaderView: View {
         .onDisappear {
             // 離脱時に自動ロックを戻す(つけっぱなしを避ける)。
             UIApplication.shared.isIdleTimerDisabled = false
+            // 取得はリーダーが開いている間だけ行う(閉じたら中止)。
+            // 再開は次に読んだとき(取得済み話はスキップされる)。
+            core.cancel()
         }
     }
 
@@ -631,6 +636,27 @@ struct ReaderView: View {
         attributed = combined
         imageRefs = refs
         Task { await loadImages(refs) }
+    }
+
+    /// この小説の未取得の話を背景で取得する。
+    /// 「リーダーが開いているときだけ取得する」モデル。既に取得済みの話は
+    /// コア側で全てスキップされるため、続き・改稿だけが実際に通信する。
+    /// 閉じたときは core.cancel() で止まり、続きは次回の読書で再開する。
+    private func startNovelDownload() async {
+        guard !tocUrl.isEmpty,
+              let rawDir = detail?.novel.outputDir, !rawDir.isEmpty else { return }
+        guard !core.progress.running else { return }  // 単話取得などが走っていれば委ねる
+        // 今読んでいる話の続きから順に(先頭からだと読書位置に届くまで待つ)。
+        _ = try? await core.download(
+            CoreClient.DownloadOptions(
+                url: tocUrl,
+                outputDir: CoreClient.effectiveOutputDir(rawDir),
+                episodes: 0,
+                fromIndex: chapterIndex,
+                mode: "bulk"
+            )
+        )
+        await core.reloadLibrary()
     }
 
     private func load() async {

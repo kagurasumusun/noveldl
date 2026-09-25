@@ -80,17 +80,11 @@ struct LibraryView: View {
                 Spacer()
                 HStack(spacing: Spacing.s) {
                     CircleIconButton(system: "arrow.clockwise") {
-                        // 取得中に重ねて走らせると、コアの中止状態や進捗が
-                        // 上書きされ、SQLite の書き込みも競合する。
-                        guard !core.progress.running else {
-                            errorText = "取得が進行中です。完了後に更新してください。"
-                            return
-                        }
+                        // 取得はリーダー開始時に行うモデル。更新確認は
+                        // 目次・話数・更新日の取り直しのみ(速い)。
                         Task {
                             refreshing = true
                             _ = try? await core.refreshLibrary()
-                            // 目次で増えた話はここで自動取得する(既存話はスキップで高速)。
-                            await core.downloadNewEpisodes()
                             await core.reloadLibrary()
                             refreshing = false
                         }
@@ -241,21 +235,10 @@ struct LibraryView: View {
                 .path
             let fetched = try await core.fetchToc(url: trimmed, outputDir: dir)
             await core.reloadLibrary()
-            activeStatus = "全話を取得中…"
-            let out = try await core.download(CoreClient.DownloadOptions(
-                url: trimmed,
-                outputDir: dir,
-                episodes: 0,
-                fromIndex: "",
-                mode: "bulk"
-            ))
             activeStatus = nil
             showAddSheet = false
             importUrl = ""
-            await core.reloadLibrary()
-            let skippedText = out.skipped > 0 ? "・スキップ\(out.skipped)話" : ""
-            let failText = out.failed > 0 ? "・失敗\(out.failed)話(再実行で続きから取得します)" : ""
-            errorText = "「\(fetched.title)」を追加しました\n取得済み: 新規\(out.saved)話・更新\(out.updated)話\(skippedText)\(failText)"
+            errorText = "「\(fetched.title)」を追加しました(目次のみ)。読み始めると続きを自動で取得します。"
         } catch {
             activeStatus = nil
             errorText = "取り込みに失敗しました: \(error.localizedDescription)"

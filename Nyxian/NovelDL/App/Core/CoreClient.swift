@@ -165,31 +165,6 @@ final class CoreClient: Observable, @unchecked Sendable {
         }
     }
 
-    /// 更新確認の続き: 目次が増えた作品の“未取得の話”だけを続けて取得する。
-    /// 一度も本文を取得していない作品は自動では取らず、明示的な「全話を取得」に任せる。
-    /// 既存話は bulk でもすべてスキップされるため、増分だけが実際に通信する。
-    func downloadNewEpisodes() async {
-        guard !progress.running else { return }
-        let targets = library.filter { item in
-            let done = item.downloadedCount ?? 0
-            return done > 0 && done < item.episodeCount
-        }
-        for item in targets {
-            // ユーザーが別の取得(全話/単話)を始めたらそちらを優先する。
-            guard !progress.running else { break }
-            _ = try? await download(
-                CoreClient.DownloadOptions(
-                    url: item.tocUrl,
-                    outputDir: CoreClient.effectiveOutputDir(item.outputDir),
-                    episodes: 0,
-                    fromIndex: "",
-                    mode: "bulk"
-                )
-            )
-        }
-        await reloadLibrary()
-    }
-
     func section(novelId: String, index: String) async throws -> SectionResult {
         try await decode(SectionResult.self) {
             novel_core_section_get(Self.libraryRoot().path, novelId, index)

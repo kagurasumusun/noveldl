@@ -7,7 +7,7 @@ enum PageTurn: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .curl: return "紙捲り"
+        case .curl: return "なめらか"
         case .slide: return "スライド"
         case .fade: return "フェード"
         case .none: return "なし"
@@ -81,8 +81,11 @@ final class ScrollBox {
     func refreshPads() -> Bool {
         guard let v = view else { return false }
         let safe = v.safeAreaInsets
-        let top = max(30.0, safe.top + 18.0)
-        let bottom = max(40.0, safe.bottom + 20.0)
+        // 上下バー(タップで出没)が本文に被らない余白を確保する。
+        // バーが見えている間も同じ帯で組版する(出没で再分割しない)。
+        // topBar ≈ 50pt / bottomBar ≈ 54pt + 髪一つのゆとり。
+        let top = max(72.0, safe.top + 58.0)
+        let bottom = max(84.0, safe.bottom + 64.0)
         guard top != padTop || bottom != padBottom else { return false }
         padTop = top
         padBottom = bottom
@@ -287,26 +290,45 @@ final class ScrollBox {
         Haptics.tap()
         switch turn {
         case .curl:
-            let t = CATransition()
-            t.type = CATransitionType(rawValue: forward ? "pageCurl" : "pageUnCurl")
-            t.subtype = forward ? .fromRight : .fromLeft
-            t.duration = 0.36
-            t.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            v.layer.add(t, forKey: "reader.pageCurl")
-            change()
+            // 旧 CATransition の pageCurl は鉤括弧的な安っぽさがあったため、
+            // 「古い頁がわずかに流れ、新しい頁がふわりと沈む」上品な
+            // スライド+フェードに置き換えた。
+            snapshotTransition(v, forward: forward, distance: 42, duration: 0.30, change: change)
         case .slide:
-            let t = CATransition()
-            t.duration = 0.30
-            t.type = .push
-            t.subtype = forward ? .fromRight : .fromLeft
-            t.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            v.layer.add(t, forKey: "turn")
-            change()
+            snapshotTransition(v, forward: forward, distance: v.bounds.width, duration: 0.28, fullPush: true, change: change)
         case .fade:
-            UIView.transition(with: v, duration: 0.26, options: [.transitionCrossDissolve, .allowUserInteraction],
+            UIView.transition(with: v, duration: 0.24, options: [.transitionCrossDissolve, .allowUserInteraction],
                               animations: change)
         case .none:
             change()
+        }
+    }
+
+    /// 旧頁のスナップショットを残し、新頁を軽いオフセット+フェードで重ねる。
+    /// 演出は短く(≤0.3s)・easeOut で静かに畳む。
+    private func snapshotTransition(_ v: UIView, forward: Bool, distance: CGFloat,
+                                    duration: CFTimeInterval, fullPush: Bool = false,
+                                    change: @escaping () -> Void) {
+        guard let superview = v.superview,
+              let snap = v.snapshotView(afterScreenUpdates: false) else {
+            change()
+            return
+        }
+        snap.frame = v.frame
+        snap.isUserInteractionEnabled = false
+        superview.addSubview(snap)
+        change()
+
+        let dir: CGFloat = forward ? 1 : -1
+        v.alpha = fullPush ? 1 : 0
+        v.transform = CGAffineTransform(translationX: dir * distance * (fullPush ? 1 : 0.28), y: 0)
+        UIView.animate(withDuration: duration, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
+            v.alpha = 1
+            v.transform = .identity
+            snap.alpha = fullPush ? 0.25 : 0
+            snap.transform = CGAffineTransform(translationX: -dir * distance * (fullPush ? 0.35 : 0.16), y: 0)
+        } completion: { _ in
+            snap.removeFromSuperview()
         }
     }
 }
