@@ -171,7 +171,7 @@ struct LibraryView: View {
                                 .font(AppFont.ui(15, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
-                                .frame(height: Metrics.control)
+                                .frame(height: Metrics.controlHeight)
                                 .background(RoundedRectangle(cornerRadius: Metrics.fieldRadius, style: .continuous).fill(AppPalette.ember))
                         }
                         .buttonStyle(PressableButtonStyle())
@@ -214,16 +214,15 @@ struct LibraryView: View {
         activeStatus = "目次を取得中…"
         errorText = nil
         do {
-            let fetched = try await core.fetchToc(url: trimmed, overwrite: false, startAt: 1, limit: 0)
-            let novelId = fetched.novel.novelId
+            let fetched = try await core.fetchToc(url: trimmed, outputDir: "NovelDL-out")
+            let novelId = fetched.novelId
             await core.reloadLibrary()
             activeStatus = "全話を取得中…"
-            let urlOut = try await core.novelDetail(novelId).novel.sourceUrl
-            let out = try await core.download(DownloadOptions(
-                url: urlOut,
+            let out = try await core.download(CoreClient.DownloadOptions(
+                url: trimmed,
                 outputDir: "NovelDL-out",
                 episodes: 0,
-                fromIndex: 1,
+                fromIndex: "",
                 mode: "bulk"
             ))
             activeStatus = nil
