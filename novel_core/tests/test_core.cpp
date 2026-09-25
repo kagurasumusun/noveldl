@@ -1,13 +1,13 @@
 // test_core.cpp — unit tests ported from the Rust implementation
 // (nokogiri_compat tests, storage tests, search tests, xhtml tests).
-#include "nc_common.h"
-#include "nc_config.h"
-#include "nc_download.h"
-#include "nc_html.h"
-#include "nc_regex.h"
-#include "nc_rules.h"
-#include "nc_storage.h"
-#include "nc_value.h"
+#include "../src/nc_common.h"
+#include "../src/nc_config.h"
+#include "../src/nc_download.h"
+#include "../src/nc_html.h"
+#include "../src/nc_regex.h"
+#include "../src/nc_rules.h"
+#include "../src/nc_storage.h"
+#include "../src/nc_value.h"
 
 #include <cstdio>
 #include <filesystem>

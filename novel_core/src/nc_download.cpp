@@ -27,6 +27,27 @@ namespace fs = std::filesystem;
 
 namespace nc {
 
+std::string apply_fetch_url_template(const Value& preset, const std::string& url,
+                                     bool chapter_side = false) {
+    const Value* meta = preset.get("metadata");
+    std::string tmpl;
+    if (meta) {
+        // chapter_fetch_url_template is chapter-only; fetch_url_template is for
+        // the metadata/TOC fetch (chapter hrefs are already final URLs there).
+        tmpl = chapter_side ? meta->get_str("chapter_fetch_url_template", "")
+                            : meta->get_str("fetch_url_template", "");
+    }
+    if (tmpl.empty()) return url;
+    // {id} = last path segment, {url} = the original URL
+    std::string path = url_path(url);
+    std::string id = path;
+    auto slash = id.rfind('/');
+    if (slash != std::string::npos) id = id.substr(slash + 1);
+    std::string out = replace_all(tmpl, "{id}", id);
+    out = replace_all(out, "{url}", url);
+    return out;
+}
+
 // ── progress / cancel ─────────────────────────────────────────────────────
 namespace {
 std::mutex g_prog_mutex;
@@ -175,7 +196,9 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
         if (cancel_requested()) throw Error("cancelled");
         auto [url, html] = pages.queue.front();
         pages.queue.pop_front();
-        std::string body = html ? *html : http.fetch(url, access, toc_url);
+        std::string body = html ? *html
+                              : http.fetch(url == toc_url ? apply_fetch_url_template(preset, url) : url,
+                                           access, toc_url);
         ParsedToc toc = parser.parse_toc(body);
         if (result.title.empty() && toc.title) result.title = *toc.title;
         if (result.author.empty() && toc.author) result.author = *toc.author;
@@ -275,9 +298,11 @@ std::string build_store_zip(const std::vector<std::pair<std::string, std::string
     return zip;
 }
 
+
+
 Value fetch_metadata_via_rules(const std::string& url, const Value& preset, HttpClient& http) {
     AccessSettings access = AccessSettings::from_preset(preset);
-    std::string html = http.fetch(url, access, std::nullopt);
+    std::string html = http.fetch(apply_fetch_url_template(preset, url), access, std::nullopt);
     RulesParser parser(preset);
     ParsedToc toc = parser.parse_toc(html);
     Value v = Value::map_();
@@ -452,9 +477,19 @@ Value op_download(const DownloadOptions& opts) {
         }
         std::string body_html;
         try {
-            std::string abs = url_absolute(opts.url, ch.href);
-            body_html = http.fetch(abs, access, opts.url);
-        } catch (...) {
+            std::string join_base = opts.url;
+        {
+            std::string path = url_path(join_base);
+            auto sl = path.rfind('/');
+            std::string last = sl == std::string::npos ? path : path.substr(sl + 1);
+            if (!join_base.empty() && join_base.back() != '/' &&
+                !last.empty() && last.find('.') == std::string::npos)
+                join_base += '/';
+        }
+        std::string abs = url_absolute(join_base, ch.href);
+            body_html = http.fetch(apply_fetch_url_template(preset, abs, true), access, opts.url);
+        } catch (const std::exception& e) {
+            if (std::getenv("NC_DEBUG")) std::fprintf(stderr, "[dl-fail] fetch %s: %s\n", ch.href.c_str(), e.what());
             ++failed;
             set_progress(total, downloaded, skipped, failed,
                          "取得失敗: " + ch.subtitle, true);
@@ -463,7 +498,8 @@ Value op_download(const DownloadOptions& opts) {
         ParsedSection sec;
         try {
             sec = parser.parse_section(body_html);
-        } catch (...) {
+        } catch (const std::exception& e) {
+            if (std::getenv("NC_DEBUG")) std::fprintf(stderr, "[dl-fail] parse %s: %s\n", ch.href.c_str(), e.what());
             ++failed;
             set_progress(total, downloaded, skipped, failed,
                          "解析失敗: " + ch.subtitle, true);
@@ -582,7 +618,7 @@ Value op_test_site(const std::string& url, const std::string& yaml) {
     std::string domain = url_host(url);
     HttpClient http;
     AccessSettings access = AccessSettings::from_preset(preset);
-    std::string html = http.fetch(url, access, std::nullopt);
+    std::string html = http.fetch(apply_fetch_url_template(preset, url), access, std::nullopt);
     RulesParser parser(preset);
     ParsedToc toc = parser.parse_toc(html);
     Value out = Value::map_();

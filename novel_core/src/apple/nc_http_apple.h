@@ -2,7 +2,7 @@
 #ifndef NC_HTTP_APPLE_H
 #define NC_HTTP_APPLE_H
 
-#include "novel_core.h"
+#include "../../include/novel_core.h"
 
 #ifdef __cplusplus
 extern "C" {

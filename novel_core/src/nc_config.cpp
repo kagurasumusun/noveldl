@@ -174,6 +174,29 @@ Value load_effective_preset(const std::string& domain) {
         throw Error("parser preset not found for domain: " + domain);
     }
     combined = resolve_extends(std::move(combined));
+
+    // 年齢制限サイト: confirm_over18 が真なら over18=yes を必ず送る
+    if (combined.get_bool("confirm_over18", false)) {
+        Value cookies = Value::array();
+        bool has = false;
+        if (const Value* access = combined.get("access")) {
+            if (const Value* c = access->get("cookies")) {
+                for (const Value& item : c->arr) {
+                    if (item.is_str() && item.as_str().find("over18=") != std::string::npos) {
+                        cookies.push(Value::string("over18=yes"));
+                        has = true;
+                    } else {
+                        cookies.push(item);
+                    }
+                }
+            }
+        }
+        if (!has) cookies.push(Value::string("over18=yes"));
+        Value new_access = Value::map_();
+        if (const Value* access = combined.get("access")) new_access = *access;
+        new_access.set("cookies", std::move(cookies));
+        combined.set("access", std::move(new_access));
+    }
     return RulesParser::normalize_legacy(std::move(combined));
 }
 

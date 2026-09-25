@@ -1,0 +1,45 @@
+name: エブリスタ
+domain: estar.jp
+encoding: UTF-8
+top_url: https://estar.jp
+sitename: エブリスタ
+
+# Nuxt 3 + GraphQL。本文・話一覧は API 遅延取得のため通常の HTTP 取得では
+# 403/チャレンジが返ることが多い。browser_fallback + browser_fetch_command
+# （Playwright 等の HTML 出力コマンド）を併用する。
+access:
+  profile: chrome_desktop
+  referer: toc_parent
+  browser_fallback: true
+  fallback:
+    on_challenge: browser_fetch_command
+
+toc_url_pattern: "https://estar.jp/novels/{ncode}"
+toc_sources:
+  - source: page
+    mode: next_link
+    selector: "a[href*='/viewer?page=']"
+    priority: 10
+    url_template: "/novels/{id}/viewer?page={page}"
+    start_page: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "エブリスタ viewer ページ列"
+
+body_selectors:
+  - selector: "#novel-page-body, .novel-page-body"
+    priority: 10
+    extract: "inner_html"
+  - selector: ".markdown-body"
+    priority: 8
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "h1"
+  author: "meta[property='og:title']::attr(content)"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+confirm_over18: no
+version: 1.0

@@ -185,10 +185,12 @@ Translation translate(const std::string& pat) {
                     continue;
                 }
                 if (starts_with(body, ":") || starts_with(body, "=") || starts_with(body, "!")) {
+                    // Emit the opener only and keep translating the interior so
+                    // nested named groups / dotall dots are handled (the old
+                    // whole-body copy skipped translation of the contents).
                     tr.out += "(?";
-                    tr.out += body;
-                    tr.out += ")";
-                    i = end < n ? end + 1 : n;
+                    tr.out += body.substr(0, 1);
+                    i = open + 1;
                     continue;
                 }
                 // unknown (?...) — pass through as non-capturing best effort

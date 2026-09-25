@@ -1,0 +1,54 @@
+name: アルファポリス
+domain: www.alphapolis.co.jp
+encoding: UTF-8
+top_url: https://www.alphapolis.co.jp
+sitename: アルファポリス
+
+# AWS WAF (JavaScript チャレンジ) 保護下。ページ取得は通常の HTTP では
+# チャレンジページが返るため、browser_fallback と browser_fetch_command を併用する。
+access:
+  profile: chrome_desktop
+  referer: toc_parent
+  browser_fallback: true
+  fallback:
+    on_challenge: browser_fetch_command
+
+# 2026 レイアウト（p-content-info / /episode/ URL）→ 旧レイアウト順
+toc_url_pattern: "https://www.alphapolis.co.jp/novel/{ncode}"
+toc_sources:
+  - source: selector
+    selector: "a[href*='/episode/']"
+    priority: 10
+    item_selectors:
+      subtitle: "span.title"
+      href: ":self::attr(href)"
+    description: "アルファポリス目次（2026）"
+  - source: selector
+    selector: ".table-of-contents .episode, .episodes .episode"
+    priority: 5
+    item_selectors:
+      subtitle: ".title"
+      href: "a::attr(href)"
+    description: "旧レイアウト目次"
+
+body_selectors:
+  - selector: "#novelBody"
+    priority: 10
+    extract: "inner_html"
+  - selector: "div.text"
+    priority: 6
+    extract: "inner_html"
+
+introduction_selectors:
+  - selector: "#novelBoby, .p-novel-episode__foreword"
+    priority: 5
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "h1.p-content-info__title, h1.title"
+  author: "a.p-content-info__author, div.author a"
+  story: "div.p-content-info__abstract, div.abstract"
+
+append_title_to_folder_name: yes
+confirm_over18: no
+version: 1.0

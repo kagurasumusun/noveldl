@@ -13,6 +13,8 @@ struct ReaderView: View {
     @AppStorage("readerTheme") private var themeRaw = BookTheme.paper.rawValue
     @AppStorage("readerFontSize") private var fontSize = 19.0
     @AppStorage("readerLineSpacing") private var lineSpacing = 6.0
+    @AppStorage("readerSideMargin") private var sideMargin = 34.0
+    @AppStorage("readerFontDesign") private var fontDesign = "serif"
 
     @State private var chapterIndex: String
     @State private var chapterTitle = ""
@@ -30,7 +32,9 @@ struct ReaderView: View {
         self.novelId = novelId
         self.startAt = startAt
         self.title = title
-        _chapterIndex = State(initialValue: startAt)
+        // Resume the last reading position when one is stored.
+        let saved = ReadingPositionStore.load(novelId)
+        _chapterIndex = State(initialValue: saved?.chapter ?? startAt)
     }
 
     var body: some View {
@@ -88,6 +92,15 @@ struct ReaderView: View {
         }
         .statusBarHidden(!showChrome)
         .task(id: chapterIndex) { await loadChapter() }
+        .onChange(of: pageIndex) { _, newValue in
+            ReadingPositionStore.save(novelId, chapter: chapterIndex, page: newValue)
+        }
+        .onChange(of: chapterIndex) { _, newValue in
+            ReadingPositionStore.save(novelId, chapter: newValue, page: 0)
+        }
+        .onDisappear {
+            ReadingPositionStore.save(novelId, chapter: chapterIndex, page: pageIndex)
+        }
     }
 
     // MARK: chrome
@@ -222,11 +235,33 @@ struct ReaderView: View {
                 }
             }
 
+            HStack(spacing: 10) {
+                ForEach(["serif", "sans", "mono"], id: \.self) { design in
+                    Button {
+                        fontDesign = design
+                    } label: {
+                        Text(design == "serif" ? "Mincho" : design == "sans" ? "Gothic" : "Mono")
+                            .font(.system(size: 15, design: design == "serif" ? .serif : design == "sans" ? .default : .monospaced))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(theme.background)
+                            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Metrics.cardRadius)
+                                    .strokeBorder(fontDesign == design ? AppPalette.ember : .clear, lineWidth: 2))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
             Stepper(value: $fontSize, in: 14...28) {
                 LabeledContent("Text size") { Text("\(Int(fontSize))") }
             }
             Stepper(value: $lineSpacing, in: 0...16) {
                 LabeledContent("Line spacing") { Text("\(Int(lineSpacing))") }
+            }
+            Stepper(value: $sideMargin, in: 20...56, step: 4) {
+                LabeledContent("Margins") { Text("\(Int(sideMargin))") }
             }
 
             Spacer()
@@ -235,6 +270,8 @@ struct ReaderView: View {
         .presentationDetents([.height(340)])
         .onChange(of: fontSize) { Task { await repaginate() } }
         .onChange(of: lineSpacing) { Task { await repaginate() } }
+        .onChange(of: sideMargin) { Task { await repaginate() } }
+        .onChange(of: fontDesign) { Task { await repaginate() } }
     }
 
     // MARK: data
@@ -282,15 +319,18 @@ struct ReaderView: View {
             fontSize: fontSize,
             lineSpacing: lineSpacing,
             ink: UIColor(theme.ink),
-            maxWidth: 300)
+            maxWidth: 300,
+            design: fontDesign)
         let markup = ReaderMarkup().parse(body, style: style)
         let bounds = UIScreen.main.bounds.size
+        let side = CGFloat(sideMargin)
         let page = PagePaginator.paginate(
             markup,
             pageSize: CGSize(width: bounds.width, height: bounds.height),
-            insets: UIEdgeInsets(top: 54, left: 34, bottom: 64, right: 34))
+            insets: UIEdgeInsets(top: 54, left: side, bottom: 64, right: side))
         self.pages = page
-        self.pageIndex = 0
+        let saved = ReadingPositionStore.load(novelId)
+        self.pageIndex = (saved?.chapter == chapterIndex) ? min(saved?.page ?? 0, max(page.count - 1, 0)) : 0
     }
 
     private func nextPage() {
@@ -316,5 +356,38 @@ struct ReaderView: View {
         else { return }
         chapterIndex = chapters[pos + delta].index
         pageIndex = 0
+    }
+}
+
+
+/// Kindle-style reading position: resumes each book where the reader left off.
+enum ReadingPositionStore {
+    private static let key = "readingPositions"
+
+    struct Position: Codable {
+        var chapter: String
+        var page: Int
+    }
+
+    private static var all: [String: Position] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: key),
+                let map = try? JSONDecoder().decode([String: Position].self, from: data)
+            else { return [:] }
+            return map
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: key)
+            }
+        }
+    }
+
+    static func load(_ novelId: String) -> Position? { all[novelId] }
+
+    static func save(_ novelId: String, chapter: String, page: Int) {
+        var map = all
+        map[novelId] = Position(chapter: chapter, page: page)
+        all = map
     }
 }

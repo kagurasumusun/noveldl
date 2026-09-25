@@ -10,7 +10,7 @@
 //   search <query> [limit]
 //   sites
 //   test-site <url> <yaml-file>
-#include "novel_core.h"
+#include "../include/novel_core.h"
 
 #include <cstdio>
 #include <cstdlib>

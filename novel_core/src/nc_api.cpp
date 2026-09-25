@@ -1,6 +1,6 @@
 // nc_api.cpp — public C ABI (include/novel_core.h).
 // Consolidates the former ffi.rs + uniffi_api.rs + novel_core.udl surfaces.
-#include "novel_core.h"
+#include "../include/novel_core.h"
 
 #include "nc_config.h"
 #include "nc_download.h"

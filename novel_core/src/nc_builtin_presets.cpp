@@ -85,6 +85,53 @@ title_strip_pattern: null
 webnovels_site: narou
 version: 2.2
 )NC"},
+        {"parsers", "estar.jp", R"NC(
+name: エブリスタ
+domain: estar.jp
+encoding: UTF-8
+top_url: https://estar.jp
+sitename: エブリスタ
+
+# Nuxt 3 + GraphQL。本文・話一覧は API 遅延取得のため通常の HTTP 取得では
+# 403/チャレンジが返ることが多い。browser_fallback + browser_fetch_command
+# （Playwright 等の HTML 出力コマンド）を併用する。
+access:
+  profile: chrome_desktop
+  referer: toc_parent
+  browser_fallback: true
+  fallback:
+    on_challenge: browser_fetch_command
+
+toc_url_pattern: "https://estar.jp/novels/{ncode}"
+toc_sources:
+  - source: page
+    mode: next_link
+    selector: "a[href*='/viewer?page=']"
+    priority: 10
+    url_template: "/novels/{id}/viewer?page={page}"
+    start_page: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "エブリスタ viewer ページ列"
+
+body_selectors:
+  - selector: "#novel-page-body, .novel-page-body"
+    priority: 10
+    extract: "inner_html"
+  - selector: ".markdown-body"
+    priority: 8
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "h1"
+  author: "meta[property='og:title']::attr(content)"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+confirm_over18: no
+version: 1.0
+)NC"},
         {"parsers", "kakuyomu.jp", R"NC(
 name: カクヨム
 domain: kakuyomu.jp
@@ -180,6 +227,48 @@ last_successful_selectors: {}
 # 横断検索メタ情報
 confirm_over18: yes
 )NC"},
+        {"parsers", "monogatary.com", R"NC(
+name: monogatary.com
+domain: monogatary.com
+encoding: UTF-8
+top_url: https://monogatary.com
+sitename: monogatary.com
+access:
+  profile: chrome_desktop
+
+# サイトは JS シェルのみ。取得 URL を REST API に変換して JSON を解析する。
+metadata:
+  fetch_url_template: "https://monogatary.com/api/story/{id}"
+
+toc_url_pattern: "https://monogatary.com/story/{ncode}"
+toc_sources:
+  - source: json
+    priority: 10
+    href_pattern: "api/episode/"
+    list_path: "episodes"
+    title_path: "episodeTitle"
+    index_path: "episodeId"
+    href_path: "episodeId"
+    href_template: "https://monogatary.com/api/episode/{href}"
+    description: "monogatary JSON API 一覧"
+
+body_selectors:
+  - json_path: "body"
+    priority: 10
+  - json_path: "episodeContents.episode"
+    priority: 9
+  - json_path: "episode_text"
+    priority: 8
+
+novel_info_selectors:
+  title: "$.storyTitle"
+  author: "$.user.nickname"
+  story: "$.description"
+
+append_title_to_folder_name: yes
+confirm_over18: no
+version: 1.0
+)NC"},
         {"parsers", "ncode.syosetu.com", R"NC(
 extends: common/syosetu_2024
 name: 小説家になろう
@@ -224,6 +313,43 @@ last_successful_selectors: {}
 # ------------------------------------------------------------
 # 横断検索メタ情報
 confirm_over18: yes
+)NC"},
+        {"parsers", "novel.daysneo.com", R"NC(
+name: NOVEL DAYS
+domain: novel.daysneo.com
+encoding: UTF-8
+top_url: https://novel.daysneo.com
+sitename: NOVEL DAYS
+access:
+  profile: chrome_desktop
+  referer: toc_parent
+
+toc_url_pattern: "https://novel.daysneo.com/works/{ncode}.html"
+toc_sources:
+  - source: selector
+    selector: "div.contents a[href], div.contents h4"
+    priority: 10
+    chapter_header_selector: "h4"
+    href_pattern: "/works/episode/[0-9a-f]{32}\\.html$"
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+      subupdate: "span.date"
+    description: "NOVEL DAYS 目次（h4 章見出し対応）"
+
+body_selectors:
+  - selector: "div.episode div.inner"
+    priority: 10
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "div.detail h2, h2"
+  author: "div.author a span.f18px, div.author a"
+  story: "p.readmore"
+
+append_title_to_folder_name: yes
+confirm_over18: no
+version: 1.0
 )NC"},
         {"parsers", "novel18.syosetu.com", R"NC(
 extends: common/syosetu_2024
@@ -374,6 +500,101 @@ novel_info_rules:
 webnovels_site: novelup
 append_title_to_folder_name: yes
 )NC"},
+        {"parsers", "novema.jp", R"NC(
+extends: www.no-ichigo.jp
+name: ノベマ！
+domain: novema.jp
+encoding: UTF-8
+top_url: https://novema.jp
+sitename: ノベマ！
+toc_url_pattern: "https://novema.jp/book/{ncode}"
+confirm_over18: no
+version: 1.0
+)NC"},
+        {"parsers", "solispia.com", R"NC(
+name: ソリスピア
+domain: solispia.com
+encoding: UTF-8
+top_url: https://solispia.com
+sitename: 小説投稿サイトSolispia
+access:
+  profile: safari_mobile
+
+# 章: details.chapter-group > summary（chapter_header_selector で章見出しを更新）
+# 話: a.row-link（data-subtitle 属性と .textleft テキスト）
+toc_url_pattern: "https://solispia.com/title/{ncode}"
+toc_sources:
+  - source: selector
+    selector: "details.chapter-group summary, details.chapter-group a.row-link, a.row-link"
+    priority: 10
+    chapter_header_selector: "summary.chapter-summary, .chapter-summary"
+    href_pattern: "/novel/\\d+$"
+    index_from_href_regex: "/novel/(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ".textleft"
+      href: ":self::attr(href)"
+      subupdate: ".date"
+    description: "ソリスピア目次（章グループ＋話リンク）"
+
+body_selectors:
+  - selector: "#novelBody, .novel-body"
+    priority: 10
+    extract: "inner_html"
+  - selector: ".episode-body, .episode-content"
+    priority: 8
+    extract: "inner_html"
+  - selector: "article"
+    priority: 4
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "h1"
+  author: ".author a, [itemprop='author']"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+confirm_over18: no
+version: 1.0
+)NC"},
+        {"parsers", "sutekibungei.com", R"NC(
+name: ステキブンゲイ
+domain: sutekibungei.com
+encoding: UTF-8
+top_url: https://sutekibungei.com
+sitename: ステキブンゲイ
+access:
+  profile: chrome_desktop
+
+# Nuxt SSR。話一覧は a.v-list-item--link[href^=/novels/uuid/uuid]、
+# 本文は div#episodeBody（SSR 出力）。
+toc_url_pattern: "https://sutekibungei.com/novels/{ncode}"
+toc_sources:
+  - source: selector
+    selector: "a.v-list-item--link"
+    priority: 10
+    href_pattern: "/novels/[0-9a-f-]{36}/[0-9a-f-]{36}$"
+    item_selectors:
+      subtitle: ".text-left"
+      href: ":self::attr(href)"
+      subupdate: ".v-list-item__subtitle"
+    description: "ステキブンゲイ話一覧"
+
+body_selectors:
+  - selector: "#episodeBody"
+    priority: 10
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: ".font-weight-bold.subtitle-1, h1"
+  author: ".subtitle-2.wrap a, .subtitle-2.wrap"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+title_strip_pattern: " - ステキブンゲイ| -ステキブンゲイ"
+confirm_over18: no
+version: 1.0
+)NC"},
         {"parsers", "syosetu.org", R"NC(
 name: ハーメルン
 domain: syosetu.org
@@ -384,7 +605,7 @@ sitename: ハーメルン
 # ドメイン単位のアクセス設定。novel ID は URL から都度解決するため、
 # 特定作品に限定されない。
 access:
-  profile: chrome_desktop
+  profile: safari_mobile
   referer: toc_parent
   browser_fallback: true
   fallback:
@@ -401,6 +622,23 @@ access:
 # 専用 HamelnParser と同等に table tr を順走査して章見出し・改稿フラグを保持する。
 toc_url_pattern: "https://syosetu.org/novel/{ncode}/"
 toc_sources:
+  # 現行レイアウト（2024〜）: section.episode-list の li / 章見出し strong
+  - source: selector
+    selector: "section.episode-list li, section.episode-list strong, .episode-list__item"
+    priority: 20
+    chapter_row_class: episode-list__chapter
+    chapter_header_selector: "strong, .episode-list__chapter-title"
+    index_from_href_regex: "(?:^|/)(\\d+)\\.html(?:$|[?#])"
+    trim_html_tail: true
+    hameln_dot_normalize: true
+    subupdate_if_html_contains: "改："
+    subupdate_value: "revised"
+    description: "ハーメルン目次行（現行 episode-list）"
+    item_selectors:
+      subtitle: "span[id], a[href]"
+      href: "a[href]::attr(href)"
+      subupdate: ".date"
+  # 旧レイアウト: table tr を順走査して章見出し・改稿フラグを保持する。
   - source: selector
     selector: "#maind table tr, table tr"
     priority: 10
@@ -442,9 +680,9 @@ postscript_selectors:
     extract: "inner_html"
 
 novel_info_selectors:
-  title: "div#maind [itemprop='name'], [itemprop='name']"
-  author: "div#maind [itemprop='author'], [itemprop='author'] a, [itemprop='author']"
-  story: "div#maind div.ss:nth-of-type(2)"
+  title: "#pagetitle [itemprop='name'], div#maind [itemprop='name'], [itemprop='name']"
+  author: "[itemprop='author'] a, div#maind [itemprop='author'], [itemprop='author']"
+  story: "div.hidden.content, div#maind div.ss:nth-of-type(2)"
 # ------------------------------------------------------------
 # 横断検索メタ情報
 confirm_over18: no
@@ -509,6 +747,109 @@ title_strip_pattern: null
 webnovels_site: akatsuki
 version: 2.0
 )NC"},
+        {"parsers", "www.alphapolis.co.jp", R"NC(
+name: アルファポリス
+domain: www.alphapolis.co.jp
+encoding: UTF-8
+top_url: https://www.alphapolis.co.jp
+sitename: アルファポリス
+
+# AWS WAF (JavaScript チャレンジ) 保護下。ページ取得は通常の HTTP では
+# チャレンジページが返るため、browser_fallback と browser_fetch_command を併用する。
+access:
+  profile: chrome_desktop
+  referer: toc_parent
+  browser_fallback: true
+  fallback:
+    on_challenge: browser_fetch_command
+
+# 2026 レイアウト（p-content-info / /episode/ URL）→ 旧レイアウト順
+toc_url_pattern: "https://www.alphapolis.co.jp/novel/{ncode}"
+toc_sources:
+  - source: selector
+    selector: "a[href*='/episode/']"
+    priority: 10
+    item_selectors:
+      subtitle: "span.title"
+      href: ":self::attr(href)"
+    description: "アルファポリス目次（2026）"
+  - source: selector
+    selector: ".table-of-contents .episode, .episodes .episode"
+    priority: 5
+    item_selectors:
+      subtitle: ".title"
+      href: "a::attr(href)"
+    description: "旧レイアウト目次"
+
+body_selectors:
+  - selector: "#novelBody"
+    priority: 10
+    extract: "inner_html"
+  - selector: "div.text"
+    priority: 6
+    extract: "inner_html"
+
+introduction_selectors:
+  - selector: "#novelBoby, .p-novel-episode__foreword"
+    priority: 5
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "h1.p-content-info__title, h1.title"
+  author: "a.p-content-info__author, div.author a"
+  story: "div.p-content-info__abstract, div.abstract"
+
+append_title_to_folder_name: yes
+confirm_over18: no
+version: 1.0
+)NC"},
+        {"parsers", "www.aozora.gr.jp", R"NC(
+name: 青空文庫
+domain: www.aozora.gr.jp
+encoding: UTF-8
+top_url: https://www.aozora.gr.jp
+sitename: 青空文庫
+access:
+  profile: chrome_desktop
+
+# 作品カード → files/*.html（XHTML版）が唯一の「話」。
+toc_url_pattern: "https://www.aozora.gr.jp/cards/{ncode}"
+toc_sources:
+  - source: selector
+    selector: "a[href]"
+    priority: 10
+    href_pattern: "files/[0-9A-Za-z_]+\\.html$"
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "XHTML版リンク"
+
+body_selectors:
+  - selector: "div.main_text"
+    priority: 10
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "span.title, .title"
+  author: "span.author, .author"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+title_strip_pattern: "｜.*|- 青空文庫.*"
+confirm_over18: no
+version: 1.0
+)NC"},
+        {"parsers", "www.berrys-cafe.jp", R"NC(
+extends: www.no-ichigo.jp
+name: berry's cafe
+domain: www.berrys-cafe.jp
+encoding: UTF-8
+top_url: https://www.berrys-cafe.jp
+sitename: berry's cafe
+toc_url_pattern: "https://www.berrys-cafe.jp/book/{ncode}"
+confirm_over18: no
+version: 1.0
+)NC"},
         {"parsers", "www.mai-net.net", R"NC(
 name: Arcadia
 domain: www.mai-net.net
@@ -553,6 +894,103 @@ append_title_to_folder_name: yes
 title_strip_pattern: "(【.+?】|\\(.+?\\)|（.+?）)"
 webnovels_site: arcadia
 version: 2.0
+)NC"},
+        {"parsers", "www.neopage.com", R"NC(
+name: ネオページ
+domain: www.neopage.com
+encoding: UTF-8
+top_url: https://www.neopage.com
+sitename: ネオページ
+access:
+  profile: chrome_desktop
+  referer: toc_parent
+
+# 章行: a[href*=/chapter/]/（m.neopage.com 絶対URLにも対応）
+toc_url_pattern: "https://www.neopage.com/book/{ncode}"
+toc_sources:
+  - source: selector
+    selector: "a[href*='/chapter/']"
+    priority: 10
+    href_pattern: "/chapter/\\d+/\\d+$"
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "ネオページ章リスト"
+
+metadata:
+  chapter_fetch_url_template: "https://www.neopage.com/v1/book/content/{id}"
+
+body_selectors:
+  - json_path: "data.content"
+    priority: 12
+  - json_path: "content"
+    priority: 11
+  - selector: ".formate-manuscript"
+    priority: 10
+    extract: "inner_html"
+  - selector: ".reading-content-wrap .content"
+    priority: 8
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: ".header-title-wrap .title, h1 .title"
+  author: ".author a, .author"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+confirm_over18: no
+version: 1.0
+)NC"},
+        {"parsers", "www.no-ichigo.jp", R"NC(
+name: 野いちご
+domain: www.no-ichigo.jp
+encoding: UTF-8
+top_url: https://www.no-ichigo.jp
+sitename: 野いちご
+access:
+  profile: safari_mobile
+  referer: toc_parent
+
+# スターズ出版系（野いちご・ノベマ！・berry's cafe は共通プラットフォーム）
+# 目次: .bookChapterList に章 li → ページ ul の二段。全ページを平坦に取得する。
+toc_url_pattern: "https://www.no-ichigo.jp/book/{ncode}"
+toc_sources:
+  - source: selector
+    selector: ".bookChapterList a[href]"
+    priority: 10
+    href_pattern: "/book/[a-z0-9]+/\\d+$"
+    index_from_href_regex: "(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "野いちご目次（章・ページ両対応）"
+
+body_selectors:
+  - selector: "article.bookText > div"
+    priority: 10
+    extract: "inner_html"
+  - selector: "div.bookContent div.bookBody"
+    priority: 10
+    extract: "inner_html"
+  - selector: "div.bookBody"
+    priority: 9
+    extract: "inner_html"
+
+introduction_selectors:
+  - selector: "div.chapterName"
+    priority: 5
+    extract: "text"
+
+novel_info_selectors:
+  title: ".title-wrap .title h2, .title-wrap .title"
+  author: ".contributor a, .contributor"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+title_strip_pattern: "【書籍化原作】|【書籍化】"
+confirm_over18: no
+version: 1.0
 )NC"},
     };
     return presets;

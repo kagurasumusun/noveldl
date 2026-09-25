@@ -7,7 +7,7 @@ sitename: ハーメルン
 # ドメイン単位のアクセス設定。novel ID は URL から都度解決するため、
 # 特定作品に限定されない。
 access:
-  profile: chrome_desktop
+  profile: safari_mobile
   referer: toc_parent
   browser_fallback: true
   fallback:
@@ -24,6 +24,23 @@ access:
 # 専用 HamelnParser と同等に table tr を順走査して章見出し・改稿フラグを保持する。
 toc_url_pattern: "https://syosetu.org/novel/{ncode}/"
 toc_sources:
+  # 現行レイアウト（2024〜）: section.episode-list の li / 章見出し strong
+  - source: selector
+    selector: "section.episode-list li, section.episode-list strong, .episode-list__item"
+    priority: 20
+    chapter_row_class: episode-list__chapter
+    chapter_header_selector: "strong, .episode-list__chapter-title"
+    index_from_href_regex: "(?:^|/)(\\d+)\\.html(?:$|[?#])"
+    trim_html_tail: true
+    hameln_dot_normalize: true
+    subupdate_if_html_contains: "改："
+    subupdate_value: "revised"
+    description: "ハーメルン目次行（現行 episode-list）"
+    item_selectors:
+      subtitle: "span[id], a[href]"
+      href: "a[href]::attr(href)"
+      subupdate: ".date"
+  # 旧レイアウト: table tr を順走査して章見出し・改稿フラグを保持する。
   - source: selector
     selector: "#maind table tr, table tr"
     priority: 10
@@ -65,9 +82,9 @@ postscript_selectors:
     extract: "inner_html"
 
 novel_info_selectors:
-  title: "div#maind [itemprop='name'], [itemprop='name']"
-  author: "div#maind [itemprop='author'], [itemprop='author'] a, [itemprop='author']"
-  story: "div#maind div.ss:nth-of-type(2)"
+  title: "#pagetitle [itemprop='name'], div#maind [itemprop='name'], [itemprop='name']"
+  author: "[itemprop='author'] a, div#maind [itemprop='author'], [itemprop='author']"
+  story: "div.hidden.content, div#maind div.ss:nth-of-type(2)"
 # ------------------------------------------------------------
 # 横断検索メタ情報
 confirm_over18: no

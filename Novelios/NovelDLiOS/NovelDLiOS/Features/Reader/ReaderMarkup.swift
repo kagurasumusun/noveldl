@@ -11,13 +11,22 @@ final class ReaderMarkup: @unchecked Sendable {
         var lineSpacing: CGFloat = 6
         var ink: UIColor = UIColor(red: 0.125, green: 0.118, blue: 0.102, alpha: 1)
         var maxWidth: CGFloat = 320
+        /// "serif" (Mincho-like), "sans" (Gothic), "mono"
+        var design: String = "serif"
 
         var bodyFont: UIFont {
-            let base = UIFont.systemFont(ofSize: fontSize, weight: .regular)
-            if let desc = base.fontDescriptor.withDesign(.serif) {
-                return UIFont(descriptor: desc, size: fontSize)
+            switch design {
+            case "sans":
+                return UIFont.systemFont(ofSize: fontSize, weight: .regular)
+            case "mono":
+                return UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+            default:
+                let base = UIFont.systemFont(ofSize: fontSize, weight: .regular)
+                if let desc = base.fontDescriptor.withDesign(.serif) {
+                    return UIFont(descriptor: desc, size: fontSize)
+                }
+                return base
             }
-            return base
         }
     }
 
