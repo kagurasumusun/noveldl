@@ -216,7 +216,6 @@ struct LibraryView: View {
         errorText = nil
         do {
             let fetched = try await core.fetchToc(url: trimmed, outputDir: "NovelDL-out")
-            let novelId = fetched.novelId
             await core.reloadLibrary()
             activeStatus = "全話を取得中…"
             let out = try await core.download(CoreClient.DownloadOptions(
@@ -232,7 +231,7 @@ struct LibraryView: View {
             await core.reloadLibrary()
             let skippedText = out.skipped > 0 ? "・スキップ\(out.skipped)話" : ""
             let failText = out.failed > 0 ? "・失敗\(out.failed)話(再実行で続きから取得します)" : ""
-            errorText = "「\(fetched.novel.title)」を追加しました\n取得済み: 新規\(out.downloaded)話・更新\(out.updated)\(skippedText)\(failText)"
+            errorText = "「\(fetched.title)」を追加しました\n取得済み: 新規\(out.saved)話・更新\(out.updated)話\(skippedText)\(failText)"
         } catch {
             activeStatus = nil
             errorText = "取り込みに失敗しました: \(error.localizedDescription)"
