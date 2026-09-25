@@ -129,10 +129,11 @@ struct ReaderTextView: UIViewRepresentable {
         tv.backgroundColor = UIColor(theme.background)
         tv.isEditable = false
         tv.isSelectable = false
-        tv.isScrollEnabled = true
-        // 連続スクロールではなく 1 スクリーン = 1 ページのめくりに。
-        tv.isPagingEnabled = true
-        tv.alwaysBounceVertical = true
+        // 送りは「横スワイプ / 左右タップ」の一本化。縦スクロールは無効
+        //(縦と横の同時有効をやめ、端では次/前の話へ自動遷移させる)。
+        tv.isScrollEnabled = false
+        tv.isPagingEnabled = false
+        tv.alwaysBounceVertical = false
         tv.contentInsetAdjustmentBehavior = .never
         tv.textContainerInset = UIEdgeInsets(top: 26, left: sideMargin, bottom: 40, right: sideMargin)
         tv.textContainer.lineFragmentPadding = 0
