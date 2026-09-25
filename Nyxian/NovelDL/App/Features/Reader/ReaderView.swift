@@ -50,6 +50,8 @@ struct ReaderView: View {
     /// フッターの頁カウンタ。
     @State private var currentPage = 0
     @State private var pageCount = 1
+    /// 目次シートの段階読み込み位置。
+    @State private var tocLimit = 150
 
     /// 目次/メニューは 1 つの sheet(item:) で出し分ける。
     /// 同じビューに .sheet(isPresented:) を 2 つ付けると環境によって
@@ -418,13 +420,15 @@ struct ReaderView: View {
     }
 
     private var tocSheet: some View {
+        // 長編(数百〜千話)で全行を一気に構築するとシートが開くまで
+        // 数秒固まるため、150話ずつ段階的に読み込む。
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Text("目次")
                     .font(AppFont.serif(20, weight: .semibold))
                     .foregroundStyle(AppPalette.ink)
                     .padding(Spacing.l)
-                ForEach(detail?.chapters ?? [], id: \.index) { ch in
+                ForEach(Array((detail?.chapters ?? []).prefix(tocLimit).enumerated()), id: \.element.index) { _, ch in
                     Button {
                         sheet = nil
                         if ch.index != chapterIndex {
@@ -464,6 +468,24 @@ struct ReaderView: View {
                     }
                     .buttonStyle(PressableButtonStyle())
                     RowDivider(leading: Spacing.l)
+                }
+                if let total = detail?.chapters.count, total > tocLimit {
+                    HStack(spacing: Spacing.s) {
+                        ProgressView().scaleEffect(0.7)
+                        Text("残り \(total - tocLimit) 話…")
+                            .font(AppFont.ui(11))
+                            .foregroundStyle(AppPalette.inkFaint)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .onAppear {
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 60_000_000)
+                            if tocLimit < total {
+                                tocLimit += 150
+                            }
+                        }
+                    }
                 }
             }
         }

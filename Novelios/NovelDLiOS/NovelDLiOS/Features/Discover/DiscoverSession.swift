@@ -22,7 +22,15 @@ final class DiscoverSession: ObservableObject {
     }
     @Published var results: [SearchResultItem] {
         didSet {
-            if let data = try? JSONEncoder().encode(results) {
+            // 同一URLの行が2つ出るとid衝突でSwiftUIが壊れるため、
+            // 保存時に URL で重複を取り除く(順序は維持)。
+            var seen = Set<String>()
+            let unique = results.filter { seen.insert($0.url).inserted }
+            if unique.count != results.count {
+                results = unique
+                return
+            }
+            if let data = try? JSONEncoder().encode(unique) {
                 UserDefaults.standard.set(data, forKey: Self.resultsKey)
             }
         }

@@ -92,6 +92,18 @@ struct DiscoverView: View {
                     emptyState
                 }
 
+                if searching && session.results.isEmpty {
+                    HStack(spacing: Spacing.m) {
+                        ProgressView()
+                        Text("検索しています…")
+                            .font(AppFont.ui(13))
+                            .foregroundStyle(AppPalette.inkSoft)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 48)
+                }
+
                 ForEach(session.results) { hit in
                     resultRow(hit)
                 }

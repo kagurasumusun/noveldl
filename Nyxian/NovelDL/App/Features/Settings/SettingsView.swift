@@ -14,6 +14,12 @@ struct SettingsView: View {
     @State private var showImporter = false
     @State private var importedDraft: String?
 
+    private var appVersion: String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "ver \(v) (\(b))"
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -42,10 +48,13 @@ struct SettingsView: View {
                     siteCatalog
 
                     HStack {
-                        Text("Bookmarks 2.0(C core)")
+                        Text("NovelDL — 紙の本棚")
                             .font(AppFont.ui(12))
                             .foregroundStyle(AppPalette.inkFaint)
                         Spacer()
+                        Text(appVersion)
+                            .font(AppFont.ui(12).monospacedDigit())
+                            .foregroundStyle(AppPalette.inkFaint)
                     }
                     .padding(.horizontal, Spacing.xs)
                     .padding(.bottom, Spacing.xl)
