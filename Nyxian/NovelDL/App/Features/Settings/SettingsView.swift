@@ -1,13 +1,15 @@
 import SwiftUI
 
-/// 設定 — 「ユーザーに操作させるもの」を置かない。
-/// 取得の節度・対応サイトの確認・情報のみ。パーサ・クッキー等はアプリ内部の仕事。
+/// 設定 — 取得の間隔・対応サイト(分類表示)・情報。
+/// サイトの追加/編集はフォーム式の YAML エディタ(項目を埋めるだけ)。
 struct SettingsView: View {
     @Environment(CoreClient.self) private var core: CoreClient
 
     @AppStorage("downloadIntervalMs") private var intervalMs = 5000
     @State private var presets: [String] = []
     @State private var over18: Set<String> = []
+    @State private var editTarget: String?
+    @State private var showNewPreset = false
 
     var body: some View {
         NavigationStack {
@@ -17,7 +19,7 @@ struct SettingsView: View {
 
                     sectionCard(
                         title: "取得の間隔",
-                        footer: "サイトに負荷をかけないよう、話と話の間には必ず間隔を空けます。429 応答時は自動で待って再試行します。設定変更の必要はほとんどありません。"
+                        footer: "話と話の間は必ず空けます。429 応答時は自動で待って再試行します。"
                     ) {
                         StepperRow(
                             label: "話と話の最小間隔",
@@ -34,27 +36,7 @@ struct SettingsView: View {
                         )
                     }
 
-                    sectionCard(
-                        title: "対応サイト",
-                        footer: "抽出ルールはアプリ内蔵のデータで管理され、新しいサイトへの対応はデータ更新だけで済みます。年齢確認のあるサイトには R-18 の印が付きます。"
-                    ) {
-                        ForEach(presets, id: \.self) { domain in
-                            SettingRow(label: SiteNames.name(for: domain), detail: domain) {
-                                if over18.contains(domain) {
-                                    Text("R-18")
-                                        .font(AppFont.ui(10, weight: .bold))
-                                        .foregroundStyle(AppPalette.ember)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 3)
-                                                .strokeBorder(AppPalette.ember.opacity(0.5), lineWidth: 1)
-                                        )
-                                }
-                            }
-                            RowDivider()
-                        }
-                    }
+                    siteCatalog
 
                     HStack {
                         Text("Bookmarks 2.0(C core)")
@@ -70,19 +52,120 @@ struct SettingsView: View {
             }
             .background(AppPalette.canvas.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: String.self) { domain in
+                PresetFormView(domain: domain)
+            }
+            .sheet(isPresented: $showNewPreset) {
+                PresetFormView(domain: nil)
+            }
             .task {
                 guard presets.isEmpty else { return }
                 presets = (try? await core.listPresets()) ?? []
                 var marks: Set<String> = []
                 for domain in presets {
-                    if let yaml = try? await core.loadPreset(domain: domain),
-                       yaml.contains("confirm_over18") && yaml.contains("true") {
-                        marks.insert(domain)
+                    if let yaml = try? await core.loadPreset(domain: domain) {
+                        let fields = PresetYAML.parse(yaml)
+                        if SiteCatalog.r18Kind(domain: domain, presetOver18: fields["confirm_over18"] == "true") > 0 {
+                            marks.insert(domain)
+                        }
                     }
                 }
                 over18 = marks
             }
         }
+    }
+
+    // MARK: 対応サイト(分類)
+
+    private var siteCatalog: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("対応サイト")
+                    .font(AppFont.serif(17, weight: .semibold))
+                    .foregroundStyle(AppPalette.ink)
+                Spacer()
+                Button {
+                    showNewPreset = true
+                } label: {
+                    Label("追加", systemImage: "plus")
+                        .font(AppFont.ui(13, weight: .semibold))
+                        .foregroundStyle(AppPalette.ember)
+                }
+                .buttonStyle(PressableButtonStyle(haptic: false))
+            }
+            .padding(.horizontal, Spacing.l)
+            .padding(.top, Spacing.l)
+            .padding(.bottom, Spacing.s)
+
+            ForEach(SiteCatalog.groups(of: presets), id: \.title) { group in
+                Text(group.title)
+                    .font(AppFont.ui(12, weight: .semibold))
+                    .foregroundStyle(AppPalette.gold)
+                    .padding(.horizontal, Spacing.l)
+                    .padding(.top, Spacing.l)
+                    .padding(.bottom, Spacing.xs)
+
+                VStack(spacing: 0) {
+                    ForEach(group.domains, id: \.self) { domain in
+                        NavigationLink(value: domain) {
+                            siteRow(domain)
+                        }
+                        .buttonStyle(PressableButtonStyle(haptic: false))
+                        RowDivider(leading: Spacing.l)
+                    }
+                }
+            }
+
+            Text("新しいサイトの対応は「追加」からフォームで項目を埋めるだけです。全文を書く必要はありません。年齢区分はサイトの実態に合わせて表示します。")
+                .font(AppFont.ui(12))
+                .foregroundStyle(AppPalette.inkFaint)
+                .lineSpacing(2)
+                .padding(Spacing.l)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PaperBackground())
+    }
+
+    private func siteRow(_ domain: String) -> some View {
+        let kind = SiteCatalog.r18Kind(domain: domain, presetOver18: over18.contains(domain))
+        return HStack(spacing: Spacing.m) {
+            Text(SiteCatalog.monogram(domain))
+                .font(AppFont.serif(15, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+                .frame(width: 36, height: 36)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(AppPalette.canvas)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(AppPalette.hairline, lineWidth: 1)
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(SiteCatalog.name(for: domain))
+                    .font(AppFont.ui(14, weight: .semibold))
+                    .foregroundStyle(AppPalette.ink)
+                Text(domain)
+                    .font(AppFont.ui(11))
+                    .foregroundStyle(AppPalette.inkFaint)
+            }
+            Spacer()
+            Text(SiteCatalog.r18Label(kind))
+                .font(AppFont.ui(10, weight: .bold))
+                .foregroundStyle(kind == 0 ? AppPalette.inkFaint : AppPalette.ember)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(kind == 0 ? AppPalette.track : AppPalette.ember.opacity(0.15))
+                )
+            Image(systemName: "chevron.right")
+                .font(AppFont.ui(10, weight: .semibold))
+                .foregroundStyle(AppPalette.inkFaint)
+        }
+        .padding(.horizontal, Spacing.l)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
     }
 
     private func sectionCard<C: View>(
@@ -114,20 +197,43 @@ struct SettingsView: View {
     }
 }
 
-/// サイト名の表示用マップ(未知のドメインはドメイン名のまま)。
-enum SiteNames {
-    private static let table: [(match: String, name: String)] = [
+/// サイトの分類・名称・年齢区分(サイトの実態に合わせる)。
+enum SiteCatalog {
+    struct Group { let title: String; let domains: [String] }
+
+    static let major = ["syosetu.com", "novel18.syosetu", "kakuyomu.jp", "syosetu.org", "alphapolis"]
+    static let indie = ["akatsuki", "novelup", "daysneo", "estar", "neopage", "monogatary", "aozora"]
+    static let label = ["novema", "berrys", "no-ichigo", "solispia", "suteki"]
+
+    static func groups(of domains: [String]) -> [Group] {
+        func match(_ d: String, _ keys: [String]) -> Bool {
+            keys.contains { d.contains($0) }
+        }
+        let known = major + indie + label
+        let majors = domains.filter { match($0, major) }
+        let indies = domains.filter { match($0, indie) && !match($0, major) }
+        let labels = domains.filter { match($0, label) && !match($0, major) && !match($0, indie) }
+        let others = domains.filter { d in !known.contains { d.contains($0) } }
+        var out: [Group] = []
+        if !majors.isEmpty { out.append(Group(title: "大手", domains: majors)) }
+        if !indies.isEmpty { out.append(Group(title: "創作・投稿", domains: indies)) }
+        if !labels.isEmpty { out.append(Group(title: "レーベル・文芸", domains: labels)) }
+        if !others.isEmpty { out.append(Group(title: "その他", domains: others)) }
+        return out
+    }
+
+    private static let names: [(match: String, name: String)] = [
         ("novel18.syosetu", "小説家になろう(R-18)"),
         ("syosetu.com", "小説家になろう"),
         ("kakuyomu.jp", "カクヨム"),
         ("h.syosetu.org", "ハーメルン(R-18)"),
         ("syosetu.org", "ハーメルン"),
-        ("akatsuki-novels.com", "暁"),
-        ("novelup.plus", "ノベルアップ＋"),
-        ("daysneo.com", "DAYS NEO"),
-        ("alphapolis.co.jp", "アルファポリス"),
-        ("estar.jp", "エスタ"),
-        ("aozora.gr.jp", "青空文庫"),
+        ("akatsuki-novels", "暁"),
+        ("novelup", "ノベルアップ＋"),
+        ("daysneo", "DAYS NEO"),
+        ("alphapolis", "アルファポリス"),
+        ("estar", "エスタ"),
+        ("aozora", "青空文庫"),
         ("novema", "ノベマ"),
         ("berrys", "ベリーズ"),
         ("no-ichigo", "ノイチゴ"),
@@ -138,9 +244,32 @@ enum SiteNames {
     ]
 
     static func name(for domain: String) -> String {
-        for entry in table where domain.contains(entry.match) {
-            return entry.name
-        }
+        for entry in names where domain.contains(entry.match) { return entry.name }
         return domain
+    }
+
+    static func monogram(_ domain: String) -> String {
+        String(domain.prefix(2)).uppercased()
+    }
+
+    /// 0 = 全年齢 / 1 = R-18あり / 2 = R-18専。
+    /// サイトの実態(既知の事実)を優先し、未知サイトのみプリセットの設定に従う。
+    static func r18Kind(domain: String, presetOver18: Bool) -> Int {
+        let d = domain.lowercased()
+        if d.contains("novel18") { return 2 }
+        // 既知の事実:これらのサイトに R-18 は存在しない/存在する
+        if d.contains("kakuyomu") || d.contains("aozora") || d.contains("syosetu.com") { return 0 }
+        if d.contains("syosetu.org") || d.contains("alphapolis") || d.contains("akatsuki") || d.contains("novelup") {
+            return 1
+        }
+        return presetOver18 ? 1 : 0
+    }
+
+    static func r18Label(_ kind: Int) -> String {
+        switch kind {
+        case 2: return "R-18専"
+        case 1: return "R-18あり"
+        default: return "全年齢"
+        }
     }
 }

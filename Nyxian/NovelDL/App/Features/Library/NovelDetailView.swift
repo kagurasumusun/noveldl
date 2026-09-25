@@ -59,61 +59,24 @@ struct NovelDetailView: View {
 
     // MARK: 書誌(書影の布を帯に展開した装丁)
 
+    /// 表紙まわりは「横広の 1 画像」のみ(実カバーがあればそれを使用)。
     private var heroCard: some View {
-        let cloth = CoverTile.clothColor(title: item.title, author: item.author)
-        let cream = Color(red: 0.925, green: 0.890, blue: 0.808)
-        return VStack(spacing: 0) {
-            ZStack(alignment: .bottomLeading) {
-                LinearGradient(
-                    colors: [cloth.opacity(0.92), cloth],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .overlay(alignment: .top) {
-                    VStack(spacing: 2) {
-                        Rectangle().fill(cream.opacity(0.55)).frame(height: 1)
-                        Rectangle().fill(cream.opacity(0.3)).frame(height: 1)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 10)
-                }
+        VStack(alignment: .leading, spacing: Spacing.m) {
+            WideCover(
+                title: item.title,
+                author: item.author,
+                image: core.covers[item.novelId]
+            )
 
-                HStack(alignment: .bottom, spacing: Spacing.l) {
-                    CoverTile(
-                        title: item.title,
-                        author: item.author,
-                        progress: Double(downloaded) / Double(total),
-                        width: 104
-                    )
-                    .offset(y: 30)
-                    .padding(.leading, Spacing.l)
-
-                    VStack(alignment: .leading, spacing: Spacing.s) {
-                        Text(item.title)
-                            .font(AppFont.serif(19, weight: .semibold))
-                            .foregroundStyle(cream)
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Rectangle().fill(cream.opacity(0.55)).frame(width: 22, height: 1)
-                        Text(item.author)
-                            .font(AppFont.ui(14, weight: .medium))
-                            .foregroundStyle(cream.opacity(0.8))
-                    }
-                    .padding(.bottom, Spacing.xl)
-                    Spacer(minLength: 0)
+            HStack(spacing: Spacing.s) {
+                InfoChip(text: item.domain)
+                if let updated = item.updatedAt, !updated.isEmpty {
+                    InfoChip(text: "更新 \(shortDate(updated))")
                 }
+                Spacer()
             }
-            .frame(height: 168)
-            .clipped()
 
             VStack(alignment: .leading, spacing: Spacing.s) {
-                HStack(spacing: Spacing.s) {
-                    InfoChip(text: item.domain)
-                    if let updated = item.updatedAt, !updated.isEmpty {
-                        InfoChip(text: "更新 \(shortDate(updated))")
-                    }
-                    Spacer()
-                }
-                .padding(.top, 38)
                 HStack {
                     Text("取得済み")
                         .font(AppFont.ui(12))
@@ -128,14 +91,8 @@ struct NovelDetailView: View {
                 }
                 ReadingRibbon(value: Double(downloaded) / Double(total))
             }
-            .padding(.horizontal, Spacing.l)
-            .padding(.bottom, Spacing.l)
         }
-        .background(PaperBackground())
-        .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
     }
-
-    // MARK: あらすじ    // MARK: あらすじ
 
     private func synopsisCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s) {

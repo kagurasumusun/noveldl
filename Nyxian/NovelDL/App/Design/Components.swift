@@ -365,6 +365,62 @@ struct SectionBanner: View {
 // MARK: - 書影
 
 /// 上製本風の書影 — 布装丁 + 背 + 双罫 + 箔押し。
+/// 作品の表紙 = 横広の 1 画像(実カバーがあればそれを使用)。
+/// 2 画像の縦横合成のような見え方はしない。
+struct WideCover: View {
+    let title: String
+    let author: String
+    var image: UIImage?
+    var aspect: CGFloat = 2.2
+
+    private var cloth: Color { CoverTile.clothColor(title: title, author: author) }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                LinearGradient(
+                    colors: [cloth.opacity(0.88), cloth],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                .overlay(alignment: .center) {
+                    Image(systemName: "book.closed")
+                        .font(.system(size: 26, weight: .light))
+                        .foregroundStyle(Color(red: 0.925, green: 0.890, blue: 0.808).opacity(0.5))
+                }
+            }
+
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.55)],
+                startPoint: .center, endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(AppFont.serif(16, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.95, green: 0.93, blue: 0.90))
+                    .lineLimit(2)
+                Text(author)
+                    .font(AppFont.ui(12))
+                    .foregroundStyle(Color(red: 0.95, green: 0.93, blue: 0.90).opacity(0.8))
+                    .lineLimit(1)
+            }
+            .padding(Spacing.m)
+        }
+        .aspectRatio(aspect, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                .strokeBorder(AppPalette.hairline, lineWidth: 1)
+        )
+    }
+}
+
 struct CoverTile: View {
     let title: String
     let author: String
