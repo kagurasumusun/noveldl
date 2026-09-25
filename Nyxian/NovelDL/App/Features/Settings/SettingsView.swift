@@ -18,7 +18,7 @@ struct SettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.xl) {
-                    SectionBanner(title: "設定")
+                    SectionBanner(title: "設定", eyebrow: "SETTINGS")
 
                     sectionCard(
                         title: "取得の間隔",
@@ -78,12 +78,8 @@ struct SettingsView: View {
             ) { result in
                 Task { await importYAML(from: result) }
             }
-            .onChange(of: showNewPreset) { _, shown in
-                if !shown { Task { await refresh() } }
-            }
-            .onChange(of: importedDraft) { _, draft in
-                if draft == nil { Task { await refresh() } }
-            }
+            .onChange(of: showNewPreset) { if !showNewPreset { Task { await refresh() } } }
+            .onChange(of: importedDraft) { if importedDraft == nil { Task { await refresh() } } }
             .task { await refresh() }
         }
     }

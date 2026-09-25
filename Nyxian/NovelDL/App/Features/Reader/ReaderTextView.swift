@@ -63,8 +63,9 @@ final class ScrollBox {
 
     /// 挿絵を実画像へ差し替える(レンジは現在の textStorage 上)。
     func applyImage(at range: NSRange, image: UIImage, displayWidth: CGFloat) {
-        guard let v = view, let storage = v.textStorage,
-              NSMaxRange(range) <= storage.length else { return }
+        guard let v = view else { return }
+        let storage = v.textStorage
+        guard NSMaxRange(range) <= storage.length else { return }
         let scale = displayWidth / max(image.size.width, 1)
         let size = CGSize(
             width: min(displayWidth, image.size.width * scale),

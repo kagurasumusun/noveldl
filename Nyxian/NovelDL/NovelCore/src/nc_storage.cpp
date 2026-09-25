@@ -154,6 +154,7 @@ void migrate_master(Sqlite& db) {
     )SQL");
     add_column_if_missing(db, "novels", "output_dir", "TEXT NOT NULL DEFAULT ''");
     add_column_if_missing(db, "novels", "shard_dir", "TEXT NOT NULL DEFAULT ''");
+    add_column_if_missing(db, "novels", "description", "TEXT NOT NULL DEFAULT ''");
     add_column_if_missing(db, "novels", "created_at", "TEXT NOT NULL DEFAULT ''");
     add_column_if_missing(db, "novels", "last_downloaded_at", "TEXT NOT NULL DEFAULT ''");
 }
@@ -405,6 +406,25 @@ SectionStorage::SectionStorage(SectionStorage&&) noexcept = default;
 SectionStorage& SectionStorage::operator=(SectionStorage&&) noexcept = default;
 
 std::string SectionStorage::root_dir() const { return impl_->root; }
+
+void SectionStorage::update_novel_description(const std::string& novel_id,
+                                              const std::string& description) {
+    if (description.empty()) return;
+    Stmt stmt(impl_->master.prepare(
+        "UPDATE novels SET description = ?1 WHERE novel_id = ?2"));
+    stmt.bind_text(1, description);
+    stmt.bind_text(2, novel_id);
+    while (stmt.step()) {
+    }
+}
+
+std::string SectionStorage::novel_description(const std::string& novel_id) {
+    Stmt stmt(impl_->master.prepare(
+        "SELECT description FROM novels WHERE novel_id = ?1"));
+    stmt.bind_text(1, novel_id);
+    if (!stmt.step()) return "";
+    return stmt.col_text(0);
+}
 
 void SectionStorage::upsert_novel(const std::string& novel_id, const std::string& title,
                                   const std::string& author, const std::string& toc_url,

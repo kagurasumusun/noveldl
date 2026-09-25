@@ -71,6 +71,9 @@ public:
 
     std::string root_dir() const;
 
+    void update_novel_description(const std::string& novel_id, const std::string& description);
+    std::string novel_description(const std::string& novel_id);
+
     void upsert_novel(const std::string& novel_id, const std::string& title,
                       const std::string& author, const std::string& toc_url,
                       const std::string& domain, const std::string& output_dir,

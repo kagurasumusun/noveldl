@@ -57,7 +57,7 @@ struct LibraryView: View {
                 NovelDetailView(item: item)
             }
             .fullScreenCover(item: $readerRoute) { route in
-                ReaderView(novelId: route.novelId, startAt: route.index, title: route.title)
+                ReaderView(novelId: route.novelId, startAt: route.index, title: route.title, tocUrl: route.tocUrl)
             }
         }
         .task { await core.reloadLibrary() }
@@ -112,7 +112,7 @@ struct LibraryView: View {
                         WideCover(
                             title: item.title,
                             author: item.author,
-                            image: core.covers[item.novelId],
+                            image: CoverStore.customImage(item.storagePath) ?? core.covers[item.novelId],
                             aspect: 2.0
                         )
                         HStack(spacing: Spacing.s) {

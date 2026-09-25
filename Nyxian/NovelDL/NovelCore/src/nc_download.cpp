@@ -678,6 +678,15 @@ Value op_fetch_toc(const DownloadOptions& opts) {
         if (ch.subupdate) c.set("subupdate", Value::string(*ch.subupdate));
         chapters.push(std::move(c));
     }
+    // 詳細ページが表示する情報(あらすじ等)もこの時点で取得・保存する。
+    std::string story;
+    try {
+        Value meta = fetch_metadata_via_rules(opts.url, preset, http);
+        story = meta.get_str("story", "");
+    } catch (const std::exception&) {
+    }
+    if (!story.empty()) storage.update_novel_description(novel_id, story);
+
     set_progress((long long)tr.chapters.size(), 0, (long long)tr.chapters.size(), 0,
                  "目次取得完了", false);
 
@@ -686,6 +695,7 @@ Value op_fetch_toc(const DownloadOptions& opts) {
     out.set("title", Value::string(title));
     out.set("author", Value::string(author));
     out.set("episodes", Value::integer((long long)tr.chapters.size()));
+    out.set("story", Value::string(story));
     out.set("chapters", std::move(chapters));
     return out;
 }
@@ -779,6 +789,7 @@ Value op_library_novel(const std::string& root_dir, const std::string& novel_id)
     novel.set("author", Value::string(meta->second));
     novel.set("domain", Value::string(storage.novel_domain(novel_id)));
     novel.set("output_dir", Value::string(storage.novel_output_dir(novel_id)));
+    novel.set("description", Value::string(storage.novel_description(novel_id)));
 
     auto toc = storage.cached_toc_chapters(novel_id);
     auto states = storage.section_download_states(novel_id);

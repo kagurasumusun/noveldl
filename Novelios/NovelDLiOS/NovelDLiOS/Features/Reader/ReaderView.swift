@@ -10,6 +10,7 @@ struct ReaderView: View {
     let novelId: String
     let startAt: String
     let title: String
+    let tocUrl: String
 
     @State private var chapterIndex: String
     @State private var chapterTitle = ""
@@ -47,10 +48,11 @@ struct ReaderView: View {
     private var canGoPrev: Bool { pos > 0 }
     private var canGoNext: Bool { pos + 1 < chapters.count }
 
-    init(novelId: String, startAt: String, title: String) {
+    init(novelId: String, startAt: String, title: String, tocUrl: String) {
         self.novelId = novelId
         self.startAt = startAt
         self.title = title
+        self.tocUrl = tocUrl
         _chapterIndex = State(initialValue: startAt)
     }
 
@@ -115,7 +117,6 @@ struct ReaderView: View {
             }
         }
         .statusBarHidden(!chromeVisible)
-        .persistentSystemOverlays(chromeVisible ? .automatic : .hidden)
         .task(id: chapterIndex) {
             await load()
             withAnimation(.easeOut(duration: 0.3)) { chromeVisible = true }
@@ -252,10 +253,10 @@ struct ReaderView: View {
                     .foregroundStyle(AppPalette.ink)
                     .padding(.top, Spacing.s)
 
-                menuSectionHeader("表示")
+                menuSectionHeader("表示", "DISPLAY")
                 VStack(spacing: 0) {
                     HStack(spacing: Spacing.s) {
-                        ForEach(BookTheme.all, id: \.self) { t in
+                        ForEach(BookTheme.allCases, id: \.self) { t in
                             Button {
                                 themeRaw = t.rawValue
                                 applyStyle()
@@ -297,7 +298,7 @@ struct ReaderView: View {
                 }
                 .background(PaperBackground())
 
-                menuSectionHeader("表示項目")
+                menuSectionHeader("表示項目", "ITEMS")
                 VStack(spacing: 0) {
                     toggleRow("ルビ(振り仮名)", showRuby) { showRuby.toggle(); applyStyle() }
                     RowDivider()
@@ -308,7 +309,7 @@ struct ReaderView: View {
                 .padding(Spacing.m)
                 .background(PaperBackground())
 
-                menuSectionHeader("送り")
+                menuSectionHeader("送り", "PAGING")
                 VStack(spacing: 0) {
                     SettingRow(label: "めくりの演出") {
                         SegmentTabs(titles: PageTurn.all.map(\.label), selection: Binding(
@@ -322,7 +323,7 @@ struct ReaderView: View {
                 }
                 .background(PaperBackground())
 
-                menuSectionHeader("移動")
+                menuSectionHeader("移動", "GO")
                 HStack(spacing: Spacing.s) {
                     QuietButton(title: "目次", systemImage: "list.bullet") {
                         showMenu = false
@@ -431,11 +432,15 @@ struct ReaderView: View {
         }
     }
 
-    private func menuSectionHeader(_ title: String) -> some View {
+    private func menuSectionHeader(_ title: String, _ en: String) -> some View {
         HStack(spacing: Spacing.s) {
             Text(title)
                 .font(AppFont.ui(12, weight: .semibold))
                 .foregroundStyle(AppPalette.gold)
+            Text(en)
+                .font(AppFont.ui(8, weight: .semibold))
+                .foregroundStyle(AppPalette.inkFaint)
+                .tracking(1.2)
             Rectangle()
                 .fill(AppPalette.hairline)
                 .frame(height: 1)
@@ -452,7 +457,7 @@ struct ReaderView: View {
     }
 
     private func share() {
-        let urlText = (detail?.novel.tocUrl).map { "\($0) (\(title) \(chapterLabel))" } ?? title
+        let urlText = (tocUrl.isEmpty ? nil : tocUrl).map { "\($0) (\(title) \(chapterLabel))" } ?? title
         let av = UIActivityViewController(activityItems: [urlText], applicationActivities: nil)
         if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let root = scene.keyWindow?.rootViewController {
@@ -511,7 +516,7 @@ struct ReaderView: View {
             chapterTitle = meta?.subtitle ?? ""
             chapterLabel = "\(pos + 1)/\(total)話"
             chapterProgress = Double(pos + 1) / Double(total)
-            let html = sec.bodyXhtml.isEmpty ? "本文はまだ取得されていません。作品詳細から取得してください。" : sec.bodyXhtml
+            let html = (sec.bodyXhtml ?? "").isEmpty ? "本文はまだ取得されていません。作品詳細から取得してください。" : (sec.bodyXhtml ?? "")
             lastHTML = html
             let result = markup.parse(html, style: currentStyle())
             attributed = result.text
@@ -525,7 +530,7 @@ struct ReaderView: View {
     /// 挿絵を非同期に実画像へ差し替える(読書の応答性を落とさない)。
     private func loadImages(_ refs: [ImageRef]) async {
         let width = UIScreen.main.bounds.width - max(margin, 12) * 2
-        let base = URL(string: detail?.novel.tocUrl ?? "")
+        let base = URL(string: tocUrl)
         for ref in refs {
             guard let url = ReaderImageStore.resolve(ref.src, base: base) else { continue }
             if let img = await ReaderImageStore.shared.load(url) {

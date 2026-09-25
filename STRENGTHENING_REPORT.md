@@ -317,3 +317,22 @@ C++ コアのユニットテストは引き続き **118 passed / 0 failed**。�
 | バーが出たり隠れたり+中央タップ | 話を開くと一瞬出て引っ込み、**めくり/スワイプ/ボタン操作で自動的に隠れ**、**中央タップで出没トグル** |
 | 詳細ページの表示項目の調整 | 表紙(題名/著者)+**サイト名・全N話・更新日**の書誌チップ+取得済み率、あらすじ/操作/目次の見出し体系に整理 |
 | 塩梅 | ヒント3.5秒・バー退場0.45秒等、静かめに再調整 |
+
+## 追加修正その17 — コンパイルエラー14件+二次エラーの全修正・追加時情報取得・表紙カスタム・英日塩梅
+
+| 指摘(エラーリスト) | 対応 |
+|---|---|
+|1/2 persistentSystemOverlays 'when'/'hidden' | 当該行を撤去(statusBarHidden のみ)|
+|3/4 BookTheme.all / generic C | `BookTheme.allCases`(CaseIterable の正名)へ |
+|5/8 LibraryNovelInfo に sourceUrl 無し | `ReaderRoute` に `tocUrl` を持たせ共有/画像基準に(実型は tocUrl/sourceUrl なし)|
+|6/7 SectionResult.body 無し | `bodyXhtml`(Optional)を `?? ""` で正しく使用 |
+|9-12 読む/章行 Button の閉じ誤り | `Button(action:label:)` ラベル明示+閉じ `})` に修正(二重トレーリングの曖昧解消)|
+|13 関数値をプロパティとして使用 | synopsisCard/actionCard の分割を見直し(headerJP に統合)|
+|14 NSTextStorage 条件束縛 | 非Optional扱いに修正 |
+|15-17 Binding\<Subject\> 二次エラー | 3/4 の型推論崩壊が原因 → 解消で連鎖消失 |
+| deprecated onChange ×3 | 全箇所を iOS17 ゼロ引数形に統一 |
+
+**新要求**:
+- 詳細表示情報(あらすじ)は**追加時に取得保存**(C: novels.description 列+fetch_toc で保存、詳細APIで返却、Swiftは保存済み優先)
+- **表紙カスタム画像に差し替え可**(詳細の表紙右上から写真を選択 → cover_custom.jpg 保存 → 棚にも反映)
+- **英日の塩梅**: 見出しに小さな英語(表示 DISPLAY / あらすじ STORY / 設定 SETTINGS 等)を添える程度に

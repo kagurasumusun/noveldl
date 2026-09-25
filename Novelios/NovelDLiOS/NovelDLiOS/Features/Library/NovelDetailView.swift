@@ -1,9 +1,11 @@
 import SwiftUI
+import PhotosUI
 
 struct ReaderRoute: Hashable, Identifiable {
     let novelId: String
     let index: String
     let title: String
+    let tocUrl: String
     var id: String { "\(novelId)#\(index)" }
 }
 
@@ -26,6 +28,8 @@ struct NovelDetailView: View {
     @State private var flatChapters: [ChapterMeta] = []
     @State private var chapterLimit = 60
     @State private var readerRoute: ReaderRoute?
+    @State private var customCover: UIImage?
+    @State private var coverPick: PhotosPickerItem?
 
     private var downloaded: Int { detail?.downloadedCount ?? item.downloadedCount ?? 0 }
     private var total: Int { max(detail?.novel.episodeCount ?? item.episodeCount, 1) }
@@ -49,7 +53,7 @@ struct NovelDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showOptions) { optionsSheet }
         .fullScreenCover(item: $readerRoute) { route in
-            ReaderView(novelId: route.novelId, startAt: route.index, title: route.title)
+            ReaderView(novelId: route.novelId, startAt: route.index, title: route.title, tocUrl: route.tocUrl)
         }
         .alert("詳細", isPresented: Binding(
             get: { errorText != nil },
@@ -70,8 +74,29 @@ struct NovelDetailView: View {
             WideCover(
                 title: item.title,
                 author: item.author,
-                image: core.covers[item.novelId]
+                image: customCover ?? core.covers[item.novelId]
             )
+            .overlay(alignment: .topTrailing) {
+                PhotosPicker(selection: $coverPick, matching: .images) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(AppFont.ui(13, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.95, green: 0.93, blue: 0.90))
+                        .frame(width: 38, height: 38)
+                        .background(Circle().fill(.black.opacity(0.35)))
+                }
+                .padding(Spacing.s)
+            }
+            .onChange(of: coverPick) {
+                guard let pick = coverPick else { return }
+                Task {
+                    if let data = try? await pick.loadTransferable(type: Data.self),
+                       let img = UIImage(data: data) {
+                        CoverStore.save(img, storagePath: item.storagePath)
+                        customCover = CoverStore.customImage(item.storagePath)
+                        Haptics.success()
+                    }
+                }
+            }
 
             // 詳細の表示項目:サイト名・話数・最終更新の3点を常に(タイトル/著者は表紙に)
             HStack(spacing: Spacing.s) {
@@ -103,8 +128,7 @@ struct NovelDetailView: View {
 
     private func synopsisCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
-            Text("あらすじ")
-                .font(AppFont.serif(19, weight: .semibold))
+            headerJP("あらすじ", "STORY")
                 .foregroundStyle(AppPalette.ink)
                 .padding(.top, Spacing.s)
             synopsisBody(text)
@@ -142,8 +166,7 @@ struct NovelDetailView: View {
 
     private var actionCard: some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
-            Text("操作")
-                .font(AppFont.serif(19, weight: .semibold))
+            headerJP("操作", "ACTIONS")
                 .foregroundStyle(AppPalette.ink)
                 .padding(.top, Spacing.s)
             actionBody
@@ -175,9 +198,9 @@ struct NovelDetailView: View {
 
             if let first = detail?.chapters.first(where: { $0.bodyDownloaded == true })
                 ?? detail?.chapters.first {
-                Button {
-                    readerRoute = ReaderRoute(novelId: item.novelId, index: first.index, title: item.title)
-                } {
+                Button(action: {
+                    readerRoute = ReaderRoute(novelId: item.novelId, index: first.index, title: item.title, tocUrl: item.tocUrl)
+                }, label: {
                     HStack(spacing: 6) {
                         Image(systemName: "book")
                         Text(detail?.chapters.contains(where: { $0.bodyDownloaded == true }) == true
@@ -195,7 +218,7 @@ struct NovelDetailView: View {
                         RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
                             .strokeBorder(AppPalette.ember.opacity(0.45), lineWidth: 1)
                     )
-                }
+                })
                 .buttonStyle(PressableButtonStyle())
             }
 
@@ -255,8 +278,7 @@ struct NovelDetailView: View {
     private var chapterSection: some View {
         VStack(alignment: .leading, spacing: Spacing.m) {
             HStack {
-                Text("目次")
-                    .font(AppFont.serif(19, weight: .semibold))
+                headerJP("目次", "INDEX")
                     .foregroundStyle(AppPalette.ink)
                 Spacer()
                 Text("全\(total)話")
@@ -302,10 +324,23 @@ struct NovelDetailView: View {
         }
     }
 
+    private func headerJP(_ jp: String, _ en: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
+            Text(jp)
+                .font(AppFont.serif(19, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+            Text(en)
+                .font(AppFont.ui(9, weight: .semibold))
+                .foregroundStyle(AppPalette.gold)
+                .tracking(1.2)
+        }
+        .padding(.top, Spacing.s)
+    }
+
     private func chapterRow(_ ch: ChapterMeta) -> some View {
-        Button {
-            readerRoute = ReaderRoute(novelId: item.novelId, index: ch.index, title: item.title)
-        } {
+        Button(action: {
+            readerRoute = ReaderRoute(novelId: item.novelId, index: ch.index, title: item.title, tocUrl: item.tocUrl)
+        }, label: {
             HStack(spacing: Spacing.m) {
                 Text(ch.index)
                     .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
@@ -336,7 +371,7 @@ struct NovelDetailView: View {
             .padding(.horizontal, Spacing.l)
             .padding(.vertical, 12)
             .contentShape(Rectangle())
-        }
+        })
         .buttonStyle(PressableButtonStyle())
     }
 
@@ -345,8 +380,14 @@ struct NovelDetailView: View {
     private func reload() async {
         detail = try? await core.novelDetail(item.novelId)
         flatChapters = detail?.chapters ?? []
+        customCover = CoverStore.customImage(item.storagePath)
         if synopsis == nil {
-            synopsis = (try? await core.novelInfo(url: item.tocUrl))?.story
+            // あらすじは追加時に保存したものを優先し、無ければ取りに行く
+            if let stored = detail?.novel.description, !stored.isEmpty {
+                synopsis = stored
+            } else {
+                synopsis = (try? await core.novelInfo(url: item.tocUrl))?.story
+            }
         }
     }
 

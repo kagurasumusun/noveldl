@@ -47,6 +47,8 @@ struct LibraryNovelInfo: Decodable, Hashable, Sendable {
     let domain: String?
     let outputDir: String?
     let episodeCount: Int
+    /// あらすじ(追加時に取得保存されたもの)
+    let description: String?
 }
 
 struct LibraryNovelDetail: Decodable, Sendable {
