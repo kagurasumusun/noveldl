@@ -12,74 +12,13 @@ struct DiscoverView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Spacing.l) {
-                    SectionBanner(
-                        title: "DISCOVER",
-                        subtitle: "作品を探す"
-                    )
-
-                    HStack(spacing: Spacing.m) {
-                        Image(systemName: "magnifyingglass")
-                            .font(AppFont.ui(14, weight: .medium))
-                            .foregroundStyle(AppPalette.inkFaint)
-                        TextField("タイトル・作者名・キーワード", text: $session.query)
-                            .font(AppFont.ui(15))
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.search)
-                            .onSubmit { Task { await run() } }
-                        if searching {
-                            ProgressView().scaleEffect(0.8)
-                        } else if !session.query.isEmpty {
-                            Button {
-                                session.query = ""
-                                session.results = []
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(AppFont.ui(14))
-                                    .foregroundStyle(AppPalette.inkFaint)
-                            }
-                            .buttonStyle(PressableButtonStyle())
-                        }
-                    }
-                    .padding(.horizontal, Spacing.l)
-                    .frame(height: 50)
-                    .background(PaperBackground())
-
-                    if !sites.isEmpty {
-                        scopeRow
-                    }
-
-                    if session.results.isEmpty && !searching {
-                        searchServices
-                    }
-
-                    if session.results.isEmpty && !searching {
-                        VStack(spacing: Spacing.m) {
-                            Image(systemName: "sparkle.magnifyingglass")
-                                .font(.system(size: 40, weight: .light))
-                                .foregroundStyle(AppPalette.inkFaint)
-                            Text("次の一行を探しましょう")
-                                .font(AppFont.serif(18, weight: .semibold))
-                                .foregroundStyle(AppPalette.ink)
-                            Text("見つけた作品は「本棚に追加」で目次と全話をまとめて取得します。")
-                                .font(AppFont.ui(13))
-                                .foregroundStyle(AppPalette.inkSoft)
-                                .multilineTextAlignment(.center)
-                                .lineSpacing(3)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 56)
-                    }
-
-                    ForEach(session.results) { hit in
-                        resultRow(hit)
-                    }
-                }
-                .padding(.horizontal, Metrics.gutter)
-                .padding(.top, Spacing.l)
-                .padding(.bottom, 40)
+            // 検索語フィールドと範囲チップは固定ヘッダーに置く。
+            // キーボードが出てもページ全体が押し上げられず、
+            // 「検索画面が勝手に動く」ことがない。
+            VStack(spacing: 0) {
+                header
+                Rectangle().fill(AppPalette.hairline).frame(height: 1)
+                resultsList
             }
             .background(AppPalette.canvas.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
@@ -95,6 +34,94 @@ struct DiscoverView: View {
         } message: {
             Text(errorText ?? "")
         }
+    }
+
+    // MARK: 固定ヘッダー(バナー + 検索フィールド + 範囲)
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: Spacing.m) {
+            SectionBanner(
+                title: "DISCOVER",
+                subtitle: "作品を探す"
+            )
+
+            HStack(spacing: Spacing.m) {
+                Image(systemName: "magnifyingglass")
+                    .font(AppFont.ui(14, weight: .medium))
+                    .foregroundStyle(AppPalette.inkFaint)
+                TextField("タイトル・作者名・キーワード", text: $session.query)
+                    .font(AppFont.ui(15))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .onSubmit { Task { await run() } }
+                if searching {
+                    ProgressView().scaleEffect(0.8)
+                } else if !session.query.isEmpty {
+                    Button {
+                        session.clear()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(AppFont.ui(14))
+                            .foregroundStyle(AppPalette.inkFaint)
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                }
+            }
+            .padding(.horizontal, Spacing.l)
+            .frame(height: 50)
+            .background(PaperBackground())
+
+            if !sites.isEmpty {
+                scopeRow
+            }
+        }
+        .padding(.horizontal, Metrics.gutter)
+        .padding(.top, Spacing.l)
+        .padding(.bottom, Spacing.s)
+        .background(AppPalette.canvas)
+    }
+
+    // MARK: 検索結果(ここだけスクロールする)
+
+    private var resultsList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.l) {
+                if session.results.isEmpty && !searching {
+                    searchServices
+                    emptyState
+                }
+
+                ForEach(session.results) { hit in
+                    resultRow(hit)
+                }
+            }
+            .padding(.horizontal, Metrics.gutter)
+            .padding(.top, Spacing.l)
+            .padding(.bottom, 40)
+        }
+        // キーボードの出入りで結果一覧が押し動かされないようにする。
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        // 一覧を触った瞬間にキーボードを引っ込める(引きずられ感の解消)。
+        .scrollDismissesKeyboard(.immediately)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: Spacing.m) {
+            Image(systemName: "sparkle.magnifyingglass")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(AppPalette.inkFaint)
+            Text("次の一行を探しましょう")
+                .font(AppFont.serif(18, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+            Text("見つけた作品は「本棚に追加」で目次と全話をまとめて取得します。")
+                .font(AppFont.ui(13))
+                .foregroundStyle(AppPalette.inkSoft)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 56)
     }
 
     private func resultRow(_ hit: SearchResultItem) -> some View {

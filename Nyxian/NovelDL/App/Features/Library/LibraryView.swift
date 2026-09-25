@@ -83,6 +83,8 @@ struct LibraryView: View {
                         Task {
                             refreshing = true
                             _ = try? await core.refreshLibrary()
+                            // 目次で増えた話はここで自動取得する(既存話はスキップで高速)。
+                            await core.downloadNewEpisodes()
                             await core.reloadLibrary()
                             refreshing = false
                         }

@@ -60,6 +60,10 @@ struct AppShell: View {
         }
         .transition(.opacity)
         .id(tab)
+        // さがすタブではキーボードによる押し上げを止める(検索フィールドは
+        // 固定ヘッダーの上部にあり、隠れないため動かす必要がない)。
+        // 他タブ(フォーム入力など)では通常どおりキーボード回避する。
+        .ignoresSafeArea(.keyboard, edges: tab == .discover ? .bottom : [])
     }
 
     private var tabBar: some View {

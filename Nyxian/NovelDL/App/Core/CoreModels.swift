@@ -117,7 +117,8 @@ struct SectionResult: Decodable, Sendable {
 
 // MARK: - Search
 
-struct SearchResultItem: Decodable, Identifiable, Hashable, Sendable {
+/// 検索状態を UserDefaults に保存して復元できるよう Encodable も矛盾させる。
+struct SearchResultItem: Codable, Identifiable, Hashable, Sendable {
     var id: String { url }
     let title: String
     let url: String

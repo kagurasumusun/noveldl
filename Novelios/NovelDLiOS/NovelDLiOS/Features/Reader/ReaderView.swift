@@ -516,12 +516,33 @@ struct ReaderView: View {
         }
         loadBookmark()
         do {
-            let sec = try await core.section(novelId: novelId, index: chapterIndex)
+            var sec = try? await core.section(novelId: novelId, index: chapterIndex)
+            // 未取得の話は開いた時点で単話だけ自動取得する。
+            // (リーダー内で完結させる — 「詳細から取得してください」の行き止まりをなくす。
+            //  core 側は from_index + episodes:1 のスポット取得で、既存話には触れない。
+            //  RateLimiter の初回は待ちなしなので体感は数秒以内)
+            if (sec?.bodyXhtml ?? "").isEmpty, !tocUrl.isEmpty,
+               let dir = detail?.novel.outputDir, !dir.isEmpty {
+                _ = try? await core.download(
+                    CoreClient.DownloadOptions(
+                        url: tocUrl,
+                        outputDir: dir,
+                        episodes: 1,
+                        fromIndex: chapterIndex,
+                        mode: "reader"
+                    )
+                )
+                sec = try? await core.section(novelId: novelId, index: chapterIndex)
+                await core.reloadLibrary()
+            }
+            guard let sec else {
+                throw CoreError.message("この話のデータが見つかりません")
+            }
             let meta = chapters.first { $0.index == chapterIndex }
             chapterTitle = meta?.subtitle ?? ""
             chapterLabel = "\(pos + 1)/\(total)話"
             chapterProgress = Double(pos + 1) / Double(total)
-            let html = (sec.bodyXhtml ?? "").isEmpty ? "本文はまだ取得されていません。作品詳細から取得してください。" : (sec.bodyXhtml ?? "")
+            let html = (sec.bodyXhtml ?? "").isEmpty ? "この話はまだ取得できませんでした。作品詳細から再取得してください。" : (sec.bodyXhtml ?? "")
             lastHTML = html
             let result = markup.parse(html, style: currentStyle())
             attributed = result.text

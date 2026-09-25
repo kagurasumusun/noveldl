@@ -11,6 +11,7 @@
 #include "nc_rules.h"
 #include "nc_storage.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -826,10 +827,13 @@ Value op_fetch_toc(const DownloadOptions& opts) {
     }
     // 詳細ページが表示する情報(あらすじ・状態・更新予定等)もこの時点で取得・保存する。
     // 取得に失敗した場合は保存済みの値を壊さない。
+    // NOTE: story は try の外で宣言する(ブロック内宣言のまま out.set で参照すると
+    // スコープ外参照でコンパイルエラーになり、アプリ全体がビルドできなくなる)。
+    std::string story;
     {
         try {
             Value meta = fetch_metadata_via_rules(active_url, preset, http);
-            std::string story = meta.get_str("story", "");
+            story = meta.get_str("story", "");
             NovelMetaExtra mx;
             mx.status = meta.get_str("status", "");
             mx.next_update = meta.get_str("next_update", "");

@@ -63,6 +63,11 @@ final class CoreClient: Observable, @unchecked Sendable {
         nc_http_apple_install()
         let root = Self.libraryRoot().path
         _ = call { novel_core_set_root_dir(root) }
+        // 設定で変えた取得間隔は起動時にもコアへ反映する(再起動で既定に戻らないように)。
+        let storedInterval = UserDefaults.standard.integer(forKey: "downloadIntervalMs")
+        if storedInterval > 0 {
+            setDownloadInterval(ms: UInt32(storedInterval))
+        }
         installProgressCallback()
         Task { await reloadLibrary() }
     }
@@ -147,6 +152,31 @@ final class CoreClient: Observable, @unchecked Sendable {
         try await decode(RefreshResult.self) {
             novel_core_library_refresh(Self.libraryRoot().path)
         }
+    }
+
+    /// 更新確認の続き: 目次が増えた作品の“未取得の話”だけを続けて取得する。
+    /// 一度も本文を取得していない作品は自動では取らず、明示的な「全話を取得」に任せる。
+    /// 既存話は bulk でもすべてスキップされるため、増分だけが実際に通信する。
+    func downloadNewEpisodes() async {
+        guard !progress.running else { return }
+        let targets = library.filter { item in
+            let done = item.downloadedCount ?? 0
+            return done > 0 && done < item.episodeCount
+        }
+        for item in targets {
+            // ユーザーが別の取得(全話/単話)を始めたらそちらを優先する。
+            guard !progress.running else { break }
+            _ = try? await download(
+                CoreClient.DownloadOptions(
+                    url: item.tocUrl,
+                    outputDir: item.outputDir,
+                    episodes: 0,
+                    fromIndex: "",
+                    mode: "bulk"
+                )
+            )
+        }
+        await reloadLibrary()
     }
 
     func section(novelId: String, index: String) async throws -> SectionResult {
