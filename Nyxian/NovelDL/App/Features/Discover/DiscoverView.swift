@@ -316,6 +316,11 @@ struct DiscoverView: View {
 
     /// 追加 = 目次取得 → 自動で全話ダウンロード。
     private func add(_ hit: SearchResultItem) async {
+        // 並走ガード(別ジョブの中止状態/進捗を壊さない)。
+        guard !core.progress.running else {
+            errorText = "取得が進行中です。完了後に追加してください。"
+            return
+        }
         addingUrl = hit.url
         defer { addingUrl = nil }
         do {

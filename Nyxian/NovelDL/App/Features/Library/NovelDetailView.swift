@@ -468,6 +468,11 @@ struct NovelDetailView: View {
     }
 
     private func runDownload(mode: String = "bulk", all: Bool = false) async {
+        // 並走ガード(別ジョブの中止状態/進捗を壊さない)。
+        guard !core.progress.running else {
+            errorText = "別の取得が進行中です。完了後に実行してください。"
+            return
+        }
         busy = true
         statusText = all ? "全話をダウンロード中…" : "ダウンロード中…"
         defer {

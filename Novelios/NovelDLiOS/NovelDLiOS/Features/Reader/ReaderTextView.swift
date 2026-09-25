@@ -68,6 +68,13 @@ final class ScrollBox {
     /// 本文がまだ prepare されていない時期に届いた挿絵の保留列。
     /// (rebuild が loadImages を先にspawnし、SwiftUI の更新が後から来る競合対策)
     private var pendingImages: [(range: NSRange, image: UIImage, width: CGFloat)] = []
+    /// 直前に表示したページ範囲(同じなら attributedText の再設定をしない)。
+    private var lastShownRange = NSRange(location: NSNotFound, length: 0)
+    /// 直前に通知したページ位置。同じ値の通知を繰り返すと
+    /// prepare → onPage → @State → updateUIView → prepare → … の
+    /// 無限ループになるため、変化したときだけ通知する。
+    private var lastNotifiedPage = -1
+    private var lastNotifiedCount = -1
 
     /// セーフエリアを取り直す。変化があったかを返す。
     @discardableResult
@@ -107,9 +114,15 @@ final class ScrollBox {
             let mid = min(text.length - 1, max(0, text.length / 2))
             if let f0 = text.attribute(.font, at: 0, effectiveRange: nil) as? UIFont {
                 keyParts.append(String(Int(f0.pointSize * 10)))
+                // 書体(明朝/ゴシック)の変更はサイズだけでは検知できない
+                keyParts.append(f0.familyName ?? f0.fontName)
             }
             if let fm = text.attribute(.font, at: mid, effectiveRange: nil) as? UIFont {
                 keyParts.append(String(Int(fm.pointSize * 10)))
+            }
+            // 行間の変更はフォントに現れない
+            if let p0 = text.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle {
+                keyParts.append(String(Int(p0.lineSpacing * 10)))
             }
         }
         let key = keyParts.joined(separator: "|")
@@ -135,6 +148,7 @@ final class ScrollBox {
             pageIndex = 0
         }
         pageIndex = min(pageIndex, pageCount - 1)
+        lastShownRange = NSRange(location: NSNotFound, length: 0)
         displayCurrent()
         notifyPage()
     }
@@ -183,11 +197,19 @@ final class ScrollBox {
         return pages
     }
 
-    private func displayCurrent() {
+    private func displayCurrent(force: Bool = false) {
         guard let v = view else { return }
         let range = pageRanges.isEmpty
             ? NSRange(location: 0, length: fullText.length)
             : pageRanges[min(pageIndex, pageRanges.count - 1)]
+        // 同じ範囲を表示中なら再設定しない(SwiftUI 更新のたびに
+        // attributedText を張り直すとちらつきと無駄な再レイアウトの元)。
+        if !force,
+           lastShownRange.location == range.location,
+           lastShownRange.length == range.length {
+            return
+        }
+        lastShownRange = range
         v.attributedText = fullText.attributedSubstring(from: range)
     }
 
@@ -197,12 +219,19 @@ final class ScrollBox {
         animate(v, forward: forward) { [weak self] in
             guard let self else { return }
             self.pageIndex = clamped
-            self.displayCurrent()
+            self.displayCurrent(force: true)
         }
         notifyPage()
     }
 
     private func notifyPage() {
+        // 値が変わっていないのに通知すると、onPage → @State 更新 →
+        // updateUIView → prepare → notifyPage の静止しないループになる。
+        if pageIndex == lastNotifiedPage && pageCount == lastNotifiedCount {
+            return
+        }
+        lastNotifiedPage = pageIndex
+        lastNotifiedCount = pageCount
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.onPage?(self.pageIndex, self.pageCount)
@@ -248,7 +277,9 @@ final class ScrollBox {
         guard NSMaxRange(range) <= fullText.length else { return }
         let updated = NSMutableAttributedString(attributedString: fullText)
         updated.addAttribute(.attachment, value: attachment(for: image, width: displayWidth), range: range)
-        // 画像は行高を変えるので必ず再分割する(表示ページは維持)。
+        // 画像は行高を変えるが geomKey(長さ/書体/行間)には現れないので、
+        // 強制的に再分割する(表示ページは維持)。
+        geomKey = ""
         prepare(text: updated, containerWidth: lastWidth, viewHeight: lastHeight, keepIndex: true)
     }
 

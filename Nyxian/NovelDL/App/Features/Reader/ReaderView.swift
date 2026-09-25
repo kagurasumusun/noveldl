@@ -160,6 +160,8 @@ struct ReaderView: View {
             }
         }
         .onAppear {
+            // 読書中は画面を自動ロックさせない(読書アプリの基本動作)。
+            UIApplication.shared.isIdleTimerDisabled = true
             // 頁カウンタの更新はボックスからの通知で受ける。
             readerBox.onPage = { idx, cnt in
                 currentPage = idx
@@ -173,6 +175,10 @@ struct ReaderView: View {
                     withAnimation(.easeOut(duration: 0.4)) { hintVisible = false }
                 }
             }
+        }
+        .onDisappear {
+            // 離脱時に自動ロックを戻す(つけっぱなしを避ける)。
+            UIApplication.shared.isIdleTimerDisabled = false
         }
     }
 
@@ -286,11 +292,12 @@ struct ReaderView: View {
     }
 
     /// 未取得の話を開いたときの自動取得インジケータ。
+    /// 別の取得(全話)が走っているときはその旨を出し分ける。
     private var fetchPill: some View {
         HStack(spacing: 8) {
             ProgressView()
                 .scaleEffect(0.7)
-            Text("この話を自動取得中…")
+            Text(core.progress.running ? "他の取得の完了を待っています…" : "この話を自動取得中…")
                 .font(AppFont.ui(12, weight: .medium))
                 .foregroundStyle(theme.ink)
         }
@@ -620,17 +627,32 @@ struct ReaderView: View {
                let rawDir = detail?.novel.outputDir, !rawDir.isEmpty {
                 autoFetching = true
                 defer { autoFetching = false }
-                _ = try? await core.download(
-                    CoreClient.DownloadOptions(
-                        url: tocUrl,
-                        outputDir: CoreClient.effectiveOutputDir(rawDir),
-                        episodes: 1,
-                        fromIndex: chapterIndex,
-                        mode: "reader"
+                // 全話取得など別ジョブが走っているときは競合させない。
+                // 完了を待ちつつ、該当話が保存されたらそれを使う(最長5分)。
+                if core.progress.running {
+                    for _ in 0..<150 {
+                        if !core.progress.running { break }
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        let poll = try? await core.section(novelId: novelId, index: chapterIndex)
+                        if !(poll?.bodyXhtml ?? "").isEmpty {
+                            sec = poll
+                            break
+                        }
+                    }
+                }
+                if (sec?.bodyXhtml ?? "").isEmpty {
+                    _ = try? await core.download(
+                        CoreClient.DownloadOptions(
+                            url: tocUrl,
+                            outputDir: CoreClient.effectiveOutputDir(rawDir),
+                            episodes: 1,
+                            fromIndex: chapterIndex,
+                            mode: "reader"
+                        )
                     )
-                )
-                sec = try? await core.section(novelId: novelId, index: chapterIndex)
-                await core.reloadLibrary()
+                    sec = try? await core.section(novelId: novelId, index: chapterIndex)
+                    await core.reloadLibrary()
+                }
             }
             guard let sec else {
                 throw CoreError.message("この話のデータが見つかりません")

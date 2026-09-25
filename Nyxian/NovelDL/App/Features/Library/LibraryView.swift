@@ -80,6 +80,12 @@ struct LibraryView: View {
                 Spacer()
                 HStack(spacing: Spacing.s) {
                     CircleIconButton(system: "arrow.clockwise") {
+                        // 取得中に重ねて走らせると、コアの中止状態や進捗が
+                        // 上書きされ、SQLite の書き込みも競合する。
+                        guard !core.progress.running else {
+                            errorText = "取得が進行中です。完了後に更新してください。"
+                            return
+                        }
                         Task {
                             refreshing = true
                             _ = try? await core.refreshLibrary()
@@ -215,6 +221,11 @@ struct LibraryView: View {
     private func runImport(url: String) async {
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // 並走ガード(中止状態の上書き・SQLite競合の防止)。
+        guard !core.progress.running else {
+            errorText = "取得が進行中です。完了後に追加してください。"
+            return
+        }
         activeStatus = "目次を取得中…"
         errorText = nil
         do {
