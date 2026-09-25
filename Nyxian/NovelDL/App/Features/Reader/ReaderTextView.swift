@@ -158,6 +158,12 @@ struct ReaderTextView: UIViewRepresentable {
             $0.delegate = context.coordinator
             tv.addGestureRecognizer($0)
         }
+        // タップとスワイプが同時に成立可能(shouldRecognizeSimultaneouslyWith = true)
+        // なので、指定なしだと端でのスワイプが「スワイプ送り」と「端タップ送り」の
+        // 二重発火になり、1回のフリックでページが2回分進む(反応が極端すぎる原因)。
+        // スワイプが成立するかどうか判定が終わるまでタップの確定を待たせる。
+        taps.require(toFail: leftSwipe)
+        taps.require(toFail: rightSwipe)
         context.coordinator.swipeEnabled = swipePaging
         box.view = tv
         box.turn = turn

@@ -257,6 +257,7 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
 
     TocResult result;
     std::set<std::string> seen_chapters;
+    std::set<std::string> seen_indices;
     AccessSettings access = AccessSettings::from_preset(preset);
     int fetched_pages = 0;
     while (!pages.queue.empty()) {
@@ -270,8 +271,25 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
         ParsedToc toc = parser.parse_toc(body);
         if (result.title.empty() && toc.title) result.title = *toc.title;
         if (result.author.empty() && toc.author) result.author = *toc.author;
-        for (auto& ch : toc.chapters)
-            if (seen_chapters.insert(ch.href).second) result.chapters.push_back(ch);
+        for (auto& ch : toc.chapters) {
+            if (!seen_chapters.insert(ch.href).second) continue;
+            // なろう系など、ページ内での連番("1","2",...)しか取れないサイトでは
+            // 2ページ目以降も毎回 1 から採番され直すため、そのまま使うと
+            // sections テーブルの PRIMARY KEY(novel_id, chapter_index) が
+            // 1ページ目の話数と衝突し、後から読んだページ(=最新ページ)の内容で
+            // 前のページの話を上書きしてしまう(結果的に最後のページ分しか
+            // 残らないように見える)。同じ index が既に使われていた場合のみ、
+            // 通し番号(これまでに確定した話数+1)へ振り直して重複を避ける。
+            if (!seen_indices.insert(ch.index).second) {
+                std::string fresh;
+                long long candidate = (long long)result.chapters.size() + 1;
+                do {
+                    fresh = std::to_string(candidate++);
+                } while (!seen_indices.insert(fresh).second);
+                ch.index = fresh;
+            }
+            result.chapters.push_back(ch);
+        }
         if (on_page) on_page(result);
         for (auto& href : parser.parse_toc_page_hrefs(body)) pages.schedule(url, href);
     }

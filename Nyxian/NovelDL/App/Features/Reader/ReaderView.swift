@@ -85,6 +85,12 @@ struct ReaderView: View {
                     if canGoNext { goChapter(delta: 1) }
                 }
             )
+            // 明示的な frame が無いと UIViewRepresentable の UITextView が
+            // 正しい画面サイズを受け取れず、本文の折り返し幅がおかしくなったり、
+            // タップ判定領域(中央 6 割 / 端 2 割)が画面全体とズレて
+            // 「端が反応しすぎる」「中央タップでバーが出ない」原因になっていた。
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea()
             .id(chapterIndex)
 
             VStack {
