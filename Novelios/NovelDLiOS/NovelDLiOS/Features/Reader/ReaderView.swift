@@ -231,7 +231,7 @@ struct ReaderView: View {
                     .font(AppFont.ui(9, weight: .medium))
             }
             .foregroundStyle(enabled ? theme.ink : theme.ink.opacity(0.3))
-            .frame(width: 52, height: 40)
+            .frame(width: 54, height: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle(haptic: false))
@@ -253,10 +253,21 @@ struct ReaderView: View {
     private var menuSheet: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.l) {
-                Text("読書メニュー")
-                    .font(AppFont.serif(20, weight: .semibold))
-                    .foregroundStyle(AppPalette.ink)
-                    .padding(.top, Spacing.s)
+                Capsule()
+                    .fill(AppPalette.inkFaint.opacity(0.4))
+                    .frame(width: 36, height: 4)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 8)
+                HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
+                    Text("MENU")
+                        .font(AppFont.serif(17, weight: .semibold))
+                        .foregroundStyle(AppPalette.ink)
+                        .tracking(2.5)
+                    Text("読書メニュー")
+                        .font(AppFont.ui(10))
+                        .foregroundStyle(AppPalette.inkFaint)
+                    Spacer()
+                }
 
                 menuSectionHeader("表示", "DISPLAY")
                 VStack(spacing: 0) {

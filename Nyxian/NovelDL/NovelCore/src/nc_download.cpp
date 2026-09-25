@@ -260,17 +260,69 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
     std::set<std::string> seen_indices;
     AccessSettings access = AccessSettings::from_preset(preset);
     int fetched_pages = 0;
+    int failed_pages = 0;
+    int fail_streak = 0;
+    std::map<std::string, int> retry_counts;
+
+    // ?p=N / ?page=N の次を機械的に候補へ入れる(リンク解析に失敗しても辿れる保険)。
+    auto probe_next = [&](const std::string& url, bool page_was_empty, bool fetch_failed) {
+        size_t num_start = std::string::npos;
+        const char* keys[] = {"?p=", "&p=", "?page=", "&page="};
+        for (auto k : keys) {
+            size_t at = url.rfind(k);
+            if (at != std::string::npos) {
+                num_start = at + std::strlen(k);
+                break;
+            }
+        }
+        if (num_start == std::string::npos) return;
+        size_t num_end = num_start;
+        while (num_end < url.size() && url[num_end] >= '0' && url[num_end] <= '9') ++num_end;
+        if (num_end == num_start) return;
+        long long n = 0;
+        try {
+            n = std::stoll(url.substr(num_start, num_end - num_start));
+        } catch (...) {
+            return;
+        }
+        // 空ページ(末尾)到達で打ち切り。失敗時は3連続まで追う。
+        if (page_was_empty && !fetch_failed) return;
+        if (fetch_failed && fail_streak >= 3) return;
+        if (n >= 398) return;
+        std::string next = url.substr(0, num_start) + std::to_string(n + 1) + url.substr(num_end);
+        pages.schedule(url, next);
+    };
+
     while (!pages.queue.empty()) {
         if (++fetched_pages > 400) break;  // 異常なページ連鎖の保険
         if (cancel_requested()) throw Error("cancelled");
         auto [url, html] = pages.queue.front();
         pages.queue.pop_front();
-        std::string body = html ? *html
-                              : http.fetch(url == toc_url ? apply_fetch_url_template(preset, url) : url,
-                                           access, toc_url);
+        std::string body;
+        bool ok = true;
+        if (html) {
+            body = *html;
+        } else {
+            try {
+                body = http.fetch(url == toc_url ? apply_fetch_url_template(preset, url) : url,
+                                  access, toc_url);
+                fail_streak = 0;
+            } catch (const std::exception&) {
+                // 1ページの失敗で全体を止めない。1度だけ再キューし、次の番号ページも追う。
+                ok = false;
+                ++failed_pages;
+                ++fail_streak;
+                int& tries = retry_counts[url];
+                ++tries;
+                if (tries <= 1) pages.queue.emplace_back(url, std::nullopt);
+                probe_next(url, false, true);
+                continue;
+            }
+        }
         ParsedToc toc = parser.parse_toc(body);
         if (result.title.empty() && toc.title) result.title = *toc.title;
         if (result.author.empty() && toc.author) result.author = *toc.author;
+<<<<<<< HEAD
         for (auto& ch : toc.chapters) {
             if (!seen_chapters.insert(ch.href).second) continue;
             // なろう系など、ページ内での連番("1","2",...)しか取れないサイトでは
@@ -290,8 +342,22 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
             }
             result.chapters.push_back(ch);
         }
+=======
+        size_t before = result.chapters.size();
+        for (auto& ch : toc.chapters)
+            if (seen_chapters.insert(ch.href).second) result.chapters.push_back(ch);
+        size_t added = result.chapters.size() - before;
+>>>>>>> 00faed990e798f24ddd7bd4a244ab0400de9e40a
         if (on_page) on_page(result);
-        for (auto& href : parser.parse_toc_page_hrefs(body)) pages.schedule(url, href);
+        auto hrefs = parser.parse_toc_page_hrefs(body);
+        for (auto& href : hrefs) pages.schedule(url, href);
+        // リンクが1つも見つからず話が出た初回ページのみ、?p=2/?page=2 も保険で叩く。
+        if (url == toc_url && hrefs.empty() && !toc.chapters.empty()) {
+            pages.schedule(url, toc_url + (toc_url.find('?') == std::string::npos ? "?" : "&") + "p=2");
+            pages.schedule(url, toc_url + (toc_url.find('?') == std::string::npos ? "?" : "&") + "page=2");
+        }
+        // 新規話ゼロのページ(範囲外=クランプ表示など)で連鎖を打ち切る。
+        probe_next(url, toc.chapters.empty() || added == 0, false);
     }
     return result;
 }
