@@ -218,7 +218,7 @@ struct ReaderView: View {
     }
 
     private var hintPill: some View {
-        Text("中央タップでバーの出没・左右タップで送り")
+        Text("左右スワイプか左右タップで送り・中央タップでバー")
             .font(AppFont.ui(12, weight: .medium))
             .foregroundStyle(theme.ink)
             .padding(.horizontal, Spacing.m)

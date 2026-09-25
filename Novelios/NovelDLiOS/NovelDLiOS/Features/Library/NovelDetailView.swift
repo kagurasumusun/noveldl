@@ -102,6 +102,16 @@ struct NovelDetailView: View {
     private func synopsisCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
             Text("あらすじ")
+                .font(AppFont.serif(19, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+                .padding(.top, Spacing.s)
+            synopsisBody(text)
+        }
+    }
+
+    private func synopsisBody(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s) {
+            Text("あらすじ")
                 .font(AppFont.serif(17, weight: .semibold))
                 .foregroundStyle(AppPalette.ink)
             Text(text)
@@ -129,6 +139,16 @@ struct NovelDetailView: View {
     // MARK: 操作
 
     private var actionCard: some View {
+        VStack(alignment: .leading, spacing: Spacing.s) {
+            Text("操作")
+                .font(AppFont.serif(19, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+                .padding(.top, Spacing.s)
+            actionBody
+        }
+    }
+
+    private var actionBody: some View {
         VStack(spacing: Spacing.m) {
             EmberButton(
                 title: busy
