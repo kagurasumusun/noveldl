@@ -343,20 +343,21 @@ struct SectionBanner: View {
                     .tracking(2)
                     .foregroundStyle(AppPalette.gold)
             }
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(title)
-                    .font(AppFont.serif(26, weight: .semibold))
+                    .font(AppFont.serif(18, weight: .medium))
                     .foregroundStyle(AppPalette.ink)
+                    .tracking(2)
                 if let subtitle {
                     Text(subtitle)
-                        .font(AppFont.ui(13))
+                        .font(AppFont.ui(10.5))
                         .foregroundStyle(AppPalette.inkFaint)
                 }
                 Spacer()
             }
             Rectangle()
-                .fill(AppPalette.ink)
-                .frame(width: 28, height: 2)
+                .fill(AppPalette.ink.opacity(0.85))
+                .frame(width: 18, height: 1)
                 .padding(.top, 2)
         }
     }

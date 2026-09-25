@@ -20,8 +20,8 @@ build/%.o: src/%.cpp | build
 build/libnovel_core.a: $(OBJ)
 	ar rcs $@ $^
 
-build/novel_core_cli: tools/cli.cpp build/libnovel_core.a
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $< build/libnovel_core.a $(LDLIBS) -o $@
+build/novel_core_cli: tools/cli.cpp tools/http_pipe.cpp build/libnovel_core.a
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) tools/cli.cpp tools/http_pipe.cpp build/libnovel_core.a $(LDLIBS) -o $@
 
 build/novel_core_tests: tests/test_core.cpp build/libnovel_core.a
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -UNDEBUG $< build/libnovel_core.a $(LDLIBS) -o $@

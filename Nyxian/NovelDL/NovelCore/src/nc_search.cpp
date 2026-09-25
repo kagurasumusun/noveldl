@@ -115,6 +115,24 @@ std::string site_scoped_query(const std::string& query, const std::string& site)
     return q.empty() ? "site:" + site : q + " site:" + site;
 }
 
+// クエリ中の site:xxx 指定を抽出して絞り込みに使う(検索範囲の指定)。
+std::vector<std::string> extract_site_filters(std::string& query) {
+    std::vector<std::string> filters;
+    std::string out;
+    for (auto& tok : split_ws(query)) {
+        if (starts_with(lower(tok), "site:")) {
+            std::string key = lower(trim(tok.substr(5)));
+            if (!key.empty() && std::find(filters.begin(), filters.end(), key) == filters.end())
+                filters.push_back(key);
+            continue;
+        }
+        if (!out.empty()) out += " ";
+        out += tok;
+    }
+    query = out;
+    return filters;
+}
+
 std::string build_search_url(const std::string& endpoint, const std::string& query, int page) {
     std::string url = endpoint + "?q=" + percent_encode(query, false) + "&type=all";
     if (page > 1) url += "&p=" + std::to_string(page);
@@ -241,14 +259,33 @@ Value search_supported_sites() {
     return root;
 }
 
-Value search_novels(const std::string& query, int limit) {
+Value search_novels(const std::string& query, int limit, const std::string& site_filter) {
     std::vector<Site> sites = load_sites();
     if (sites.empty()) throw Error("no searchable sites configured");
-    std::string cleaned = strip_site_filters(normalize_query_input(query));
+    std::string cleaned = normalize_query_input(query);
+    // site: 指定(クエリ内 or 引数)で検索範囲を絞る。先に抽出してから除去する。
+    std::vector<std::string> filters = extract_site_filters(cleaned);
+    if (!site_filter.empty()) {
+        std::string key = lower(trim(site_filter));
+        if (std::find(filters.begin(), filters.end(), key) == filters.end())
+            filters.push_back(key);
+    }
+    if (!filters.empty()) {
+        std::vector<Site> picked;
+        for (auto& s : sites) {
+            bool wanted = false;
+            for (auto& f : filters)
+                if (s.key == f || (s.key.find(f) != std::string::npos && f.size() >= 3)) wanted = true;
+            if (wanted) picked.push_back(s);
+        }
+        if (picked.empty()) throw Error("no matching site for: " + join(filters, ", "));
+        sites = picked;
+    }
     if (limit <= 0) limit = kDefaultLimit;
     limit = std::min(limit, kMaxTotalLimit);
     int per_site = std::min(std::max((limit + (int)sites.size() - 1) / (int)sites.size(), 1),
                             kMaxPerSite);
+    if (!filters.empty()) per_site = std::min(limit, kMaxPerSite);
 
     HttpClient http;
     Value results = Value::array();

@@ -11,6 +11,7 @@
 //   sites
 //   test-site <url> <yaml-file>
 #include "../include/novel_core.h"
+#include "http_pipe.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -39,6 +40,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "usage: %s <command> ...\n", argv[0]);
         return 2;
     }
+    nc_http_pipe_install();  // curl(1) 経由の HTTP(検索・取得の実地確認用)
     std::string cmd = argv[1];
     if (cmd == "download" && argc >= 4) {
         std::string episodes = argc >= 5 ? argv[4] : "0";

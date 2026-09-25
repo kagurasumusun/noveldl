@@ -198,6 +198,7 @@ char* novel_core_export_txt_zip(const char* options_json) {
 
 char* novel_core_search(const char* query, uint32_t limit) {
     return guarded([&]() {
+        // クエリ中の site:xxx で検索範囲を絞れる(novel_core_search_ex も参照)。
         return search_novels(query ? query : "", (int)limit);
     });
 }

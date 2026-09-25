@@ -9,6 +9,7 @@ struct DiscoverView: View {
     @State private var errorText: String?
     @State private var addingUrl: String?
     @State private var sites: [SearchSite] = []
+    @State private var scopeKey: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -46,6 +47,10 @@ struct DiscoverView: View {
                     .padding(.horizontal, Spacing.l)
                     .frame(height: 50)
                     .background(PaperBackground())
+
+                    if !sites.isEmpty {
+                        scopeRow
+                    }
 
                     searchServices
 
@@ -181,11 +186,23 @@ struct DiscoverView: View {
                         : "https://webnovels.jp/search?q=" + (query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")
                 )
                 RowDivider(leading: Spacing.l)
-                serviceRow(name: "ノベレコ", note: "なろう/カクヨム/ハーメルン検索エンジン", url: "https://novereco.net/")
+                serviceRow(name: "ノベレコ", note: "なろう/カクヨム/ハーメルンの検索エンジン・500超タグ", url: "https://novereco.net/")
                 RowDivider(leading: Spacing.l)
-                serviceRow(name: "なろう検索", note: "なろう特化の検索・全文検索導線", url: "https://narousearch.appspot.com/")
+                serviceRow(name: "なろう検索", note: "なろう特化・ポイント絞込と全文検索導線", url: "https://narousearch.appspot.com/")
                 RowDivider(leading: Spacing.l)
-                serviceRow(name: "ランタン検索", note: "R-18 レーベル(ノクターン等)専用", url: "https://narousearch.appspot.com/")
+                serviceRow(name: "ランタン検索", note: "R-18 レーベル(ノクターン/ムーンライト/ミッドナイト)", url: "https://lanternsearch.appspot.com/")
+                RowDivider(leading: Spacing.l)
+                serviceRow(name: "小説を探そうα", note: "なろうをこだわり条件で(字下げ・投稿頻度など)", url: "https://yomou-db.shimo-codex.com/")
+                RowDivider(leading: Spacing.l)
+                serviceRow(name: "なろうファンDB", note: "会話率・総合pt などのこだわり検索", url: "https://db.narou.fun/")
+                RowDivider(leading: Spacing.l)
+                serviceRow(name: "スコッパーになろう", note: "タイトル文字数・1話文字数で探す", url: "https://schopper.jp/")
+                RowDivider(leading: Spacing.l)
+                serviceRow(name: "読み漁り快適化計画", note: "この小説を読んでる人は…の横展開検索", url: "https://syosetu-yomiasari.com/")
+                RowDivider(leading: Spacing.l)
+                serviceRow(name: "あらすじ街灯", note: "キャッチコピーとあらすじから作品発見", url: "https://arasujigaito.vercel.app/")
+                RowDivider(leading: Spacing.l)
+                serviceRow(name: "たぐらん!", note: "キーワード別のポイント順位で探す", url: "https://novel.mypotal.net/")
             }
             .background(PaperBackground())
         }
@@ -219,10 +236,48 @@ struct DiscoverView: View {
         searching = true
         defer { searching = false }
         do {
-            results = try await core.search(text)
+            // 検索範囲(site:)で絞り込み — 各サイト単独でも横断でも検索できる
+            let scoped = scopeKey.map { text + " site:" + $0 } ?? text
+            results = try await core.search(scoped)
         } catch {
             errorText = error.localizedDescription
         }
+    }
+
+    /// 検索範囲: すべて / サイト単独。
+    private var scopeRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                scopeChip(label: "すべて", key: nil)
+                ForEach(sites) { site in
+                    scopeChip(label: site.label, key: site.key)
+                }
+            }
+            .padding(.horizontal, Spacing.l)
+        }
+    }
+
+    private func scopeChip(label: String, key: String?) -> some View {
+        let active = scopeKey == key
+        return Button {
+            scopeKey = key
+            if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                Task { await run() }
+            }
+        } label: {
+            Text(label)
+                .font(AppFont.ui(11.5, weight: .semibold))
+                .foregroundStyle(active ? Color(red: 0.95, green: 0.93, blue: 0.90) : AppPalette.inkSoft)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule().fill(active ? AppPalette.ember : AppPalette.surface)
+                )
+                .overlay(
+                    Capsule().strokeBorder(AppPalette.hairline, lineWidth: active ? 0 : 1)
+                )
+        }
+        .buttonStyle(PressableButtonStyle(haptic: true))
     }
 
     /// 追加 = 目次取得 → 自動で全話ダウンロード。

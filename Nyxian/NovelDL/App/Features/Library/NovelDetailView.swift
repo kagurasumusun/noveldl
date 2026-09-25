@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(PhotosUI)
 import PhotosUI
+#endif
 
 struct ReaderRoute: Hashable, Identifiable {
     let novelId: String
@@ -29,7 +31,10 @@ struct NovelDetailView: View {
     @State private var chapterLimit = 60
     @State private var readerRoute: ReaderRoute?
     @State private var customCover: UIImage?
+#if canImport(PhotosUI)
     @State private var coverPick: PhotosPickerItem?
+#endif
+    @State private var showLegacyPicker = false
 
     private var downloaded: Int { detail?.downloadedCount ?? item.downloadedCount ?? 0 }
     private var total: Int { max(detail?.novel.episodeCount ?? item.episodeCount, 1) }
@@ -77,15 +82,17 @@ struct NovelDetailView: View {
             image: customCover ?? core.covers[item.novelId]
         )
         .overlay(alignment: .topTrailing) {
+            #if canImport(PhotosUI)
             PhotosPicker(selection: $coverPick, matching: .images) {
-                Image(systemName: "photo.on.rectangle.angled")
-                    .font(AppFont.ui(13, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.95, green: 0.93, blue: 0.90))
-                    .frame(width: 38, height: 38)
-                    .background(Circle().fill(.black.opacity(0.35)))
+                coverPickGlyph
             }
             .padding(Spacing.s)
+            #else
+            Button { showLegacyPicker = true } label: { coverPickGlyph }
+                .padding(Spacing.s)
+            #endif
         }
+        #if canImport(PhotosUI)
         .onChange(of: coverPick) {
             guard let pick = coverPick else { return }
             Task {
@@ -97,6 +104,24 @@ struct NovelDetailView: View {
                 }
             }
         }
+        #else
+        .sheet(isPresented: $showLegacyPicker) {
+            LegacyImagePicker { img in
+                CoverStore.save(img, storagePath: item.storagePath)
+                customCover = CoverStore.customImage(item.storagePath)
+                Haptics.success()
+            }
+            .ignoresSafeArea()
+        }
+        #endif
+    }
+
+    private var coverPickGlyph: some View {
+        Image(systemName: "photo.on.rectangle.angled")
+            .font(AppFont.ui(13, weight: .semibold))
+            .foregroundStyle(Color(red: 0.95, green: 0.93, blue: 0.90))
+            .frame(width: 38, height: 38)
+            .background(Circle().fill(.black.opacity(0.35)))
     }
 
     /// 情報(META):作者・状態・話数・コメント・更新・取得状況を一枚の棚札に。
@@ -377,11 +402,11 @@ struct NovelDetailView: View {
     private func headerEN(_ en: String, _ jp: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
             Text(en)
-                .font(AppFont.serif(22, weight: .bold))
+                .font(AppFont.serif(15, weight: .semibold))
                 .foregroundStyle(AppPalette.ink)
-                .tracking(1.5)
+                .tracking(2.5)
             Text(jp)
-                .font(AppFont.ui(11, weight: .medium))
+                .font(AppFont.ui(10))
                 .foregroundStyle(AppPalette.inkFaint)
             Spacer()
         }
@@ -551,3 +576,30 @@ private struct OptionsSheetBody: View {
         .presentationCornerRadius(20)
     }
 }
+
+#if !canImport(PhotosUI)
+/// PhotosUI が使えない環境向けのフォールバック(UIKit のみで完結)。
+struct LegacyImagePicker: UIViewControllerRepresentable {
+    var onPick: (UIImage) -> Void
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let onPick: (UIImage) -> Void
+        init(onPick: @escaping (UIImage) -> Void) { self.onPick = onPick }
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let img = info[.originalImage] as? UIImage { onPick(img) }
+            picker.dismiss(animated: true)
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+        }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .photoLibrary
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+}
+#endif
