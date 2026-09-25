@@ -110,7 +110,7 @@ struct DiscoverView: View {
             }
             .padding(.horizontal, Metrics.gutter)
             .padding(.top, Spacing.l)
-            .padding(.bottom, 40)
+            .padding(.bottom, 72)
         }
         // キーボードの出入りで結果一覧が押し動かされないようにする。
         .ignoresSafeArea(.keyboard, edges: .bottom)

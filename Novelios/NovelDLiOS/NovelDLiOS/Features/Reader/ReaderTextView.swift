@@ -81,11 +81,12 @@ final class ScrollBox {
     func refreshPads() -> Bool {
         guard let v = view else { return false }
         let safe = v.safeAreaInsets
-        // 上下バー(タップで出没)が本文に被らない余白を確保する。
-        // バーが見えている間も同じ帯で組版する(出没で再分割しない)。
-        // topBar ≈ 50pt / bottomBar ≈ 54pt + 髪一つのゆとり。
-        let top = max(72.0, safe.top + 58.0)
-        let bottom = max(84.0, safe.bottom + 64.0)
+        // 上下バー(タップで出没)と本文のバランス。バー自体をスリム化
+        // (約38/40pt)したので、余白は「バー + 呼吸の8pt」程度に抑え、
+        // 本文の帯を最大化する。バーが見えている間も同じ帯で組版する
+        // (出没で再分割しない)。
+        let top = max(54.0, safe.top + 42.0)
+        let bottom = max(60.0, safe.bottom + 48.0)
         guard top != padTop || bottom != padBottom else { return false }
         padTop = top
         padBottom = bottom

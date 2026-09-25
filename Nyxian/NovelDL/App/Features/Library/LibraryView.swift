@@ -39,7 +39,7 @@ struct LibraryView: View {
                 }
                 .padding(.horizontal, Metrics.gutter)
                 .padding(.top, Spacing.l)
-                .padding(.bottom, 40)
+                .padding(.bottom, 72)
             }
             .background(AppPalette.canvas.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)

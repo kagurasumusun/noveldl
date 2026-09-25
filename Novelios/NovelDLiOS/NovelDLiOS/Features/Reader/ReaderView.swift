@@ -216,9 +216,12 @@ struct ReaderView: View {
             chromeButton("gearshape", "設定") { sheet = .menu }
         }
         .padding(.horizontal, Spacing.s)
-        .padding(.vertical, 6)
+        .padding(.vertical, 3)
         .frame(maxWidth: .infinity)
-        .background(theme.background.opacity(0.94))
+        .background(theme.background.opacity(0.92))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.hairline).frame(height: 1)
+        }
     }
 
     private var bottomBar: some View {
@@ -229,14 +232,14 @@ struct ReaderView: View {
             chromeCaptioned("chevron.up", "前頁") {
                 _ = readerBox.pageUp()
             }
-            VStack(spacing: 3) {
+            VStack(spacing: 2) {
                 Text(chapterLabel)
-                    .font(AppFont.ui(11, weight: .semibold).monospacedDigit())
+                    .font(AppFont.ui(10.5, weight: .semibold).monospacedDigit())
                     .foregroundStyle(theme.ink)
                 ReadingRibbon(value: chapterProgress)
-                    .frame(maxWidth: 96)
+                    .frame(maxWidth: 88)
                 Text(pageCount > 1 ? "\(currentPage + 1)/\(pageCount)頁" : " ")
-                    .font(AppFont.ui(9, weight: .medium).monospacedDigit())
+                    .font(AppFont.ui(8.5, weight: .medium).monospacedDigit())
                     .foregroundStyle(theme.ink.opacity(0.6))
             }
             .frame(maxWidth: .infinity)
@@ -248,17 +251,20 @@ struct ReaderView: View {
             }
         }
         .padding(.horizontal, Spacing.s)
-        .padding(.vertical, 6)
+        .padding(.vertical, 3)
         .frame(maxWidth: .infinity)
-        .background(theme.background.opacity(0.94))
+        .background(theme.background.opacity(0.92))
+        .overlay(alignment: .top) {
+            Rectangle().fill(theme.hairline).frame(height: 1)
+        }
     }
 
     private func chromeButton(_ system: String, _ accessibility: String, act: @escaping () -> Void) -> some View {
         Button(action: act) {
             Image(systemName: system)
-                .font(AppFont.ui(15, weight: .semibold))
+                .font(AppFont.ui(14, weight: .semibold))
                 .foregroundStyle(theme.ink)
-                .frame(width: 38, height: 38)
+                .frame(width: 32, height: 32)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle(haptic: false))
@@ -276,12 +282,12 @@ struct ReaderView: View {
         } label: {
             VStack(spacing: 1) {
                 Image(systemName: system)
-                    .font(AppFont.ui(13, weight: .semibold))
+                    .font(AppFont.ui(12, weight: .semibold))
                 Text(caption)
-                    .font(AppFont.ui(9, weight: .medium))
+                    .font(AppFont.ui(8.5, weight: .medium))
             }
             .foregroundStyle(enabled ? theme.ink : theme.ink.opacity(0.3))
-            .frame(width: 52, height: 40)
+            .frame(width: 48, height: 34)
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle(haptic: false))
