@@ -62,8 +62,12 @@ enum AppFont {
         .system(size: size, weight: weight, design: .serif)
     }
 
-    static func ui(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .default)
+    static func ui(
+        _ size: CGFloat,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default
+    ) -> Font {
+        .system(size: size, weight: weight, design: design)
     }
 }
 

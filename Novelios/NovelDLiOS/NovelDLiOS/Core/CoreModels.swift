@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Envelope
 
-struct CoreEnvelope<T: Decodable>: Decodable {
+struct CoreEnvelope<T: Decodable & Sendable>: Decodable, Sendable {
     let ok: Bool
     let result: T?
     let error: String?
@@ -10,7 +10,7 @@ struct CoreEnvelope<T: Decodable>: Decodable {
 
 // MARK: - Library
 
-struct LibraryNovelItem: Decodable, Identifiable, Hashable {
+struct LibraryNovelItem: Decodable, Identifiable, Hashable, Sendable {
     var id: String { novelId }
     let novelId: String
     let title: String
@@ -24,12 +24,12 @@ struct LibraryNovelItem: Decodable, Identifiable, Hashable {
     let downloadedCount: Int?
 }
 
-struct LibraryListResult: Decodable {
+struct LibraryListResult: Decodable, Sendable {
     let novels: [LibraryNovelItem]
     let downloadedCount: Int?
 }
 
-struct ChapterMeta: Decodable, Hashable {
+struct ChapterMeta: Decodable, Hashable, Sendable {
     let index: String
     let href: String
     let subtitle: String
@@ -40,7 +40,7 @@ struct ChapterMeta: Decodable, Hashable {
     let updatedAt: String?
 }
 
-struct LibraryNovelInfo: Decodable, Hashable {
+struct LibraryNovelInfo: Decodable, Hashable, Sendable {
     let novelId: String
     let title: String
     let author: String
@@ -49,7 +49,7 @@ struct LibraryNovelInfo: Decodable, Hashable {
     let episodeCount: Int
 }
 
-struct LibraryNovelDetail: Decodable {
+struct LibraryNovelDetail: Decodable, Sendable {
     let novel: LibraryNovelInfo
     let chapters: [ChapterMeta]
     let downloadedCount: Int
@@ -57,7 +57,7 @@ struct LibraryNovelDetail: Decodable {
 
 // MARK: - Download / TOC
 
-struct DownloadResult: Decodable {
+struct DownloadResult: Decodable, Sendable {
     let saved: Int
     let updated: Int
     let skipped: Int
@@ -67,7 +67,7 @@ struct DownloadResult: Decodable {
     let outputDir: String?
 }
 
-struct FetchTocResult: Decodable {
+struct FetchTocResult: Decodable, Sendable {
     let novelId: String
     let title: String
     let author: String
@@ -75,7 +75,7 @@ struct FetchTocResult: Decodable {
     let chapters: [ChapterMeta]
 }
 
-struct NovelInfoResult: Decodable {
+struct NovelInfoResult: Decodable, Sendable {
     let title: String
     let author: String
     let story: String?
@@ -94,7 +94,7 @@ struct ProgressSnapshot: Decodable, Sendable {
 
 // MARK: - Reader
 
-struct SectionResult: Decodable {
+struct SectionResult: Decodable, Sendable {
     let index: String
     let subtitle: String
     let introXhtml: String?
@@ -107,7 +107,7 @@ struct SectionResult: Decodable {
 
 // MARK: - Search
 
-struct SearchResultItem: Decodable, Identifiable, Hashable {
+struct SearchResultItem: Decodable, Identifiable, Hashable, Sendable {
     var id: String { url }
     let title: String
     let url: String
@@ -121,31 +121,31 @@ struct SearchResultItem: Decodable, Identifiable, Hashable {
     let episodeCount: Int?
 }
 
-struct SearchSite: Decodable, Identifiable, Hashable {
+struct SearchSite: Decodable, Identifiable, Hashable, Sendable {
     var id: String { key }
     let key: String
     let label: String
     let domains: [String]?
 }
 
-struct ExportResult: Decodable {
+struct ExportResult: Decodable, Sendable {
     let zipPath: String
     let files: Int
     let missingBodies: Int?
 }
 
-struct RefreshResult: Decodable {
+struct RefreshResult: Decodable, Sendable {
     let refreshed: Int
     let failed: Int
 }
 
-struct TestSiteChapter: Decodable, Hashable {
+struct TestSiteChapter: Decodable, Hashable, Sendable {
     let index: String
     let href: String
     let subtitle: String
 }
 
-struct TestSiteResult: Decodable {
+struct TestSiteResult: Decodable, Sendable {
     let title: String
     let author: String?
     let episodes: Int

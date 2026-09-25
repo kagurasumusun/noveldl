@@ -169,7 +169,7 @@ final class CoreClient: ObservableObject, @unchecked Sendable {
     // MARK: search
 
     func search(_ query: String, limit: UInt32 = 40) async throws -> [SearchResultItem] {
-        struct SearchBox: Decodable { let query: String; let results: [SearchResultItem] }
+        struct SearchBox: Decodable, Sendable { let query: String; let results: [SearchResultItem] }
         let box: SearchBox = try await decode(SearchBox.self) {
             novel_core_search(query, limit)
         }
@@ -177,7 +177,7 @@ final class CoreClient: ObservableObject, @unchecked Sendable {
     }
 
     func searchSites() async throws -> [SearchSite] {
-        struct SiteBox: Decodable { let sites: [SearchSite] }
+        struct SiteBox: Decodable, Sendable { let sites: [SearchSite] }
         let box: SiteBox = try await decode(SiteBox.self) { novel_core_search_sites() }
         return box.sites
     }
@@ -185,24 +185,24 @@ final class CoreClient: ObservableObject, @unchecked Sendable {
     // MARK: presets
 
     func loadPreset(domain: String) async throws -> String {
-        struct Box: Decodable { let yaml: String }
+        struct Box: Decodable, Sendable { let yaml: String }
         let box: Box = try await decode(Box.self) { novel_core_load_parser_yaml(domain) }
         return box.yaml
     }
 
     func savePreset(domain: String, yaml: String) async throws {
-        struct Box: Decodable { let domain: String }
+        struct Box: Decodable, Sendable { let domain: String }
         _ = try await decode(Box.self) { novel_core_save_parser_yaml(domain, yaml) }
     }
 
     func deletePreset(domain: String) async throws {
-        struct Box: Decodable { let removed: Bool }
+        struct Box: Decodable, Sendable { let removed: Bool }
         _ = try await decode(Box.self) { novel_core_delete_parser_yaml(domain) }
     }
 
     func listPresets() async throws -> [String] {
-        struct Entry: Decodable { let domain: String; let source: String? }
-        struct Box: Decodable { let presets: [Entry] }
+        struct Entry: Decodable, Sendable { let domain: String; let source: String? }
+        struct Box: Decodable, Sendable { let presets: [Entry] }
         let box: Box = try await decode(Box.self) { novel_core_list_parser_yamls() }
         return box.presets.map(\.domain)
     }

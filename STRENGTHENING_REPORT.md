@@ -92,3 +92,11 @@ Nyxian の swiftc は **Xcode/Swift のマクロ・プラグインを展開で�
 | 「など」 | (a) `ForEach(id: \.0)` — **タプル keypath は Swift で非対応**（NovelDetailView）→ `Identifiable` struct に変更 (b) `NSRegularExpression.matches(in:)` の **`range:` 引数欠落**（ReaderMarkup 3 か所） (c) `CTRubyAnnotationCreateWithAttributes` の**引数不一致**（正しい 5 引数版に修正） (d) `URLSession` の @Sendable コールバックが `var` を捕獲 → `nonisolated(unsafe)` 化 (e) UIKit 型使用ファイルの **`import UIKit` 補完**（ReaderView / PageCanvas） | 全修正済み |
 
 C++ コアのユニットテストは引き続き **118 passed / 0 failed**。修正は `Nyxian/sync_project.py` 済み。
+
+### 追加修正（エラー再発への対応・その2）
+
+| エラー | 正体 | 修正 |
+|--------|------|------|
+| generic parameter 'ObjectType' could not be inferred | `@EnvironmentObject` は**型注釈が必須**（`ObjectType` を型から推論）なのに `private var core` のままだった | 全8箇所を `private var core: CoreClient` に |
+| 'catch' block is unreachable | 上の連鎖（`core` の型崩壊で `core.search` 等が解決不能＝非 throwing 扱いに） | 根治で解消 |
+| その他のエラー（argument label / Sendable 等） | (a) **`AppFont.ui(_:design:)` が定義されていない**のに5か所で `design:` ラベル使用 → `design: Font.Design = .default` 引数を追加 (b) Swift 6 の `decode` 境界（`T: Sendable`）に対し**ローカル struct 等の暗黙 Sendable に頼っていた** → CoreModels 全16型＋ローカル6型に**明示 `Sendable`** (c) C ABI（`novel_core.h` 全シグネチャ）との照合済み・不一致なし | 修正済み |
