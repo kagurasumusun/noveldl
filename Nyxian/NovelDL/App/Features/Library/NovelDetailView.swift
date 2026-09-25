@@ -11,7 +11,7 @@ struct ReaderRoute: Hashable {
 struct NovelDetailView: View {
     let item: LibraryNovelItem
 
-    @EnvironmentObject private var core: CoreClient
+    @Environment(CoreClient.self) private var core: CoreClient
     @State private var detail: LibraryNovelDetail?
     @State private var busy = false
     @State private var errorText: String?

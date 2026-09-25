@@ -4,7 +4,7 @@ import SwiftUI
 struct AppShell: View {
     enum Tab: Hashable { case library, discover, activity, settings }
 
-    @EnvironmentObject private var core: CoreClient
+    @Environment(CoreClient.self) private var core: CoreClient
     @State private var tab: Tab = .library
 
     var body: some View {

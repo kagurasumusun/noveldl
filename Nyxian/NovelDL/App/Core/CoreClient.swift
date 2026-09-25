@@ -1,15 +1,42 @@
 import Foundation
-import Combine
+import Observation
 
 /// Swift 6 bridge over the novel_core C ABI.
 /// All core calls are synchronous + blocking → always hop through `run`.
-/// Nyxian は Swift マクロ（@Observable 等）のプラグインを展開できないため、
-/// マクロ不要な ObservableObject + @Published で観測する。
-final class CoreClient: ObservableObject, @unchecked Sendable {
+///
+/// Nyxian は Swift マクロ（@Observable 等）を展開できないため、
+/// `@Observable` マクロが生成する中身（swift/lib/Macros ObservableMacro.swift の
+/// 展開テンプレートと同一）を手書きで実装している。依存は Swift 標準ライブラリの
+/// Observation モジュールのみ（Combine も使わない）。
+final class CoreClient: Observable, @unchecked Sendable {
     static let shared = CoreClient()
 
-    @Published var progress = ProgressSnapshot(total: 0, done: 0, skipped: 0, failed: 0, running: false, current: "")
-    @Published var library: [LibraryNovelItem] = []
+    // MARK: observation plumbing (@Observable マクロ展開と同一)
+
+    private let _$observationRegistrar = ObservationRegistrar()
+
+    func access<Member>(keyPath: KeyPath<CoreClient, Member>) {
+        _$observationRegistrar.access(self, keyPath: keyPath)
+    }
+
+    func withMutation<Member, MutationResult>(
+        keyPath: KeyPath<CoreClient, Member>,
+        _ mutation: () throws -> MutationResult
+    ) rethrows -> MutationResult {
+        try _$observationRegistrar.withMutation(of: self, keyPath: keyPath, mutation)
+    }
+
+    private var _progress = ProgressSnapshot(total: 0, done: 0, skipped: 0, failed: 0, running: false, current: "")
+    var progress: ProgressSnapshot {
+        get { access(keyPath: \.progress); return _progress }
+        set { withMutation(keyPath: \.progress) { _progress = newValue } }
+    }
+
+    private var _library: [LibraryNovelItem] = []
+    var library: [LibraryNovelItem] {
+        get { access(keyPath: \.library); return _library }
+        set { withMutation(keyPath: \.library) { _library = newValue } }
+    }
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()

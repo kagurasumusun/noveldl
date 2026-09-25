@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Settings — presets editor, cookies, fetch fallback, reading defaults.
 struct SettingsView: View {
-    @EnvironmentObject private var core: CoreClient
+    @Environment(CoreClient.self) private var core: CoreClient
 
     @AppStorage("downloadIntervalMs") private var intervalMs = 5000
     @AppStorage("browserFetchCommand") private var browserCommand = ""
@@ -107,7 +107,7 @@ struct SettingsView: View {
 /// YAML preset editor — site support without shipping code.
 struct PresetEditorView: View {
     let domain: String
-    @EnvironmentObject private var core: CoreClient
+    @Environment(CoreClient.self) private var core: CoreClient
     @State private var yaml = ""
     @State private var statusText: String?
 

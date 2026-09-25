@@ -100,3 +100,24 @@ C++ コアのユニットテストは引き続き **118 passed / 0 failed**。�
 | generic parameter 'ObjectType' could not be inferred | `@EnvironmentObject` は**型注釈が必須**（`ObjectType` を型から推論）なのに `private var core` のままだった | 全8箇所を `private var core: CoreClient` に |
 | 'catch' block is unreachable | 上の連鎖（`core` の型崩壊で `core.search` 等が解決不能＝非 throwing 扱いに） | 根治で解消 |
 | その他のエラー（argument label / Sendable 等） | (a) **`AppFont.ui(_:design:)` が定義されていない**のに5か所で `design:` ラベル使用 → `design: Font.Design = .default` 引数を追加 (b) Swift 6 の `decode` 境界（`T: Sendable`）に対し**ローカル struct 等の暗黙 Sendable に頼っていた** → CoreModels 全16型＋ローカル6型に**明示 `Sendable`** (c) C ABI（`novel_core.h` 全シグネチャ）との照合済み・不一致なし | 修正済み |
+
+### 追加修正（エラー再発への対応・その3）— 観測層を Combine 非依存に再構築
+
+報告エラー（`ObjectType`/`C` の推論不能、`init(value:label:)` の Hashable 要求、
+`Binding<Subject>`→`String` 変換不能、`@EnvironmentObject`/`NavigationLink(value:)`/`ForEach` 等）は、
+**`core` の型が 1 つ壊れると ForEach が Binding 系オーバーロードに落ち、`item` が
+`Binding<C.Element>` 化し、`item.title` 等が `Binding<Subject>` になって全所に散弾する**典型的連鎖。
+
+対処として観測層を**どのツールチェーンでも確実に動く形**へ全面再構築した:
+
+| 捨てたもの | 理由 |
+|-----------|------|
+| `@Observable` マクロ | Nyxian がマクロを展開できない（確定） |
+| `ObservableObject` + `@Published`（Combine） | `@EnvironmentObject` の型推論エラーの火元。外部フレームワーク依存を排除 |
+| `@EnvironmentObject` | 上記に伴い不要に |
+
+| 採用したもの | 根拠 |
+|-------------|------|
+| **`Observation` 標準ライブラリ + 手書き `Observable` 準拠** | `swift/lib/Macros/Sources/ObservationMacros/ObservableMacro.swift` の**展開テンプレート実物**（`ObservationRegistrar().access(self, keyPath:)` / `.withMutation(of:self, keyPath:, mutation)` + 計算プロパティ）を取得し、**マクロが生成するコードと同一**を手書き。依存は Swift 標準ライブラリのみ |
+| `@Environment(CoreClient.self)` + `.environment(core)` | iOS 17 の Observation 経路（元の設計に復帰） |
+| `ForEach(core.library, id: \.novelId)` | Identifiable 非依存・オーバーロード曖昧の排除 |

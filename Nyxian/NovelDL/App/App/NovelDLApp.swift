@@ -7,7 +7,7 @@ struct NovelDLApp: App {
     var body: some Scene {
         WindowGroup {
             AppShell()
-                .environmentObject(core)
+                .environment(core)
                 .task {
                     core.bootstrap()
                 }

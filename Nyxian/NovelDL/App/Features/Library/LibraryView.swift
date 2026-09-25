@@ -3,7 +3,7 @@ import SwiftUI
 /// The bookshelf. Cover-forward grid with a "continue" hero —
 /// Kobo shelf geometry with Kindle home calmness.
 struct LibraryView: View {
-    @EnvironmentObject private var core: CoreClient
+    @Environment(CoreClient.self) private var core: CoreClient
     @State private var refreshing = false
     @State private var importing = false
     @State private var importUrl = ""
@@ -99,7 +99,7 @@ struct LibraryView: View {
 
     private var shelfGrid: some View {
         LazyVGrid(columns: columns, spacing: 22) {
-            ForEach(core.library) { item in
+            ForEach(core.library, id: \.novelId) { item in
                 NavigationLink(value: item) {
                     VStack(alignment: .leading, spacing: 8) {
                         CoverTile(title: item.title, author: item.author)
