@@ -33,6 +33,8 @@ struct AppShell: View {
 
     @Environment(CoreClient.self) private var core: CoreClient
     @State private var tab: Tab = .library
+    /// 検索の状態はタブを跨いで保持する(タブ移動で検索が消えないように)。
+    @StateObject private var discoverSession = DiscoverSession()
 
     var body: some View {
         ZStack {
@@ -49,7 +51,7 @@ struct AppShell: View {
             case .library:
                 LibraryView()
             case .discover:
-                DiscoverView()
+                DiscoverView(session: discoverSession)
             case .activity:
                 QueueView()
             case .settings:

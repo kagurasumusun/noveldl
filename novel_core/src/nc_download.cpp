@@ -171,6 +171,36 @@ struct TocPageQueue {
         std::string abs = url_absolute(base, href);
         if (scheduled.insert(abs).second) queue.emplace_back(abs, std::nullopt);
     }
+
+    // ?p=N / ?page=N の N(無いページは 0=先頭)。
+    static long long page_key(const std::string& url) {
+        size_t num_start = std::string::npos;
+        const char* keys[] = {"?page=", "&page=", "?p=", "&p="};
+        for (auto k : keys) {
+            size_t at = url.rfind(k);
+            if (at != std::string::npos) {
+                num_start = at + std::strlen(k);
+                break;
+            }
+        }
+        if (num_start == std::string::npos) return 0;
+        size_t num_end = num_start;
+        while (num_end < url.size() && url[num_end] >= '0' && url[num_end] <= '9') ++num_end;
+        if (num_end == num_start) return 0;
+        try {
+            return std::stoll(url.substr(num_start, num_end - num_start));
+        } catch (...) {
+            return 0;
+        }
+    }
+
+    // 取得順をページ番号昇順に固定する。ページ内採番の振り直し順が
+    // 実行ごとに変わると更新のたびに index と話の中身がズレるため。
+    void sort_queue() {
+        std::stable_sort(queue.begin(), queue.end(), [](const auto& a, const auto& b) {
+            return page_key(a.first) < page_key(b.first);
+        });
+    }
 };
 
 struct TocResult {
@@ -261,6 +291,7 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
     AccessSettings access = AccessSettings::from_preset(preset);
     int fetched_pages = 0;
     while (!pages.queue.empty()) {
+        pages.sort_queue();
         if (++fetched_pages > 400) break;  // 異常なページ連鎖の保険
         if (cancel_requested()) throw Error("cancelled");
         auto [url, html] = pages.queue.front();
@@ -566,9 +597,28 @@ Value op_download(const DownloadOptions& opts) {
     {
         std::vector<StoredTocChapter> stored;
         for (auto& ch : toc) stored.push_back({ch.index, ch.href, ch.subtitle});
-        storage.upsert_novel(novel_id, title, author, opts.url, domain, opts.output_dir,
+        storage.upsert_novel(novel_id, title, author,
+                             toc_url_used.empty() ? opts.url : toc_url_used, domain,
+                             opts.output_dir,
                              (long long)toc.size(), now_rfc3339());
         storage.upsert_section_placeholders(novel_id, stored, now_rfc3339());
+    }
+
+    // 更新取得のたびに詳細メタ(あらすじ・状態・更新日・コメント)も最新化する。
+    {
+        try {
+            Value meta = fetch_metadata_via_rules(
+                toc_url_used.empty() ? opts.url : toc_url_used, preset, http);
+            std::string story = meta.get_str("story", "");
+            NovelMetaExtra mx;
+            mx.status = meta.get_str("status", "");
+            mx.next_update = meta.get_str("next_update", "");
+            mx.comment_count = meta.get_str("comment_count", "");
+            mx.updated = meta.get_str("updated", "");
+            if (!story.empty()) storage.update_novel_description(novel_id, story);
+            storage.update_novel_meta(novel_id, mx);
+        } catch (const std::exception&) {
+        }
     }
     auto states = storage.section_download_states(novel_id);
 
@@ -688,8 +738,9 @@ Value op_download(const DownloadOptions& opts) {
                         : pending.size() >= flush_batch;
         if (should_flush) flush();
 
-        ++downloaded;
-        ++updated;
+        // 新規取得と更新(改稿等の再取得)を分けて数える。
+        if (state_it != states.end() && state_it->second.second) ++updated;
+        else ++downloaded;
         set_progress(total, downloaded, skipped, failed, ch.subtitle, true);
     }
     flush();
@@ -773,20 +824,20 @@ Value op_fetch_toc(const DownloadOptions& opts) {
         chapters.push(std::move(c));
     }
     // 詳細ページが表示する情報(あらすじ・状態・更新予定等)もこの時点で取得・保存する。
-    std::string story;
+    // 取得に失敗した場合は保存済みの値を壊さない。
     {
-        NovelMetaExtra mx;
         try {
             Value meta = fetch_metadata_via_rules(active_url, preset, http);
-            story = meta.get_str("story", "");
+            std::string story = meta.get_str("story", "");
+            NovelMetaExtra mx;
             mx.status = meta.get_str("status", "");
             mx.next_update = meta.get_str("next_update", "");
             mx.comment_count = meta.get_str("comment_count", "");
             mx.updated = meta.get_str("updated", "");
+            if (!story.empty()) storage.update_novel_description(novel_id, story);
+            storage.update_novel_meta(novel_id, mx);
         } catch (const std::exception&) {
         }
-        if (!story.empty()) storage.update_novel_description(novel_id, story);
-        storage.update_novel_meta(novel_id, mx);
     }
 
     set_progress((long long)tr.chapters.size(), 0, (long long)tr.chapters.size(), 0,

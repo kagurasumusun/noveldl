@@ -3,13 +3,12 @@ import SwiftUI
 /// さがす — サイト横断の作品検索。追加 = 自動で全話取得。
 struct DiscoverView: View {
     @Environment(CoreClient.self) private var core: CoreClient
-    @State private var query = ""
-    @State private var results: [SearchResultItem] = []
+    /// 検索語・結果・範囲はタブ移動しても残す(シェル所有のセッション)。
+    @ObservedObject var session: DiscoverSession
     @State private var searching = false
     @State private var errorText: String?
     @State private var addingUrl: String?
     @State private var sites: [SearchSite] = []
-    @State private var scopeKey: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -24,7 +23,7 @@ struct DiscoverView: View {
                         Image(systemName: "magnifyingglass")
                             .font(AppFont.ui(14, weight: .medium))
                             .foregroundStyle(AppPalette.inkFaint)
-                        TextField("タイトル・作者名・キーワード", text: $query)
+                        TextField("タイトル・作者名・キーワード", text: $session.query)
                             .font(AppFont.ui(15))
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -32,10 +31,10 @@ struct DiscoverView: View {
                             .onSubmit { Task { await run() } }
                         if searching {
                             ProgressView().scaleEffect(0.8)
-                        } else if !query.isEmpty {
+                        } else if !session.query.isEmpty {
                             Button {
-                                query = ""
-                                results = []
+                                session.query = ""
+                                session.results = []
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(AppFont.ui(14))
@@ -52,11 +51,11 @@ struct DiscoverView: View {
                         scopeRow
                     }
 
-                    if results.isEmpty && !searching {
+                    if session.results.isEmpty && !searching {
                         searchServices
                     }
 
-                    if results.isEmpty && !searching {
+                    if session.results.isEmpty && !searching {
                         VStack(spacing: Spacing.m) {
                             Image(systemName: "sparkle.magnifyingglass")
                                 .font(.system(size: 40, weight: .light))
@@ -74,7 +73,7 @@ struct DiscoverView: View {
                         .padding(.vertical, 56)
                     }
 
-                    ForEach(results) { hit in
+                    ForEach(session.results) { hit in
                         resultRow(hit)
                     }
                 }
@@ -183,9 +182,9 @@ struct DiscoverView: View {
                 serviceRow(
                     name: "Web小説アンテナ",
                     note: "20サイト横断の検索・更新情報",
-                    url: query.isEmpty
+                    url: session.query.isEmpty
                         ? "https://webnovels.jp/"
-                        : "https://webnovels.jp/search?q=" + (query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")
+                        : "https://webnovels.jp/search?q=" + (session.query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")
                 )
                 RowDivider(leading: Spacing.l)
                 serviceRow(name: "ノベレコ", note: "なろう/カクヨム/ハーメルンの検索エンジン・500超タグ", url: "https://novereco.net/")
@@ -233,14 +232,14 @@ struct DiscoverView: View {
     }
 
     private func run() async {
-        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = session.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         searching = true
         defer { searching = false }
         do {
             // 検索範囲(site:)で絞り込み — 各サイト単独でも横断でも検索できる
-            let scoped = scopeKey.map { text + " site:" + $0 } ?? text
-            results = try await core.search(scoped)
+            let scoped = session.scopeKey.map { text + " site:" + $0 } ?? text
+            session.results = try await core.search(scoped)
         } catch {
             errorText = error.localizedDescription
         }
@@ -260,10 +259,10 @@ struct DiscoverView: View {
     }
 
     private func scopeChip(label: String, key: String?) -> some View {
-        let active = scopeKey == key
+        let active = session.scopeKey == key
         return Button {
-            scopeKey = key
-            if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            session.scopeKey = key
+            if !session.query.trimmingCharacters(in: .whitespaces).isEmpty {
                 Task { await run() }
             }
         } label: {
