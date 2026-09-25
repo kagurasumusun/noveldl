@@ -84,7 +84,37 @@ void novel_core_set_http_transport(nc_http_transport_fn fn, void* userdata) {
             resp.final_url = raw.final_url;
             std::free(raw.final_url);
         }
-        if (raw.set_cookies) std::free(raw.set_cookies);
+        if (raw.set_cookies) {
+            // replay captured Set-Cookie lines into the per-domain cookie jar
+            std::string host = url.substr(0, url.find('/'));
+            size_t scheme = host.find("://");
+            if (scheme != std::string::npos) host = host.substr(scheme + 3);
+            host = host.substr(0, host.find(':'));
+            std::string lines = raw.set_cookies;
+            size_t at = 0;
+            while (at <= lines.size()) {
+                size_t nl = lines.find('\n', at);
+                std::string line = lines.substr(at, nl == std::string::npos ? std::string::npos : nl - at);
+                if (!line.empty()) {
+                    std::string domain = host;
+                    std::string lower_line;
+                    for (char c : line) lower_line.push_back((char)tolower((unsigned char)c));
+                    size_t d = lower_line.find("domain=");
+                    if (d != std::string::npos) {
+                        size_t start = d + 7;
+                        if (start < line.size() && line[start] == '.') ++start;
+                        size_t end = line.find(';', start);
+                        domain = line.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                    }
+                    size_t semi = line.find(';');
+                    HttpClient::set_extra_cookie(domain,
+                                                 line.substr(0, semi == std::string::npos ? std::string::npos : semi));
+                }
+                if (nl == std::string::npos) break;
+                at = nl + 1;
+            }
+            std::free(raw.set_cookies);
+        }
         return resp;
     });
 }
