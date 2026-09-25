@@ -13,6 +13,8 @@ final class ReaderMarkup: @unchecked Sendable {
         var maxWidth: CGFloat = 320
         /// "serif" (Mincho-like), "sans" (Gothic), "mono"
         var design: String = "serif"
+        /// ルビ(振り仮名)を表示するか。
+        var showRuby: Bool = true
 
         var bodyFont: UIFont {
             switch design {
@@ -55,7 +57,10 @@ final class ReaderMarkup: @unchecked Sendable {
             }
             let token = ns.substring(with: m.range)
             if token.lowercased().hasPrefix("<ruby") {
-                out.append(rubyAttributedString(inner: ns.substring(with: m.range(at: 1)), attributes: attrs))
+                out.append(rubyAttributedString(
+                    inner: ns.substring(with: m.range(at: 1)),
+                    attributes: attrs,
+                    showRuby: style.showRuby))
             } else if m.range(at: 2).location != NSNotFound {
                 let src = ns.substring(with: m.range(at: 2))
                 out.append(imageAttachment(src: src, style: style))
@@ -80,7 +85,17 @@ final class ReaderMarkup: @unchecked Sendable {
         out.append(NSAttributedString(string: decoded, attributes: attrs))
     }
 
-    private func rubyAttributedString(inner: String, attributes attrs: [NSAttributedString.Key: Any]) -> NSAttributedString {
+    private func rubyAttributedString(
+        inner: String,
+        attributes attrs: [NSAttributedString.Key: Any],
+        showRuby: Bool = true
+    ) -> NSAttributedString {
+        guard showRuby else {
+            // ルビ非表示:読み仮名を落として基底文字だけ残す。
+            let cleaned = inner.replacingOccurrences(
+                of: "<rt[^>]*>.*?</rt>", with: "", options: .regularExpression)
+            return NSAttributedString(string: decodeEntities(stripTags(cleaned)), attributes: attrs)
+        }
         let ns = inner as NSString
         let re = try! NSRegularExpression(
             pattern: #"(?is)<rb[^>]*>(.*?)</rb>\s*<rt[^>]*>(.*?)</rt>|<rt[^>]*>(.*?)</rt>"#)

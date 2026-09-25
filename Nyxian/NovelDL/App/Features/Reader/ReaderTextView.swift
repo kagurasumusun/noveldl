@@ -32,8 +32,9 @@ final class ScrollBox {
     func pageUp() -> Bool {
         guard let v = view else { return false }
         if v.contentOffset.y <= 4 { return false }
-        let h = max(v.bounds.height * 0.92, 200)
-        let target = max(0, v.contentOffset.y - h)
+        let h = max(v.bounds.height, 200)
+        let page = (v.contentOffset.y / h).rounded(.down) * h
+        let target = max(0, page - h)
         animate(v, forward: false) {
             v.contentOffset = CGPoint(x: 0, y: target)
         }
@@ -44,10 +45,11 @@ final class ScrollBox {
     @discardableResult
     func pageDown() -> Bool {
         guard let v = view else { return false }
-        let h = max(v.bounds.height * 0.92, 200)
+        let h = max(v.bounds.height, 200)
         let maxY = max(0, v.contentSize.height - v.bounds.height + v.contentInset.bottom)
         if v.contentOffset.y >= maxY - 6 { return false }
-        let target = min(v.contentOffset.y + h, maxY)
+        let page = (v.contentOffset.y / h).rounded(.down) * h
+        let target = min(page + h, maxY)
         animate(v, forward: true) {
             v.contentOffset = CGPoint(x: 0, y: target)
         }
@@ -104,6 +106,8 @@ struct ReaderTextView: UIViewRepresentable {
         tv.isEditable = false
         tv.isSelectable = false
         tv.isScrollEnabled = true
+        // 連続スクロールではなく 1 スクリーン = 1 ページのめくりに。
+        tv.isPagingEnabled = true
         tv.alwaysBounceVertical = true
         tv.backgroundColor = background
         tv.textContainerInset = UIEdgeInsets(top: 28, left: sideMargin, bottom: 96, right: sideMargin)

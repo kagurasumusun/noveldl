@@ -8,7 +8,14 @@ struct LibraryView: View {
     @State private var importUrl = ""
     @State private var errorText: String?
     @State private var activeStatus: String?
+    @AppStorage("shelfLayout") private var layoutRaw = "shelf"
     @State private var columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+
+    private enum ShelfLayout: String {
+        case shelf, grid, list
+    }
+
+    private var layout: ShelfLayout { ShelfLayout(rawValue: layoutRaw) ?? .shelf }
 
     var body: some View {
         NavigationStack {
@@ -33,6 +40,10 @@ struct LibraryView: View {
                     }
                     if core.library.isEmpty {
                         emptyShelf
+                    } else if layout == .shelf {
+                        shelfRow
+                    } else if layout == .list {
+                        shelfList
                     } else {
                         shelfGrid
                     }
@@ -78,6 +89,9 @@ struct LibraryView: View {
                 }
                 Spacer()
                 HStack(spacing: Spacing.s) {
+                    layoutButton(.shelf, "books.horizontal")
+                    layoutButton(.grid, "square.grid.2x2")
+                    layoutButton(.list, "list.bullet")
                     CircleIconButton(system: "arrow.clockwise") {
                         Task {
                             refreshing = true
@@ -142,6 +156,84 @@ struct LibraryView: View {
                 .padding(.top, 2)
             }
         }
+    }
+
+    private func layoutButton(_ target: ShelfLayout, _ icon: String) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.22)) { layoutRaw = target.rawValue }
+            Haptics.tap()
+        } label: {
+            Image(systemName: icon)
+                .font(AppFont.ui(13, weight: .semibold))
+                .foregroundStyle(layout == target ? .white : AppPalette.inkSoft)
+                .frame(width: 34, height: 34)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(layout == target ? AppPalette.ink : AppPalette.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(AppPalette.hairline, lineWidth: layout == target ? 0 : 1)
+                )
+        }
+        .buttonStyle(PressableButtonStyle(haptic: false))
+    }
+
+    /// 横並び 1 列の書棚(既定)。
+    private var shelfRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: Spacing.l) {
+                ForEach(core.library, id: \.novelId) { item in
+                    NavigationLink(value: item) {
+                        shelfCell(item)
+                            .frame(width: 128)
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                }
+            }
+            .padding(.vertical, Spacing.s)
+        }
+    }
+
+    /// 1 列のリスト。
+    private var shelfList: some View {
+        VStack(spacing: 0) {
+            ForEach(core.library, id: \.novelId) { item in
+                NavigationLink(value: item) {
+                    let total = max(item.episodeCount, 1)
+                    let done = item.downloadedCount ?? 0
+                    HStack(spacing: Spacing.m) {
+                        CoverTile(
+                            title: item.title,
+                            author: item.author,
+                            progress: Double(done) / Double(total),
+                            width: 46
+                        )
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.title)
+                                .font(AppFont.serif(15, weight: .semibold))
+                                .foregroundStyle(AppPalette.ink)
+                                .lineLimit(1)
+                            Text(item.author)
+                                .font(AppFont.ui(12))
+                                .foregroundStyle(AppPalette.inkFaint)
+                                .lineLimit(1)
+                            Text("\(done)/\(total) 話")
+                                .font(AppFont.ui(11, weight: .medium).monospacedDigit())
+                                .foregroundStyle(AppPalette.inkSoft)
+                        }
+                        Spacer()
+                        ReadingRibbon(value: Double(done) / Double(total))
+                            .frame(width: 56)
+                    }
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PressableButtonStyle())
+                RowDivider()
+            }
+        }
+        .background(PaperBackground())
     }
 
     private var emptyShelf: some View {

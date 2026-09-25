@@ -1,17 +1,13 @@
 import SwiftUI
 
-/// 設定 — 既定の Form を廃止し、紙面カード + 独自行で構成。
+/// 設定 — 「ユーザーに操作させるもの」を置かない。
+/// 取得の節度・対応サイトの確認・情報のみ。パーサ・クッキー等はアプリ内部の仕事。
 struct SettingsView: View {
     @Environment(CoreClient.self) private var core: CoreClient
 
     @AppStorage("downloadIntervalMs") private var intervalMs = 5000
-    @AppStorage("browserFetchCommand") private var browserCommand = ""
-
     @State private var presets: [String] = []
     @State private var over18: Set<String> = []
-    @State private var cookieDomain = ""
-    @State private var cookieValue = ""
-    @State private var statusText: String?
 
     var body: some View {
         NavigationStack {
@@ -20,8 +16,8 @@ struct SettingsView: View {
                     SectionBanner(title: "設定")
 
                     sectionCard(
-                        title: "取得とアクセス制限",
-                        footer: "サイトに負荷をかけないよう、リクエスト間に必ず間隔を空けます(既定 5 秒)。429 応答時は 10 秒以上のバックオフで再試行します。"
+                        title: "取得の間隔",
+                        footer: "サイトに負荷をかけないよう、話と話の間には必ず間隔を空けます。429 応答時は自動で待って再試行します。設定変更の必要はほとんどありません。"
                     ) {
                         StepperRow(
                             label: "話と話の最小間隔",
@@ -36,78 +32,28 @@ struct SettingsView: View {
                             step: 1,
                             suffix: "秒"
                         )
-                        RowDivider()
-                        VStack(alignment: .leading, spacing: Spacing.s) {
-                            Text("ブラウザ取得コマンド")
-                                .font(AppFont.ui(15))
-                                .foregroundStyle(AppPalette.ink)
-                            Text("対策ページを通過できない場合に使うコマンドです(空欄 = 使わない)。")
-                                .font(AppFont.ui(12))
-                                .foregroundStyle(AppPalette.inkFaint)
-                            PaperField(placeholder: "例: curl -A '…' '%@'", text: $browserCommand, mono: true)
-                                .onChange(of: browserCommand) {
-                                    core.setBrowserFetch(command: browserCommand.isEmpty ? nil : browserCommand)
-                                }
-                        }
-                        .padding(.vertical, Spacing.s)
                     }
 
                     sectionCard(
                         title: "対応サイト",
-                        footer: "抽出ルールはデータで管理 — 新しいサイトへの対応はルール追加だけで済みます。年齢確認のあるサイトには R-18 の印が付きます。"
+                        footer: "抽出ルールはアプリ内蔵のデータで管理され、新しいサイトへの対応はデータ更新だけで済みます。年齢確認のあるサイトには R-18 の印が付きます。"
                     ) {
                         ForEach(presets, id: \.self) { domain in
-                            NavigationLink {
-                                PresetEditorView(domain: domain, siteName: SiteNames.name(for: domain))
-                            } label: {
-                                SettingRow(label: SiteNames.name(for: domain), detail: domain) {
-                                    HStack(spacing: Spacing.s) {
-                                        if over18.contains(domain) {
-                                            Text("R-18")
-                                                .font(AppFont.ui(10, weight: .bold))
-                                                .foregroundStyle(AppPalette.ember)
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 3)
-                                                        .strokeBorder(AppPalette.ember.opacity(0.5), lineWidth: 1)
-                                                )
-                                        }
-                                        Image(systemName: "chevron.right")
-                                            .font(AppFont.ui(11, weight: .semibold))
-                                            .foregroundStyle(AppPalette.inkFaint)
-                                    }
+                            SettingRow(label: SiteNames.name(for: domain), detail: domain) {
+                                if over18.contains(domain) {
+                                    Text("R-18")
+                                        .font(AppFont.ui(10, weight: .bold))
+                                        .foregroundStyle(AppPalette.ember)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .strokeBorder(AppPalette.ember.opacity(0.5), lineWidth: 1)
+                                        )
                                 }
                             }
-                            .buttonStyle(PressableButtonStyle())
                             RowDivider()
                         }
-                    }
-
-                    sectionCard(
-                        title: "クッキー",
-                        footer: "年齢確認(R-18)サイトのログイン状態は、ブラウザで確認済みのクッキーを貼り付けて利用します。"
-                    ) {
-                        VStack(alignment: .leading, spacing: Spacing.s) {
-                            PaperField(placeholder: "ドメイン(例: syosetu.com)", text: $cookieDomain, mono: true)
-                            PaperField(placeholder: "name=value; name2=value2", text: $cookieValue, mono: true)
-                            EmberButton(title: "クッキーを保存") {
-                                let d = cookieDomain.trimmingCharacters(in: .whitespaces)
-                                let v = cookieValue.trimmingCharacters(in: .whitespaces)
-                                guard !d.isEmpty, !v.isEmpty else { return }
-                                core.setDomainCookie(domain: d, cookie: v)
-                                Haptics.success()
-                                statusText = "\(d) のクッキーを保存しました"
-                            }
-                        }
-                        .padding(.vertical, Spacing.s)
-                    }
-
-                    if let statusText {
-                        Text(statusText)
-                            .font(AppFont.ui(13))
-                            .foregroundStyle(AppPalette.inkSoft)
-                            .padding(.horizontal, Spacing.xs)
                     }
 
                     HStack {
@@ -196,98 +142,5 @@ enum SiteNames {
             return entry.name
         }
         return domain
-    }
-}
-
-/// サイトの抽出ルール(YAML)詳細。
-struct PresetEditorView: View {
-    @Environment(CoreClient.self) private var core: CoreClient
-    let domain: String
-    var siteName: String = ""
-
-    @State private var yaml = ""
-    @State private var editorStatus: String?
-    @State private var loaded = false
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.l) {
-                VStack(alignment: .leading, spacing: Spacing.s) {
-                    Text(siteName.isEmpty ? domain : siteName)
-                        .font(AppFont.serif(20, weight: .semibold))
-                        .foregroundStyle(AppPalette.ink)
-                    InfoChip(text: domain)
-                    Text("このサイトの目次・本文の抽出ルールです。新しいサイトはこのルールを追加するだけで対応でき、アプリ本体の変更は不要です。")
-                        .font(AppFont.ui(13))
-                        .foregroundStyle(AppPalette.inkSoft)
-                        .lineSpacing(3)
-                }
-                .padding(Spacing.l)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(PaperBackground())
-
-                HStack {
-                    Text("抽出ルール")
-                        .font(AppFont.ui(13, weight: .semibold))
-                        .foregroundStyle(AppPalette.inkSoft)
-                    Spacer()
-                    Text("\(yaml.split(separator: "\n", omittingEmptySubsequences: false).count) 行")
-                        .font(AppFont.ui(12))
-                        .foregroundStyle(AppPalette.inkFaint)
-                        .monospacedDigit()
-                }
-
-                TextEditor(text: $yaml)
-                    .font(AppFont.ui(12, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 360)
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                            .fill(Color(hex: 0x1C1B19))
-                    )
-                    .colorScheme(.dark)
-
-                if let editorStatus {
-                    Text(editorStatus)
-                        .font(AppFont.ui(13))
-                        .foregroundStyle(AppPalette.inkSoft)
-                }
-
-                HStack(spacing: Spacing.m) {
-                    QuietButton(title: "保存", systemImage: "square.and.arrow.down") {
-                        Task {
-                            do {
-                                try await core.savePreset(domain: domain, yaml: yaml)
-                                Haptics.success()
-                                editorStatus = "保存しました"
-                            } catch {
-                                editorStatus = error.localizedDescription
-                            }
-                        }
-                    }
-                    QuietButton(title: "削除", systemImage: "trash", tint: AppPalette.emberDeep) {
-                        Task {
-                            do {
-                                try await core.deletePreset(domain: domain)
-                                Haptics.success()
-                                editorStatus = "削除しました"
-                            } catch {
-                                editorStatus = error.localizedDescription
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(Spacing.l)
-        }
-        .background(AppPalette.canvas.ignoresSafeArea())
-        .navigationTitle(siteName.isEmpty ? domain : siteName)
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            guard !loaded else { return }
-            loaded = true
-            yaml = (try? await core.loadPreset(domain: domain)) ?? ""
-        }
     }
 }

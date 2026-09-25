@@ -22,22 +22,8 @@ struct NovelDetailView: View {
     @State private var episodesLimit = 0
     @State private var fromIndex = ""
 
-    private struct ChapterGroup: Identifiable {
-        let id: String
-        let chapters: [ChapterMeta]
-    }
-
-    private var groupedChapters: [ChapterGroup] {
-        let chapters = detail?.chapters ?? []
-        var order: [String] = []
-        var buckets: [String: [ChapterMeta]] = [:]
-        for ch in chapters {
-            let key = ch.chapter ?? ""
-            if buckets[key] == nil { order.append(key) }
-            buckets[key, default: []].append(ch)
-        }
-        return order.map { ChapterGroup(id: $0, chapters: buckets[$0] ?? []) }
-    }
+    @State private var flatChapters: [ChapterMeta] = []
+    @State private var chapterLimit = 60
 
     private var downloaded: Int { detail?.downloadedCount ?? item.downloadedCount ?? 0 }
     private var total: Int { max(detail?.novel.episodeCount ?? item.episodeCount, 1) }
@@ -297,65 +283,84 @@ struct NovelDetailView: View {
             .padding(.top, Spacing.s)
 
             VStack(spacing: 0) {
-                ForEach(groupedChapters) { group in
-                    if !group.id.isEmpty {
-                        Text(group.id)
-                            .font(AppFont.ui(12, weight: .semibold))
-                            .foregroundStyle(AppPalette.gold)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, Spacing.l)
-                            .padding(.top, Spacing.l)
-                            .padding(.bottom, Spacing.xs)
-                            .background(AppPalette.canvas)
-                    }
-                    ForEach(group.chapters, id: \.index) { ch in
-                        NavigationLink(
-                            value: ReaderRoute(novelId: item.novelId, index: ch.index, title: item.title)
-                        ) {
-                            HStack(spacing: Spacing.m) {
-                                Text(ch.index)
-                                    .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
-                                    .foregroundStyle(AppPalette.inkFaint)
-                                    .frame(width: 36, alignment: .trailing)
-                                Text(ch.subtitle)
-                                    .font(AppFont.serif(15))
-                                    .foregroundStyle(AppPalette.ink)
-                                    .lineLimit(2)
-                                Spacer(minLength: Spacing.s)
-                                if ch.bodyDownloaded == true {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(AppPalette.gold)
-                                }
-                                if let mark = ch.subupdate, !mark.isEmpty {
-                                    Text(mark == "revised" ? "改" : mark)
-                                        .font(AppFont.ui(10, weight: .bold))
-                                        .foregroundStyle(AppPalette.ember)
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 2)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 3)
-                                                .strokeBorder(AppPalette.ember.opacity(0.5), lineWidth: 1)
-                                        )
-                                }
-                            }
-                            .padding(.horizontal, Spacing.l)
-                            .padding(.vertical, 12)
-                            .contentShape(Rectangle())
+                let visible = Array(flatChapters.prefix(chapterLimit))
+                ForEach(Array(visible.enumerated()), id: \.element.index) { pair in
+                    let ch = pair.element
+                    if pair.offset == 0 || visible[pair.offset - 1].chapter != ch.chapter {
+                        if let group = ch.chapter, !group.isEmpty {
+                            Text(group)
+                                .font(AppFont.ui(12, weight: .semibold))
+                                .foregroundStyle(AppPalette.gold)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, Spacing.l)
+                                .padding(.top, Spacing.l)
+                                .padding(.bottom, Spacing.xs)
+                                .background(AppPalette.canvas)
                         }
-                        .buttonStyle(PressableButtonStyle())
-                        RowDivider(leading: Spacing.l)
                     }
+                    chapterRow(ch)
+                    RowDivider(leading: Spacing.l)
+                }
+                if flatChapters.count > chapterLimit {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) { chapterLimit += 200 }
+                    } label: {
+                        Text("さらに \(min(200, flatChapters.count - chapterLimit)) 話を表示(残り \(flatChapters.count - chapterLimit))")
+                            .font(AppFont.ui(13, weight: .semibold))
+                            .foregroundStyle(AppPalette.ember)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(PressableButtonStyle())
                 }
             }
             .background(PaperBackground())
         }
     }
 
+    private func chapterRow(_ ch: ChapterMeta) -> some View {
+        NavigationLink(
+            value: ReaderRoute(novelId: item.novelId, index: ch.index, title: item.title)
+        ) {
+            HStack(spacing: Spacing.m) {
+                Text(ch.index)
+                    .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(AppPalette.inkFaint)
+                    .frame(width: 36, alignment: .trailing)
+                Text(ch.subtitle)
+                    .font(AppFont.serif(15))
+                    .foregroundStyle(AppPalette.ink)
+                    .lineLimit(2)
+                Spacer(minLength: Spacing.s)
+                if ch.bodyDownloaded == true {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(AppPalette.gold)
+                }
+                if let mark = ch.subupdate, !mark.isEmpty {
+                    Text(mark == "revised" ? "改" : mark)
+                        .font(AppFont.ui(10, weight: .bold))
+                        .foregroundStyle(AppPalette.ember)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(AppPalette.ember.opacity(0.5), lineWidth: 1)
+                        )
+                }
+            }
+            .padding(.horizontal, Spacing.l)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+
     // MARK: data
 
     private func reload() async {
         detail = try? await core.novelDetail(item.novelId)
+        flatChapters = detail?.chapters ?? []
         if synopsis == nil {
             synopsis = (try? await core.novelInfo(url: item.tocUrl))?.story
         }

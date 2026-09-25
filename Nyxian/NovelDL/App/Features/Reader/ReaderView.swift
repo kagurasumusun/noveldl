@@ -18,6 +18,9 @@ struct ReaderView: View {
     @AppStorage("readerFontDesign") private var fontDesign = "serif"
     @AppStorage("readerSwipePaging") private var swipePaging = true
     @AppStorage("readerPageTurn") private var pageTurnRaw = PageTurn.curl.rawValue
+    @AppStorage("readerShowRuby") private var showRuby = true
+    @AppStorage("readerShowHeader") private var showHeader = true
+    @AppStorage("readerShowFooter") private var showFooter = true
 
     @State private var chapterIndex: String
     @State private var chapterTitle = ""
@@ -99,6 +102,7 @@ struct ReaderView: View {
         .onChange(of: sideMargin) { applyStyle() }
         .onChange(of: fontDesign) { applyStyle() }
         .onChange(of: themeRaw) { applyStyle() }
+        .onChange(of: showRuby) { applyStyle() }
         .onDisappear {
             ReadingPositionStore.save(novelId, chapter: chapterIndex, page: 0)
         }
@@ -118,24 +122,20 @@ struct ReaderView: View {
 
     private var topBar: some View {
         HStack(spacing: Spacing.m) {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.down")
-                    .font(AppFont.ui(16, weight: .semibold))
-                    .frame(width: 40, height: 40)
-            }
-            .buttonStyle(PressableButtonStyle())
             Spacer(minLength: 0)
-            VStack(spacing: 1) {
-                Text(title)
-                    .font(AppFont.serif(14, weight: .semibold))
-                    .lineLimit(1)
-                Text(chapterTitle.isEmpty ? chapterLabel : chapterTitle)
-                    .font(AppFont.ui(12))
-                    .opacity(0.75)
-                    .lineLimit(1)
+            if showHeader {
+                VStack(spacing: 1) {
+                    Text(title)
+                        .font(AppFont.serif(14, weight: .semibold))
+                        .lineLimit(1)
+                    Text(chapterTitle.isEmpty ? chapterLabel : chapterTitle)
+                        .font(AppFont.ui(12))
+                        .opacity(0.75)
+                        .lineLimit(1)
+                }
+                .foregroundStyle(theme.ink)
+                Spacer(minLength: 0)
             }
-            .foregroundStyle(theme.ink)
-            Spacer(minLength: 0)
             Button { showToc = true } label: {
                 Image(systemName: "list.bullet")
                     .font(AppFont.ui(15, weight: .semibold))
@@ -173,12 +173,14 @@ struct ReaderView: View {
             .buttonStyle(PressableButtonStyle())
             .disabled(!canGoPrevious)
 
-            VStack(spacing: 4) {
-                Text(chapterLabel)
-                    .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(theme.ink)
-                ReadingRibbon(value: chapterProgress)
-                    .frame(maxWidth: 160)
+            if showFooter {
+                VStack(spacing: 4) {
+                    Text(chapterLabel)
+                        .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(theme.ink)
+                    ReadingRibbon(value: chapterProgress)
+                        .frame(maxWidth: 160)
+                }
             }
 
             Button {
@@ -336,7 +338,8 @@ struct ReaderView: View {
             lineSpacing: lineSpacing,
             ink: UIColor(theme.ink),
             maxWidth: 280,
-            design: fontDesign
+            design: fontDesign,
+            showRuby: showRuby
         )
     }
 
@@ -519,6 +522,17 @@ struct ReaderView: View {
                 .padding(Spacing.m)
                 .background(PaperBackground())
 
+                menuSectionHeader("表示項目")
+                VStack(spacing: 0) {
+                    toggleRow("ルビ(振り仮名)", showRuby) { showRuby.toggle() }
+                    RowDivider()
+                    toggleRow("ヘッダー(タイトル)", showHeader) { showHeader.toggle() }
+                    RowDivider()
+                    toggleRow("フッター(進捗)", showFooter) { showFooter.toggle() }
+                }
+                .padding(Spacing.m)
+                .background(PaperBackground())
+
                 menuSectionHeader("送り")
                 VStack(alignment: .leading, spacing: Spacing.s) {
                     Text("めくりの演出")
@@ -567,11 +581,32 @@ struct ReaderView: View {
                         goChapter(delta: 1)
                     }
                 }
+                QuietButton(title: "閉じて作品詳細へ", systemImage: "xmark") {
+                    showMenu = false
+                    dismiss()
+                }
             }
             .padding(Spacing.xl)
         }
         .presentationDetents([.height(640), .large])
         .presentationCornerRadius(20)
+    }
+
+    private func toggleRow(_ label: String, _ isOn: Bool, _ act: @escaping () -> Void) -> some View {
+        SettingRow(label: label) {
+            Button {
+                act()
+                Haptics.tap()
+            } label: {
+                Text(isOn ? "ON" : "OFF")
+                    .font(AppFont.ui(13, weight: .semibold))
+                    .foregroundStyle(isOn ? .white : AppPalette.inkSoft)
+                    .padding(.horizontal, 14)
+                    .frame(height: 32)
+                    .background(Capsule().fill(isOn ? AppPalette.ember : AppPalette.track))
+            }
+            .buttonStyle(PressableButtonStyle(haptic: false))
+        }
     }
 
     private func menuSectionHeader(_ title: String) -> some View {
