@@ -12,6 +12,47 @@
 #include <string.h>
 #include "nc_http_apple.h"
 
+/* ── scene-aware key window / navigation completion ──────────────────── */
+#import <UIKit/UIKit.h>
+
+static UIView* nc_apple_key_scene_view(void) {
+  if (@available(iOS 13.0, *)) {
+    UIScene* scene = nil;
+    for (UIScene* s in [UIApplication sharedApplication].connectedScenes)
+      if (s.activationState == UISceneActivationStateForegroundActive) { scene = s; break; }
+    if (!scene)
+      scene = [UIApplication sharedApplication].connectedScenes.anyObject;
+    UIWindowScene* ws = (UIWindowScene*)scene;
+    if ([ws isKindOfClass:[UIWindowScene class]]) {
+      for (UIWindow* w in ws.windows)
+        if (w.isKeyWindow) return w.rootViewController.view ?: w;
+    }
+    NSArray<UIWindow*>* wins = [UIApplication sharedApplication].windows;
+    for (UIWindow* w in wins) if (w.isKeyWindow) return w.rootViewController.view ?: w;
+    return wins.firstObject;
+  }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  return [UIApplication sharedApplication].keyWindow.rootViewController.view;
+#pragma clang diagnostic pop
+}
+
+/* WKWebView には completionHandler 付きロード API が無いため、delegate コールバック
+ * をブロックで受ける最小プロキシ。 */
+@interface NCHttpNavDelegate : NSObject <WKNavigationDelegate>
+@property(copy) void (^onFinish)(WKNavigation*);
+@property(copy) void (^onFail)(WKNavigation*, NSError*);
+@end
+@implementation NCHttpNavDelegate
+- (void)webView:(WKWebView*)webView didFinishNavigation:(WKNavigation*)navigation {
+  (void)webView; if (self.onFinish) self.onFinish(navigation);
+}
+- (void)webView:(WKWebView*)webView didFailNavigation:(WKNavigation*)navigation
+       withError:(NSError*)error {
+  (void)webView; if (self.onFail) self.onFail(navigation, error);
+}
+@end
+
 /* Challenge fallback (Akamai / Cloudflare 等): WKWebView で JS 実行つきで
  * 読み込み直し、発行されたクッキーを core の cookie ストアに返す。
  * 既定で有効。nc_http_apple_set_webview_fallback(NO) で止められる。 */
@@ -60,7 +101,9 @@ static NSString* nc_webview_fetch(NSURL* url, NSTimeInterval timeout,
       WKWebView* wv = [[WKWebView alloc] initWithFrame:CGRectMake(0, 0, 390, 1400)
                                          configuration:cfg];
       wv.hidden = YES;
-      [[UIApplication sharedApplication].keyWindow.rootViewController.view addSubview:wv];
+      UIView* host = nc_apple_key_scene_view();
+      if (!host) { finish(nil); return; }
+      [host addSubview:wv];
 
       NSTimeInterval cap = timeout > 0 ? timeout + 18.0 : 40.0;
       void (^finish)(NSString*) = ^(NSString* result) {
@@ -69,13 +112,17 @@ static NSString* nc_webview_fetch(NSURL* url, NSTimeInterval timeout,
         dispatch_semaphore_signal(sem);
       };
 
+      /* WKWebView に loadRequest:completionHandler: は存在しない。
+       * navigation delegate(didFinish/didFail) を受けてから続行する。 */
+      NCHttpNavDelegate* nav = [NCHttpNavDelegate new];
+      nav.onFinish = ^(WKNavigation* n2) { (void)n2; };
+      nav.onFail = ^(WKNavigation* n2, NSError* e2) { (void)n2; (void)e2; };
+      wv.navigationDelegate = nav;
       [wv loadRequest:[NSURLRequest requestWithURL:url
                                        cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
-                                   timeoutInterval:timeout > 0 ? timeout : 30.0]
-       completionHandler:^(WKNavigation* nav) {
-         (void)nav;
-         /* JS チャレンジの再読込が落ち着くまで待つ */
-         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                   timeoutInterval:timeout > 0 ? timeout : 30.0]];
+      /* JS チャレンジの再読込が落ち着くまで待つ(didFinish 後に最低 2.8s) */
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                       (int64_t)(2.8 * NSEC_PER_SEC)),
                         dispatch_get_main_queue(), ^{
            [wv evaluateJavaScript:@"document.documentElement.outerHTML"
@@ -100,9 +147,8 @@ static NSString* nc_webview_fetch(NSURL* url, NSTimeInterval timeout,
                           finish(one);
                         }
                       }];
-                }];
-         });
-       }];
+                }]);
+      });
 
       /* 安全弁: cap を過ぎたら諦める */
       dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(cap * NSEC_PER_SEC)),

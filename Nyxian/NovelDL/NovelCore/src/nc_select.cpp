@@ -334,8 +334,6 @@ bool match_compound(const HtmlNode& n, const Compound& c) {
 }
 
 // match complex ending at node: backtracking over compounds
-bool match_from(const HtmlNode& node, const Complex& c, size_t ci);
-
 bool try_ancestor(const HtmlNode& node, const Complex& c, size_t ci, char combinator) {
     // ci = index of the compound that `node` should match
     if (!match_compound(node, c.compounds[ci])) return false;
@@ -424,7 +422,6 @@ std::vector<HtmlNode*> select_all(const HtmlNode& root, const std::string& css) 
     std::vector<HtmlNode*> out;
     try {
         ParsedSelector sel = parse_selector(css);
-        const_cast<HtmlNode&>(root);
         collect_matches(const_cast<HtmlNode&>(root), sel, out, false);
     } catch (...) {
         // invalid selector — no matches (matches scraper's graceful path)
