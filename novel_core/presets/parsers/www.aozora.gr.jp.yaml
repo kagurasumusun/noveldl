@@ -1,0 +1,34 @@
+name: 青空文庫
+domain: www.aozora.gr.jp
+encoding: UTF-8
+top_url: https://www.aozora.gr.jp
+sitename: 青空文庫
+access:
+  profile: chrome_desktop
+
+# 作品カード → files/*.html（XHTML版）が唯一の「話」。
+toc_url_pattern: "https://www.aozora.gr.jp/cards/{ncode}"
+toc_sources:
+  - source: selector
+    selector: "a[href]"
+    priority: 10
+    href_pattern: "files/[0-9A-Za-z_]+\\.html$"
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "XHTML版リンク"
+
+body_selectors:
+  - selector: "div.main_text"
+    priority: 10
+    extract: "inner_html"
+
+novel_info_selectors:
+  title: "span.title, .title"
+  author: "span.author, .author"
+  story: "meta[name='description']::attr(content)"
+
+append_title_to_folder_name: yes
+title_strip_pattern: "｜.*|- 青空文庫.*"
+confirm_over18: no
+version: 1.0

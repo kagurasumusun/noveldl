@@ -1,0 +1,43 @@
+name: Arcadia
+domain: www.mai-net.net
+encoding: UTF-8
+top_url: http://www.mai-net.net
+sitename: Arcadia
+
+access:
+  profile: chrome_desktop
+
+# Arcadia は現行でも古いHTMLだが、定義は現行 parser schema の toc_sources/body_selectors に統一する。
+toc_url_pattern: "http://www.mai-net.net/bbs/sst/sst.php?act=dump&cate={category}&all={ncode}&n=0&count=1"
+toc_sources:
+  - source: regex
+    priority: 10
+    pattern: |-
+      <td width="0%" style="font-size:60%">\[(?<index>\d+?)\]</td><td width="0%" style="font-size:60%"><b>\s*<a href="(?<href>.+?)#kiji">(?<subtitle>.+?)</a></b></td><td width="0%" style="font-size:60%">\[(.+?)\]</td><td width="0%" style="font-size:60%">\((?<subupdate>.+?)\)</td>
+    href_template: "{href}#kiji"
+    id_name: href
+    title_name: subtitle
+    index_name: index
+    subupdate_name: subupdate
+
+body_selectors:
+  - priority: 10
+    pattern: '<blockquote><div style="line-height:1.5">(?<body>.+?)</div></blockquote>'
+    capture_name: body
+
+novel_info_selectors:
+  title: "font[size='4'][color='4444aa']"
+  author: "tt"
+
+novel_info_rules:
+  source_selector: "tt"
+  author_from_source_regex: true
+  author_regex: "Name: (?:(.+?)◆.+|(.+?) )"
+  author_capture_group: 1
+
+# 横断検索メタ情報
+confirm_over18: no
+append_title_to_folder_name: yes
+title_strip_pattern: "(【.+?】|\\(.+?\\)|（.+?）)"
+webnovels_site: arcadia
+version: 2.0

@@ -1,0 +1,9 @@
+extends: www.no-ichigo.jp
+name: berry's cafe
+domain: www.berrys-cafe.jp
+encoding: UTF-8
+top_url: https://www.berrys-cafe.jp
+sitename: berry's cafe
+toc_url_pattern: "https://www.berrys-cafe.jp/book/{ncode}"
+confirm_over18: no
+version: 1.0

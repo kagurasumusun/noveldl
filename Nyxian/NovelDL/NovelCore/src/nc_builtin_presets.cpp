@@ -55,6 +55,8 @@ toc_sources:
     description: "フォールバック: ラベル付きクエリリンク"
 
 body_selectors:
+  # 本文のみ。--preface / --afterword の修飾を持つ前書き・後書きを除外する
+  # ( wrapper を取ると前書き/後書きが本文に混在し、二重保存になっていた)。
   - selector: "div.js-novel-text.p-novel__text:not(.p-novel__text--preface):not(.p-novel__text--afterword), .p-novel__text:not(.p-novel__text--preface):not(.p-novel__text--afterword)"
     priority: 12
     extract: "inner_html"
@@ -157,7 +159,7 @@ confirm_over18: yes
 age_gate_link_regex: "href=\"([^\"]*cookie_set[^\"]*)\""
 )NC"},
         {"parsers", "kakuyomu.jp", R"NC(
-builtin_rev: 2
+builtin_rev: 3
 name: カクヨム
 domain: kakuyomu.jp
 encoding: UTF-8
@@ -219,7 +221,8 @@ title_strip_pattern: null
 webnovels_site: kakuyomu
 version: 2.2
 )NC"},
-        {"parsers", "mid.syosetu.com", R"NC(builtin_rev: 3
+        {"parsers", "mid.syosetu.com", R"NC(
+builtin_rev: 3
 metadata_api:
   url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
   fields:
@@ -228,7 +231,6 @@ metadata_api:
     story: "story"
     updated: "general_lastup"
   status_field: "isstop"
-
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: mid.syosetu.com
@@ -253,7 +255,8 @@ last_successful_selectors: {}
 # 横断検索メタ情報
 confirm_over18: yes
 )NC"},
-        {"parsers", "mnlt.syosetu.com", R"NC(builtin_rev: 3
+        {"parsers", "mnlt.syosetu.com", R"NC(
+builtin_rev: 3
 metadata_api:
   url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
   fields:
@@ -262,7 +265,6 @@ metadata_api:
     story: "story"
     updated: "general_lastup"
   status_field: "isstop"
-
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: mnlt.syosetu.com
@@ -331,7 +333,8 @@ confirm_over18: yes
 over18_cookie: "over_fifteen=yes"
 version: 1.0
 )NC"},
-        {"parsers", "ncode.syosetu.com", R"NC(builtin_rev: 3
+        {"parsers", "ncode.syosetu.com", R"NC(
+builtin_rev: 3
 metadata_api:
   url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
   fields:
@@ -340,7 +343,6 @@ metadata_api:
     story: "story"
     updated: "general_lastup"
   status_field: "isstop"
-
 extends: common/syosetu_2024
 name: 小説家になろう
 domain: ncode.syosetu.com
@@ -355,6 +357,7 @@ toc_url_pattern: "https://ncode.syosetu.com/{ncode}/"
 novel_info_url_pattern: "https://ncode.syosetu.com/novelview/infotop/ncode/{ncode}/"
 novel_info_selectors:
   title: "title"
+  # 作者はリンク無し作品もある(「作者：名前」直テキスト)ため容器を最後に置く。
   author: ".p-novel__author a, .novel_writername a, .novel_writername, .p-novel__author"
   story: "#novel_ex, .p-novel__summary"
   updated: ".p-novel__date-published"
@@ -363,7 +366,8 @@ novel_info_selectors:
 # 横断検索メタ情報
 confirm_over18: no
 )NC"},
-        {"parsers", "noc.syosetu.com", R"NC(builtin_rev: 3
+        {"parsers", "noc.syosetu.com", R"NC(
+builtin_rev: 3
 metadata_api:
   url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
   fields:
@@ -372,7 +376,6 @@ metadata_api:
     story: "story"
     updated: "general_lastup"
   status_field: "isstop"
-
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: noc.syosetu.com
@@ -434,7 +437,8 @@ append_title_to_folder_name: yes
 confirm_over18: no
 version: 1.0
 )NC"},
-        {"parsers", "novel18.syosetu.com", R"NC(builtin_rev: 3
+        {"parsers", "novel18.syosetu.com", R"NC(
+builtin_rev: 3
 metadata_api:
   url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
   fields:
@@ -443,7 +447,6 @@ metadata_api:
     story: "story"
     updated: "general_lastup"
   status_field: "isstop"
-
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: novel18.syosetu.com
