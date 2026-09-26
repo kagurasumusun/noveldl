@@ -60,7 +60,85 @@ enum PresetYAML {
     }
 }
 
-/// サイト編集 = フォームで項目を埋めるだけ。上級者向けに全文 YAML も併設。
+
+/// 構造化 YAML をトップレベル項目に分けて編集する。
+struct YAMLBlock: Identifiable {
+    let id: Int
+    let key: String
+    let title: String
+    let hint: String
+    var text: String
+}
+
+enum YAMLBlocks {
+    static let labels: [String: (String, String)] = [
+        "_header": ("メモ", "先頭のコメント"),
+        "name": ("サイト名", "アプリ内の表示名"),
+        "domain": ("ドメイン", "この定義が使われるホスト。開いているサイトと揃える"),
+        "sitename": ("サイト表記", "短い表示名"),
+        "encoding": ("文字コード", "通常は utf-8"),
+        "top_url": ("トップURL", "サイトの起点"),
+        "toc_url_pattern": ("目次URL", "作品ページのURLの形"),
+        "novel_info_url_pattern": ("詳細URL", "あらすじページのURL"),
+        "access": ("アクセス", "間隔・クッキー・ブラウザ経由"),
+        "toc_sources": ("目次の取り方", "話一覧をどの要素から抜くか"),
+        "toc_api": ("目次API", "JSONで目次を取る場合"),
+        "body_selectors": ("本文", "本文ブロックの抽出"),
+        "introduction_selectors": ("前書き", "前書きの抽出。不要なら空"),
+        "postscript_selectors": ("後書き", "後書きの抽出"),
+        "novel_info_selectors": ("作品情報", "タイトル・作者・あらすじ・状態"),
+        "novel_info_rules": ("情報の整形", "タイトル分割や作者の正規表現"),
+        "metadata_api": ("作品情報API", "JSON APIの宣言"),
+        "metadata": ("メタデータ", "URLテンプレートなど"),
+        "confirm_over18": ("年齢確認", "true なら年齢クッキーを送る"),
+        "over18_cookie": ("年齢クッキー", "name=value。省略時は over18=yes"),
+        "extends": ("継承", "共通定義の名前"),
+        "builtin_rev": ("定義の版", "内蔵より下げない。下げると次の取得で編集が消える"),
+        "title_strip_pattern": ("タイトル整形", "作品名から削る正規表現"),
+        "append_title_to_folder_name": ("フォルダ名", "保存フォルダにタイトルを足すか"),
+        "version": ("形式バージョン", "定義ファイルの形式"),
+        "webnovels_site": ("検索キー", "横断検索でのサイト識別子"),
+        "age_gate_link_regex": ("年齢ゲート", "「はい」リンクの正規表現"),
+        "access_extends": ("アクセス継承", "共通のアクセス設定"),
+        "last_successful_selectors": ("前回成功した抽出", "自動記録。通常は触らない"),
+    ]
+
+    static func split(_ yaml: String) -> [YAMLBlock] {
+        let lines = yaml.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var blocks: [(String, [String])] = []
+        var key = "_header"
+        var buf: [String] = []
+        func flush() {
+            let blank = buf.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty }
+            if key == "_header" && blank { return }
+            blocks.append((key, buf))
+        }
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let isTop = !line.isEmpty && line.first?.isWhitespace == false
+                && !trimmed.hasPrefix("#") && trimmed.contains(":")
+            if isTop {
+                flush()
+                key = String(trimmed.prefix { $0 != ":" }).trimmingCharacters(in: .whitespaces)
+                buf = [line]
+            } else {
+                buf.append(line)
+            }
+        }
+        flush()
+        return blocks.enumerated().map { i, pair in
+            let meta = labels[pair.0] ?? (pair.0, "この項目")
+            return YAMLBlock(id: i, key: pair.0, title: meta.0, hint: meta.1,
+                             text: pair.1.joined(separator: "\n"))
+        }
+    }
+
+    static func join(_ blocks: [YAMLBlock]) -> String {
+        blocks.map(\.text).joined(separator: "\n")
+    }
+}
+
+/// サイト編集。構造化定義は項目ごとに、従来形式はフォームで編集する。
 struct PresetFormView: View {
     @Environment(CoreClient.self) private var core: CoreClient
     @Environment(\.dismiss) private var dismiss
@@ -72,6 +150,8 @@ struct PresetFormView: View {
     @State private var fields: [String: String] = [:]
     @State private var showRaw = false
     @State private var rawText = ""
+    @State private var yamlBlocks: [YAMLBlock] = []
+    @State private var yamlBlockIndex = -1
     @State private var r18Mode = 0
     @State private var message: String?
     /// 内蔵の構造化プリセット(toc_sources / body_selectors を持つネスト YAML)。
@@ -140,16 +220,43 @@ struct PresetFormView: View {
                     }
 
                     }
-                    section(isModernPreset ? "全文 YAML(抽出ルール)" : "上級設定(全文 YAML)") {
-                        if !isModernPreset {
+                    section(isModernPreset ? "抽出ルール" : "上級設定(全文 YAML)") {
+                        if isModernPreset {
+                            Text("項目を選んで編集します。インデントは崩さないでください。定義の版(builtin_rev)は下げないでください。")
+                                .font(AppFont.ui(11))
+                                .foregroundStyle(AppPalette.inkFaint)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    yamlChip("全文", index: -1)
+                                    ForEach(Array(yamlBlocks.enumerated()), id: \.element.id) { i, block in
+                                        yamlChip(block.title, index: i)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                            if yamlBlockIndex >= 0, yamlBlocks.indices.contains(yamlBlockIndex) {
+                                Text(yamlBlocks[yamlBlockIndex].hint)
+                                    .font(AppFont.ui(11))
+                                    .foregroundStyle(AppPalette.inkSoft)
+                            }
+                            TextEditor(text: yamlEditorBinding)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(AppPalette.ink)
+                                .frame(minHeight: 220)
+                                .padding(Spacing.s)
+                                .background(AppPalette.canvas)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .strokeBorder(AppPalette.hairline, lineWidth: 1)
+                                )
+                        } else {
                         Toggle(isOn: $showRaw) {
                             Text("全文を直接編集する")
                                 .font(AppFont.ui(14))
                                 .foregroundStyle(AppPalette.ink)
                         }
                         .tint(AppPalette.ember)
-                        }
-                        if showRaw || isModernPreset {
+                        if showRaw {
                             TextEditor(text: $rawText)
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(AppPalette.ink)
@@ -161,13 +268,12 @@ struct PresetFormView: View {
                                         .strokeBorder(AppPalette.hairline, lineWidth: 1)
                                 )
                                 .onChange(of: rawText) {
-                                    if !isModernPreset { fields = PresetYAML.parse(rawText) }
+                                    fields = PresetYAML.parse(rawText)
                                 }
-                            Text(isModernPreset
-                                 ? "内蔵定義の全文です。YAML の構造(インデント)を崩さないよう注意してください。"
-                                 : "保存時、フォームの内容と本文のどちらか新しい内容が使われます。普段はフォームだけで完結します。")
+                            Text("保存時、フォームの内容と本文のどちらか新しい内容が使われます。")
                                 .font(AppFont.ui(11))
                                 .foregroundStyle(AppPalette.inkFaint)
+                        }
                         }
                     }
 
@@ -286,7 +392,8 @@ struct PresetFormView: View {
                 || yaml.contains("access:")
             if isModernPreset {
                 showRaw = true
-                // 表示用に対応するものだけフォームへ写す(保存は全文 YAML が正となる)。
+                yamlBlocks = YAMLBlocks.split(yaml)
+                yamlBlockIndex = yamlBlocks.isEmpty ? -1 : 0
                 var parsed = PresetYAML.parse(yaml)
                 if let name = parsed["name"], (parsed["site_name"] ?? "").isEmpty {
                     parsed["site_name"] = name
@@ -305,18 +412,66 @@ struct PresetFormView: View {
         }()
     }
 
+    private var yamlEditorBinding: Binding<String> {
+        Binding(
+            get: {
+                if yamlBlockIndex >= 0, yamlBlocks.indices.contains(yamlBlockIndex) {
+                    return yamlBlocks[yamlBlockIndex].text
+                }
+                return rawText
+            },
+            set: { newValue in
+                if yamlBlockIndex >= 0, yamlBlocks.indices.contains(yamlBlockIndex) {
+                    yamlBlocks[yamlBlockIndex].text = newValue
+                    rawText = YAMLBlocks.join(yamlBlocks)
+                } else {
+                    rawText = newValue
+                }
+            }
+        )
+    }
+
+    private func yamlChip(_ title: String, index: Int) -> some View {
+        let active = yamlBlockIndex == index
+        return Button {
+            if yamlBlockIndex == -1 {
+                yamlBlocks = YAMLBlocks.split(rawText)
+            }
+            yamlBlockIndex = index
+        } label: {
+            Text(title)
+                .font(AppFont.ui(11.5, weight: .semibold))
+                .foregroundStyle(active ? Color.white : AppPalette.inkSoft)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(active ? AppPalette.ember : AppPalette.surface))
+        }
+        .buttonStyle(PressableButtonStyle(haptic: true))
+    }
+
     private func save() {
         Task {
             // 構造化プリセットは全文 YAML をそのまま保存する(フラット化すると
             // toc_sources / body_selectors が失われ、サイトの取得が壊れるため)。
             if isModernPreset {
-                let parsed = PresetYAML.parse(rawText)
-                let target = ((parsed["webnovel_site"] ?? parsed["site_id"]) ?? domain ?? "new-site")
-                    .replacingOccurrences(of: " ", with: "-")
-                    .lowercased()
+                // 開いているサイトへ保存する。YAML内の domain をファイル名に使うと
+                // ネストした同名キーで別ファイルになり、編集が効かなくなる。
+                let target: String
+                if let domain, !domain.isEmpty {
+                    target = domain
+                } else {
+                    let parsed = PresetYAML.parse(rawText)
+                    target = (parsed["domain"] ?? parsed["site_id"] ?? parsed["webnovels_site"] ?? "new-site")
+                        .replacingOccurrences(of: " ", with: "-")
+                        .lowercased()
+                }
                 do {
                     try await core.savePreset(domain: target, yaml: rawText)
-                    message = "保存しました(適用にはアプリを再起動してください)"
+                    if let fresh = try? await core.loadPreset(domain: target) {
+                        rawText = fresh
+                        yamlBlocks = YAMLBlocks.split(fresh)
+                    }
+                    message = "保存しました。次の取得から反映されます"
                     Haptics.success()
                 } catch {
                     message = "保存に失敗: \(error.localizedDescription)"
@@ -336,7 +491,7 @@ struct PresetFormView: View {
             let yaml = PresetYAML.serialize(store, order: Self.order)
             do {
                 try await core.savePreset(domain: target, yaml: yaml)
-                message = "保存しました(適用にはアプリを再起動してください)"
+                message = "保存しました。次の取得から反映されます"
                 Haptics.success()
             } catch {
                 message = "保存に失敗: \(error.localizedDescription)"

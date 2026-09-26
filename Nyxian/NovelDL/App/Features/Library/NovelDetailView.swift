@@ -35,13 +35,6 @@ struct NovelDetailView: View {
     private var downloaded: Int { detail?.downloadedCount ?? item.downloadedCount ?? 0 }
     private var total: Int { max(detail?.novel.episodeCount ?? item.episodeCount, 1) }
 
-    private struct ScrollOffsetKey: PreferenceKey {
-        static var defaultValue: CGFloat = 0
-        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-            value = nextValue()
-        }
-    }
-
     var body: some View {
         ScrollViewReader { proxy in
         ScrollView {
@@ -575,7 +568,7 @@ struct NovelDetailView: View {
         let last = UserDefaults.standard.double(forKey: key)
         guard Date().timeIntervalSince1970 - last > 600 else { return }
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: key)
-        _ = try? await core.fetchToc(url: item.tocUrl, outputDir: item.outputDir)
+        _ = try? await core.fetchToc(url: item.tocUrl, outputDir: CoreClient.effectiveOutputDir(item.outputDir))
         await core.reloadLibrary()
     }
 

@@ -7,6 +7,7 @@ final class DiscoverSession: ObservableObject {
     private static let queryKey = "discover.query"
     private static let scopeKeyKey = "discover.scope"
     private static let resultsKey = "discover.results"
+    private static let recentKey = "discover.recent"
 
     @Published var query: String {
         didSet { UserDefaults.standard.set(query, forKey: Self.queryKey) }
@@ -20,6 +21,8 @@ final class DiscoverSession: ObservableObject {
             }
         }
     }
+    @Published var recent: [String]
+
     @Published var results: [SearchResultItem] {
         didSet {
             // 同一URLの行が2つ出るとid衝突でSwiftUIが壊れるため、
@@ -43,6 +46,16 @@ final class DiscoverSession: ObservableObject {
         results = d.data(forKey: Self.resultsKey).flatMap {
             try? JSONDecoder().decode([SearchResultItem].self, from: $0)
         } ?? []
+        recent = d.stringArray(forKey: Self.recentKey) ?? []
+    }
+
+    func rememberQuery(_ query: String) {
+        let t = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        recent.removeAll { $0 == t }
+        recent.insert(t, at: 0)
+        if recent.count > 6 { recent = Array(recent.prefix(6)) }
+        UserDefaults.standard.set(recent, forKey: Self.recentKey)
     }
 
     /// 検索語・結果をまとめて空にする(クリアボタン用)。

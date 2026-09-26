@@ -2,6 +2,12 @@ import Foundation
 import Observation
 import UIKit
 
+/// 横断検索の結果と、サイト単位の失敗(0件と通信失敗を混ぜない)。
+struct SearchOutcome: Sendable {
+    var results: [SearchResultItem]
+    var failures: [String]
+}
+
 /// Swift 6 bridge over the novel_core C ABI.
 /// All core calls are synchronous + blocking → always hop through `run`.
 ///
@@ -79,15 +85,31 @@ final class CoreClient: Observable, @unchecked Sendable {
         return dir
     }
 
-    /// 保存済みの output_dir を絶対パスに正規化する。
-    /// 初期バージョンは相対パス(NovelDL-out など)を保存しており、iOS では
-    /// 書き込み可能な場所を指さない(追加した小説が本棚に出てこない・
-    /// 続話の自動取得が失敗する原因)。相対のときはライブラリ配下へ解決する。
+    /// 保存済みの output_dir を、いま書き込める場所へ正規化する。
+    /// 相対パスはライブラリ配下へ。再インストールでコンテナUUIDが変わった
+    /// 絶対パスは /NovelLibrary/ 以降を現在のライブラリへ張り直す。
     static func effectiveOutputDir(_ path: String) -> String {
-        if path.hasPrefix("/") { return path }
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return libraryRoot().path }
-        return libraryRoot().appendingPathComponent(trimmed, isDirectory: true).path
+        if !trimmed.hasPrefix("/") {
+            return libraryRoot().appendingPathComponent(trimmed, isDirectory: true).path
+        }
+        if FileManager.default.fileExists(atPath: trimmed) { return trimmed }
+        let marker = "/NovelLibrary/"
+        if let r = trimmed.range(of: marker) {
+            let suffix = String(trimmed[r.upperBound...])
+            return libraryRoot().appendingPathComponent(suffix).path
+        }
+        if trimmed.hasSuffix("/NovelLibrary") { return libraryRoot().path }
+        return trimmed
+    }
+
+    private static func jsonObject(_ value: some Encodable) -> String {
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.withoutEscapingSlashes]
+        guard let data = try? enc.encode(value),
+              let text = String(data: data, encoding: .utf8) else { return "{}" }
+        return text
     }
 
     // MARK: progress
@@ -205,17 +227,22 @@ final class CoreClient: Observable, @unchecked Sendable {
         var mode: String = "bulk"
 
         var json: String {
-            """
-            {"url":"\(url)","output_dir":"\(outputDir)","episodes":\(episodes),\
-            "from_index":"\(fromIndex)","mode":"\(mode)"}
-            """
+            struct Box: Encodable {
+                let url: String
+                let output_dir: String
+                let episodes: Int
+                let from_index: String
+                let mode: String
+            }
+            return CoreClient.jsonObject(Box(
+                url: url, output_dir: outputDir, episodes: episodes,
+                from_index: fromIndex, mode: mode))
         }
     }
 
     func fetchToc(url: String, outputDir: String) async throws -> FetchTocResult {
-        let json = """
-            {"url":"\(url)","output_dir":"\(outputDir)"}
-            """
+        struct Box: Encodable { let url: String; let output_dir: String }
+        let json = Self.jsonObject(Box(url: url, output_dir: outputDir))
         return try await decode(FetchTocResult.self) {
             novel_core_fetch_toc(json)
         }
@@ -233,10 +260,17 @@ final class CoreClient: Observable, @unchecked Sendable {
 
     /// 書き出し。前書き/後書きは既定で含めない(opt-in)。
     func exportZip(novelId: String, includeIntroPost: Bool = false) async throws -> ExportResult {
-        let extra = includeIntroPost ? "true" : "false"
-        let json = """
-            {"root_dir":"\(Self.libraryRoot().path)","novel_id":"\(novelId)","format":"aozora","include_intro_post":\(extra)}
-            """
+        struct Box: Encodable {
+            let root_dir: String
+            let novel_id: String
+            let format: String
+            let include_intro_post: Bool
+        }
+        let json = Self.jsonObject(Box(
+            root_dir: Self.libraryRoot().path,
+            novel_id: novelId,
+            format: "aozora",
+            include_intro_post: includeIntroPost))
         return try await decode(ExportResult.self) {
             novel_core_export_txt_zip(json)
         }
@@ -244,12 +278,16 @@ final class CoreClient: Observable, @unchecked Sendable {
 
     // MARK: search
 
-    func search(_ query: String, limit: UInt32 = 40) async throws -> [SearchResultItem] {
-        struct SearchBox: Decodable, Sendable { let query: String; let results: [SearchResultItem] }
+    func search(_ query: String, limit: UInt32 = 40) async throws -> SearchOutcome {
+        struct SearchBox: Decodable, Sendable {
+            let query: String
+            let results: [SearchResultItem]
+            let failures: [String]?
+        }
         let box: SearchBox = try await decode(SearchBox.self) {
             novel_core_search(query, limit)
         }
-        return box.results
+        return SearchOutcome(results: box.results, failures: box.failures ?? [])
     }
 
     func searchSites() async throws -> [SearchSite] {

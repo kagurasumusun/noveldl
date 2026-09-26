@@ -41,7 +41,7 @@ final class ShareViewController: UIViewController {
                     self?.finish("Could not read the shared URL.")
                     return
                 }
-                self.import(url: url)
+                self.importURL(url: url)
             }
         } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
             provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) { [weak self] data, _ in
@@ -49,21 +49,25 @@ final class ShareViewController: UIViewController {
                     self?.finish("Could not read the shared text.")
                     return
                 }
-                self.import(url: url)
+                self.importURL(url: url)
             }
         } else {
             finish("Unsupported share payload.")
         }
     }
 
-    private func import(url: URL) {
+    private func importURL(url: URL) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let slug = url.absoluteString
                 .replacingOccurrences(of: "https://", with: "")
                 .replacingOccurrences(of: "/", with: "_")
             let dir = self?.sharedLibraryRoot()
                 .appendingPathComponent(slug, isDirectory: true).path ?? ""
-            let options = "{\"url\":\"\(url.absoluteString)\",\"output_dir\":\"\(dir)\"}"
+            struct Box: Encodable { let url: String; let output_dir: String }
+            let enc = JSONEncoder()
+            enc.outputFormatting = [.withoutEscapingSlashes]
+            let data = (try? enc.encode(Box(url: url.absoluteString, output_dir: dir))) ?? Data()
+            let options = String(data: data, encoding: .utf8) ?? "{}"
             guard let cstr = novel_core_fetch_toc(options) else {
                 self?.finish("Fetch failed.")
                 return

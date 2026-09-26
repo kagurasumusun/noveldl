@@ -119,6 +119,49 @@ void set_progress(long long total, long long done, long long skipped, long long 
     progress_notify();
 }
 
+// 取得系は進捗・中止フラグをプロセス全体で共有している。
+// 二重起動は reset_cancel が相手の中止を消し、進捗が「取得中」のまま固まる。
+// 同じスレッドの入れ子(本棚更新→目次取得)だけ許可する。
+std::mutex g_op_mutex;
+bool g_op_busy = false;
+thread_local int g_op_depth = 0;
+
+struct OpGuard {
+    bool outer = false;
+    OpGuard() {
+        std::unique_lock<std::mutex> lock(g_op_mutex);
+        if (g_op_depth == 0) {
+            if (g_op_busy) throw Error("別の取得が進行中です");
+            g_op_busy = true;
+            outer = true;
+        }
+        ++g_op_depth;
+        lock.unlock();
+        if (outer) reset_cancel();
+    }
+    ~OpGuard() {
+        bool clear = false;
+        {
+            std::lock_guard<std::mutex> lock(g_op_mutex);
+            if (g_op_depth > 0) --g_op_depth;
+            if (outer) {
+                g_op_busy = false;
+                clear = true;
+            }
+        }
+        // 例外で抜けても「取得中」のまま残さない(Swift側が二度と開始しなくなる)。
+        if (clear) {
+            Progress snap = progress_snapshot();
+            if (snap.running) {
+                set_progress(snap.total, snap.done, snap.skipped, snap.failed,
+                             cancel_requested() ? "中止" : snap.current, false);
+            }
+        }
+    }
+    OpGuard(const OpGuard&) = delete;
+    OpGuard& operator=(const OpGuard&) = delete;
+};
+
 long long download_interval_ms() {
     if (g_interval_ms >= 0) return g_interval_ms;
     const char* env = std::getenv("NOVELDL_DOWNLOAD_INTERVAL_MS");
@@ -208,18 +251,43 @@ struct TocPageQueue {
 
 
 namespace {
-std::string image_ext_for(const std::string& url) {
-    std::string path = url;
-    auto q = path.find_first_of("?#");
-    if (q != std::string::npos) path = path.substr(0, q);
-    auto dot = path.rfind('.');
-    if (dot != std::string::npos) {
-        std::string ext = path.substr(dot + 1);
-        for (auto& c : ext) c = (char)::tolower((unsigned char)c);
-        if (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "webp")
-            return ext == "jpeg" ? "jpg" : ext;
+bool image_bytes_ok(const std::string& data, std::string* ext_out) {
+    if (data.size() < 12) return false;
+    const unsigned char* b = reinterpret_cast<const unsigned char*>(data.data());
+    std::string ext;
+    if (b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) ext = "jpg";
+    else if (b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') ext = "png";
+    else if (b[0] == 'G' && b[1] == 'I' && b[2] == 'F' && b[3] == '8') ext = "gif";
+    else if (std::memcmp(data.data(), "RIFF", 4) == 0 && std::memcmp(data.data() + 8, "WEBP", 4) == 0)
+        ext = "webp";
+    else return false;
+    // HTML/JSON を画像に見せかける応答は魔法数で落ちる。極小のトグルgifは残すが
+    // 中身が空に近いものは捨てる。
+    if (data.size() < 32) return false;
+    if (ext_out) *ext_out = ext;
+    return true;
+}
+
+// 本文に混ざる UI 用の画像(トグル・スペーサー・リアクション)。挿絵ではない。
+bool skip_ui_image_src(const std::string& src) {
+    std::string s = lower(src);
+    static const char* keys[] = {
+        "toggle", "spacer", "blank.gif", "clear.gif", "1x1", "pixel.gif",
+        "reaction", "/counter", "cnt.gif", "sasie_off", "sasie_on",
+    };
+    for (auto k : keys)
+        if (s.find(k) != std::string::npos) return true;
+    return false;
+}
+
+std::string safe_image_stem(const std::string& chapter_index) {
+    std::string o;
+    for (unsigned char c : chapter_index) {
+        if (std::isalnum(c) || c == '-' || c == '_') o.push_back((char)c);
+        else o.push_back('_');
+        if (o.size() >= 32) break;
     }
-    return "jpg";
+    return o.empty() ? "ch" : o;
 }
 
 void rewrite_src(std::string& fragment, const std::string& src, const std::string& local) {
@@ -256,18 +324,23 @@ void fetch_section_images(HttpClient& http, const AccessSettings& access,
     fs::create_directories(img_dir, ec);
     size_t n = 0;
     for (auto& src : srcs) {
+        if (skip_ui_image_src(src)) continue;
         if (++n > 30) break;  // 1 話ぶんの上限
         try {
             std::string abs = url_absolute(join_base, src);
             std::string data = http.fetch(abs, access, join_base);
-            char name[64];
-            std::snprintf(name, sizeof name, "%s_%02zu.%s", chapter_index.c_str(), n,
-                          image_ext_for(src).c_str());
+            std::string ext;
+            // チャレンジHTMLやJSONを jpg として保存すると、リーダーが壊れた挿絵を出す。
+            if (!image_bytes_ok(data, &ext)) continue;
+            char name[80];
+            std::snprintf(name, sizeof name, "%s_%02zu.%s",
+                          safe_image_stem(chapter_index).c_str(), n, ext.c_str());
             std::string local = img_dir + "/" + name;
             {
                 std::ofstream f(local, std::ios::binary);
                 if (!f) continue;
                 f.write(data.data(), (std::streamsize)data.size());
+                if (!f) continue;
             }
             for (auto* frag : fragments) {
                 if (frag) rewrite_src(*frag, src, local);
@@ -812,7 +885,7 @@ TocResult fetch_toc_pages_family(HttpClient& http, const std::string& url,
 Value op_download(const DownloadOptions& opts) {
     if (opts.url.empty()) throw Error("url is required");
     if (opts.output_dir.empty()) throw Error("output_dir is required");
-    reset_cancel();
+    OpGuard guard;
     set_progress(0, 0, 0, 0, "目次を取得中", true);
 
     std::string domain = url_host(opts.url);
@@ -898,12 +971,17 @@ Value op_download(const DownloadOptions& opts) {
     // slice from from_index / episodes
     size_t start = 0;
     if (!opts.from_index.empty()) {
+        bool found = false;
+        std::string want = trim(opts.from_index);
         for (size_t k = 0; k < toc.size(); ++k) {
-            if (toc[k].index == opts.from_index) {
+            if (toc[k].index == want || trim(toc[k].index) == want) {
                 start = k;
+                found = true;
                 break;
             }
         }
+        // 見つからないのに先頭から取ると、リーダーの単話取得が別の話を保存する。
+        if (!found) throw Error("指定した話が見つかりません: " + want);
     }
     std::vector<Chapter> targets(toc.begin() + (long)start, toc.end());
     if (opts.episodes > 0 && targets.size() > opts.episodes) targets.resize(opts.episodes);
@@ -1137,7 +1215,7 @@ Value op_download(const DownloadOptions& opts) {
 Value op_fetch_toc(const DownloadOptions& opts) {
     if (opts.url.empty()) throw Error("url is required");
     if (opts.output_dir.empty()) throw Error("output_dir is required");
-    reset_cancel();
+    OpGuard guard;
     set_progress(0, 0, 0, 0, "目次を取得中", true);
 
     std::string domain = url_host(opts.url);
@@ -1369,25 +1447,42 @@ Value op_library_novel(const std::string& root_dir, const std::string& novel_id)
     return out;
 }
 
+std::string remap_library_output_dir(const std::string& output_dir, const std::string& root_dir) {
+    if (output_dir.empty()) return root_dir;
+    if (output_dir[0] != '/') return root_dir + "/" + output_dir;
+    std::error_code ec;
+    if (fs::exists(output_dir, ec)) return output_dir;
+    // 再インストールでコンテナUUIDが変わった絶対パス。NovelLibrary 以降を現ルートへ。
+    const std::string marker = "/NovelLibrary/";
+    auto pos = output_dir.find(marker);
+    if (pos != std::string::npos)
+        return root_dir + "/" + output_dir.substr(pos + marker.size());
+    if (output_dir.size() >= 13 &&
+        output_dir.compare(output_dir.size() - 13, 13, "/NovelLibrary") == 0)
+        return root_dir;
+    return output_dir;
+}
+
 Value op_library_refresh(const std::string& root_dir) {
     Value listed = op_library_list(root_dir);
     long long refreshed = 0, failed = 0;
-    reset_cancel();
+    OpGuard guard;
+    if (!listed.get("novels")) {
+        Value out = Value::map_();
+        out.set("refreshed", Value::integer(0));
+        out.set("failed", Value::integer(0));
+        return out;
+    }
     for (auto& item : listed.get("novels")->arr) {
         if (cancel_requested()) break;
         try {
             DownloadOptions opts;
             opts.url = item.get_str("toc_url");
-            opts.output_dir = item.get_str("output_dir");
+            opts.output_dir = remap_library_output_dir(item.get_str("output_dir"), root_dir);
             if (opts.url.empty()) {
                 ++failed;
                 continue;
             }
-            // 過去のバージョンが保存した相対パス(NovelDL-out など)は
-            // root_dir 基準に直す。相対のままでは CWD(iOS では書き込み不可)
-            // へ向かい、目次の再取得が静かに失敗する。
-            if (!opts.output_dir.empty() && opts.output_dir[0] != '/')
-                opts.output_dir = root_dir + "/" + opts.output_dir;
             op_fetch_toc(opts);
             ++refreshed;
         } catch (...) {

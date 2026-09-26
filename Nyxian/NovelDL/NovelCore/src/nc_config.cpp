@@ -223,13 +223,45 @@ Value load_effective_preset(const std::string& domain) {
     return RulesParser::normalize_legacy(std::move(combined));
 }
 
+namespace {
+int builtin_rev_in(const std::string& text) {
+    static const std::regex rev_re(R"re(builtin_rev:\s*(\d+))re");
+    std::smatch m;
+    if (std::regex_search(text, m, rev_re)) {
+        try { return std::stoi(m[1]); } catch (...) { return 0; }
+    }
+    return 0;
+}
+
+int builtin_rev_for(const std::string& kind, const std::string& domain) {
+    for (auto& bp : builtin_presets()) {
+        if (kind == bp.kind && domain == bp.domain) return builtin_rev_in(bp.yaml);
+    }
+    return 0;
+}
+
+// 手編集で builtin_rev が落ちると、次の seed が「古い」と判断して編集を内蔵定義で消す。
+std::string keep_builtin_rev(const std::string& kind, const std::string& domain, std::string dumped) {
+    int need = builtin_rev_for(kind, domain);
+    if (need <= 0) return dumped;
+    int have = builtin_rev_in(dumped);
+    if (have >= need) return dumped;
+    if (have > 0) {
+        static const std::regex rev_re(R"re(builtin_rev:\s*\d+)re");
+        return std::regex_replace(dumped, rev_re, "builtin_rev: " + std::to_string(need),
+                                  std::regex_constants::format_first_only);
+    }
+    return "builtin_rev: " + std::to_string(need) + "\n" + dumped;
+}
+} // namespace
+
 Value save_user_preset(const std::string& kind, const std::string& domain, const Value& yaml) {
     if (domain.empty() || domain.find('/') != std::string::npos ||
         domain.find('\\') != std::string::npos)
         throw Error("invalid domain: " + domain);
     std::string dir = user_presets_dir() + "/" + kind;
     std::string path = dir + "/" + domain + ".yaml";
-    write_file(path, yaml_dump(yaml));
+    write_file(path, keep_builtin_rev(kind, domain, yaml_dump(yaml)));
     return yaml_parse(read_file(path)); // round-trip validates
 }
 

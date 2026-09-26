@@ -196,9 +196,10 @@ struct ReaderView: View {
             await load()
             // 話移動の直後に一度だけ表示。消しタイマーは持たない(手動出没のみ)。
             withAnimation(.easeOut(duration: 0.3)) { chromeVisible = true }
-            // この作品の残りを背景で取得する(リーダーが開いている間だけ)。
-            await startNovelDownload()
         }
+        // 作品の取得はリーダーが開いている間だけ。話を変えても中断しない
+        // (話ごとの task にぶら下げると、めくるたびに取り直しが走る)。
+        .task { await fillNovelInBackground() }
         .sheet(item: $sheet) { target in
             switch target {
             case .toc: tocSheet
@@ -663,6 +664,14 @@ struct ReaderView: View {
                 }
             }
         }
+        .onChange(of: core.progress.done) { _, _ in
+            guard sheet == .toc, core.progress.running else { return }
+            Task {
+                if let fresh = try? await core.novelDetail(novelId) {
+                    detail = fresh
+                }
+            }
+        }
         .presentationDetents([.medium, .large])
     }
 
@@ -993,25 +1002,49 @@ struct ReaderView: View {
     /// 「リーダーが開いているときだけ取得する」モデル。既に取得済みの話は
     /// コア側で全てスキップされるため、続き・改稿だけが実際に通信する。
     /// 閉じたときは core.cancel() で止まり、続きは次回の読書で再開する。
-    private func startNovelDownload() async {
-        guard !tocUrl.isEmpty,
-              let rawDir = detail?.novel.outputDir, !rawDir.isEmpty else { return }
-        guard !core.progress.running else { return }  // 単話取得などが走っていれば委ねる
-        // 今読んでいる話の続きから順に(先頭からだと読書位置に届くまで待つ)。
-        _ = try? await core.download(
-            CoreClient.DownloadOptions(
-                url: tocUrl,
-                outputDir: CoreClient.effectiveOutputDir(rawDir),
-                episodes: 0,
-                fromIndex: chapterIndex,
-                mode: "bulk"
-            )
-        )
-        await core.reloadLibrary()
-        // 取得済み✔などが目次・操作面に即時反映されるように取り直す。
-        if let fresh = try? await core.novelDetail(novelId) {
-            detail = fresh
+    /// 開いている作品の未取得話を埋める。いまの話から末尾、その後に先頭側。
+    /// 単話取得とぶつかったら待ってやり直す(コアは同時1本)。
+    private func fillNovelInBackground() async {
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        guard !Task.isCancelled, !tocUrl.isEmpty else { return }
+        if detail == nil { detail = try? await core.novelDetail(novelId) }
+        guard let rawDir = detail?.novel.outputDir, !rawDir.isEmpty else { return }
+        let out = CoreClient.effectiveOutputDir(rawDir)
+        let start = chapterIndex
+        for pass in [start, ""] {
+            if Task.isCancelled { return }
+            if pass.isEmpty && start.isEmpty { continue }
+            var attempts = 0
+            while attempts < 4 && !Task.isCancelled {
+                attempts += 1
+                while core.progress.running && !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                }
+                if Task.isCancelled { return }
+                do {
+                    _ = try await core.download(
+                        CoreClient.DownloadOptions(
+                            url: tocUrl,
+                            outputDir: out,
+                            episodes: 0,
+                            fromIndex: pass,
+                            mode: "bulk"
+                        )
+                    )
+                    break
+                } catch {
+                    let msg = error.localizedDescription
+                    if msg.contains("進行中") || msg.contains("cancelled") || msg.contains("中止") {
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        continue
+                    }
+                    break
+                }
+            }
+            if let fresh = try? await core.novelDetail(novelId) { detail = fresh }
         }
+        await core.reloadLibrary()
+        if let fresh = try? await core.novelDetail(novelId) { detail = fresh }
     }
 
     private func load() async {
@@ -1030,21 +1063,29 @@ struct ReaderView: View {
                let rawDir = detail?.novel.outputDir, !rawDir.isEmpty {
                 autoFetching = true
                 defer { autoFetching = false }
-                // 全話取得など別ジョブが走っているときは競合させない。
-                // 完了を待ちつつ、該当話が保存されたらそれを使う(最長5分)。
+                // 背景取得がこの話に届くのを少し待つ。届かなければ単話を優先する。
+                // コアは同時に1本しか走らせないので、待つだけでなく必要なら中止してから取る。
                 if core.progress.running {
-                    for _ in 0..<150 {
-                        if !core.progress.running { break }
-                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    for _ in 0..<8 {
+                        if Task.isCancelled { return }
+                        try? await Task.sleep(nanoseconds: 500_000_000)
                         let poll = try? await core.section(novelId: novelId, index: chapterIndex)
                         if !(poll?.bodyXhtml ?? "").isEmpty {
                             sec = poll
                             break
                         }
+                        if !core.progress.running { break }
+                    }
+                    if (sec?.bodyXhtml ?? "").isEmpty, core.progress.running {
+                        core.cancel()
+                        for _ in 0..<40 {
+                            if !core.progress.running { break }
+                            try? await Task.sleep(nanoseconds: 200_000_000)
+                        }
                     }
                 }
-                if (sec?.bodyXhtml ?? "").isEmpty {
-                    _ = try? await core.download(
+                if (sec?.bodyXhtml ?? "").isEmpty, !core.progress.running, !Task.isCancelled {
+                    _ = try await core.download(
                         CoreClient.DownloadOptions(
                             url: tocUrl,
                             outputDir: CoreClient.effectiveOutputDir(rawDir),
@@ -1055,6 +1096,7 @@ struct ReaderView: View {
                     )
                     sec = try? await core.section(novelId: novelId, index: chapterIndex)
                     await core.reloadLibrary()
+                    if let fresh = try? await core.novelDetail(novelId) { detail = fresh }
                 }
             }
             guard let sec else {
@@ -1077,6 +1119,20 @@ struct ReaderView: View {
         }
     }
 
+    /// 保存時の絶対パスがコンテナ変更で死んでいても、/novels/ 以降から現ライブラリを探す。
+    private func relocateImagePath(_ src: String, baseDir: String?, libraryRoot: String, children: [String]) -> String {
+        if !src.hasPrefix("/") || FileManager.default.fileExists(atPath: src) { return src }
+        guard let r = src.range(of: "/novels/") else { return src }
+        let suffix = String(src[r.lowerBound...])
+        var candidates = [libraryRoot + suffix]
+        if let baseDir { candidates.append(baseDir + suffix) }
+        for kid in children where !kid.hasPrefix(".") {
+            candidates.append(libraryRoot + "/" + kid + suffix)
+        }
+        for c in candidates where FileManager.default.fileExists(atPath: c) { return c }
+        return src
+    }
+
     /// 挿絵を非同期に実画像へ差し替える(読書の応答性を落とさない)。
     private func loadImages(_ refs: [ImageRef]) async {
         let width = UIScreen.main.bounds.width - max(margin, 12) * 2
@@ -1087,14 +1143,10 @@ struct ReaderView: View {
         if let rawDir = detail?.novel.outputDir, !rawDir.isEmpty {
             baseDir = CoreClient.effectiveOutputDir(rawDir)
         }
+        let libraryRoot = CoreClient.libraryRoot().path
+        let libraryChildren = (try? FileManager.default.contentsOfDirectory(atPath: libraryRoot)) ?? []
         for ref in refs {
-            var src = ref.src
-            if src.hasPrefix("/"), let bd = baseDir,
-               !FileManager.default.fileExists(atPath: src),
-               let r = src.range(of: "/novels/") {
-                let candidate = bd + String(src[r.lowerBound...])
-                if FileManager.default.fileExists(atPath: candidate) { src = candidate }
-            }
+            let src = relocateImagePath(ref.src, baseDir: baseDir, libraryRoot: libraryRoot, children: libraryChildren)
             guard let url = ReaderImageStore.resolve(src, base: base) else { continue }
             if let img = await ReaderImageStore.shared.load(url) {
                 readerBox.applyImage(at: ref.range, image: img, displayWidth: width)
@@ -1121,6 +1173,8 @@ enum ReaderImageStore {
                 img = UIImage(data: data)
             }
             guard let img else { return nil }
+            // トグルやスペーサー(極小)は挿絵として出さない。
+            if img.size.width * img.size.height < 800 { return nil }
             let scaled = downscale(img, maxW: 1200)
             cache.setObject(scaled, forKey: url as NSURL)
             return scaled

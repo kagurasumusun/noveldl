@@ -1,11 +1,13 @@
 import SwiftUI
 
-/// さがす — サイト横断の作品検索。追加 = 自動で全話取得。
+/// さがす — サイト横断の作品検索。追加は目次のみ。本文は読み始めたときに取得する。
 struct DiscoverView: View {
     @Environment(CoreClient.self) private var core: CoreClient
     /// 検索語・結果・範囲はタブ移動しても残す(シェル所有のセッション)。
     @ObservedObject var session: DiscoverSession
     @State private var searching = false
+    @State private var searched = false
+    @State private var searchNote: String?
     @State private var errorText: String?
     @State private var addingUrl: String?
     @State private var sites: [SearchSite] = []
@@ -75,6 +77,9 @@ struct DiscoverView: View {
             if !sites.isEmpty {
                 scopeRow
             }
+            if session.query.isEmpty, !session.recent.isEmpty {
+                recentRow
+            }
         }
         .padding(.horizontal, Metrics.gutter)
         .padding(.top, Spacing.l)
@@ -87,7 +92,27 @@ struct DiscoverView: View {
     private var resultsList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.l) {
-                if session.results.isEmpty && !searching {
+                if searched && !searching {
+                    HStack {
+                        Text("\(session.results.count)件")
+                            .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(AppPalette.inkSoft)
+                        if let searchNote {
+                            Text(searchNote)
+                                .font(AppFont.ui(11))
+                                .foregroundStyle(AppPalette.inkFaint)
+                                .lineLimit(2)
+                        }
+                        Spacer()
+                    }
+                }
+                if searched && session.results.isEmpty && !searching {
+                    Text("見つかりませんでした。語を短くするか、サイトを絞ってみてください。")
+                        .font(AppFont.ui(13))
+                        .foregroundStyle(AppPalette.inkSoft)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, Spacing.l)
+                } else if session.results.isEmpty && !searching {
                     searchServices
                     emptyState
                 }
@@ -284,7 +309,13 @@ struct DiscoverView: View {
         do {
             // 検索範囲(site:)で絞り込み — 各サイト単独でも横断でも検索できる
             let scoped = session.scopeKey.map { base + " site:" + $0 } ?? base
-            session.results = try await core.search(scoped)
+            let outcome = try await core.search(scoped)
+            session.results = outcome.results
+            session.rememberQuery(base)
+            searched = true
+            searchNote = outcome.failures.isEmpty
+                ? nil
+                : "一部のサイトは応答しませんでした（\(outcome.failures.count)）"
         } catch {
             errorText = error.localizedDescription
         }
@@ -300,6 +331,28 @@ struct DiscoverView: View {
                 }
             }
             .padding(.horizontal, Spacing.l)
+        }
+    }
+
+    private var recentRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(session.recent, id: \.self) { q in
+                    Button {
+                        session.query = q
+                        Task { await run() }
+                    } label: {
+                        Text(q)
+                            .font(AppFont.ui(11.5))
+                            .foregroundStyle(AppPalette.inkSoft)
+                            .lineLimit(1)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(AppPalette.surface))
+                    }
+                    .buttonStyle(PressableButtonStyle(haptic: true))
+                }
+            }
         }
     }
 

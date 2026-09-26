@@ -291,6 +291,10 @@ Value search_novels(const std::string& query, int limit, const std::string& site
     Value results = Value::array();
     std::vector<std::string> failures;
     Value site_keys = Value::array();
+    // サイトごとの結果を保持し、後でインターリーブする。
+    // (逐次 push だと limit 到達以降のサイトが常にゼロ件になり、
+    //  「すべて」で下位サイトだけ欠ける不均衡が起きるため)
+    std::vector<Value> per_site_results;
     for (auto& site : sites) {
         site_keys.push(Value::string(site.key));
         int pages = std::max((per_site + kResultsPerPage - 1) / kResultsPerPage, 1);
@@ -312,9 +316,22 @@ Value search_novels(const std::string& query, int limit, const std::string& site
             failures.push_back(site.key + ": " + e.what());
             continue;
         }
-        for (auto& r : collected.arr) {
-            if ((int)results.size() >= limit) break;
-            results.push(r);
+        per_site_results.push_back(std::move(collected));
+    }
+    // round-robin で 1 サイト 1 件ずつ積む(一部サイトだけ欠けるのを防ぐ)。
+    {
+        size_t idx = 0;
+        while ((int)results.size() < limit) {
+            bool pushed = false;
+            for (auto& bucket : per_site_results) {
+                if (idx < bucket.arr.size()) {
+                    results.push(bucket.arr[idx]);
+                    pushed = true;
+                    if ((int)results.size() >= limit) break;
+                }
+            }
+            if (!pushed) break;
+            ++idx;
         }
     }
     if (results.size() == 0 && failures.size() == sites.size() && !failures.empty())
@@ -324,6 +341,9 @@ Value search_novels(const std::string& query, int limit, const std::string& site
     root.set("query", Value::string(cleaned));
     root.set("sites", std::move(site_keys));
     root.set("results", std::move(results));
+    Value fail_arr = Value::array();
+    for (auto& f : failures) fail_arr.push(Value::string(f));
+    root.set("failures", std::move(fail_arr));
     return root;
 }
 
