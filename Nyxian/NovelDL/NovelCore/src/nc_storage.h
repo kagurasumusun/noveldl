@@ -114,6 +114,11 @@ public:
                                       const std::string& saved_at);
     long long section_version_count(const std::string& novel_id,
                                     const std::string& chapter_index);
+    // 空でない場合のみ書き替える(既存値を壊さない)。
+    void update_novel_title_author(const std::string& novel_id,
+                                   const std::string& title,
+                                   const std::string& author);
+
     std::optional<StoredSection> get_section_version(const std::string& novel_id,
                                                      const std::string& chapter_index,
                                                      long long offset);

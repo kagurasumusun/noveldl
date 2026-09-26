@@ -1,3 +1,4 @@
+builtin_rev: 2
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: mid.syosetu.com
@@ -14,7 +15,7 @@ toc_url_pattern: "https://mid.syosetu.com/{ncode}/"
 novel_info_url_pattern: "https://mid.syosetu.com/novelview/infotop/ncode/{ncode}/"
 novel_info_selectors:
   title: "h1.p-infotop-title a, title"
-  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername"
+  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername, .p-novel__author"
   story: "dd.p-infotop-data__value"
 
 last_successful_selectors: {}

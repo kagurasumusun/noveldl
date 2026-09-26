@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <sstream>
 
 namespace fs = std::filesystem;
@@ -123,8 +124,26 @@ namespace {
 void seed_one(const std::string& rel_path, const std::string& content) {
     std::string path = user_presets_dir() + "/" + rel_path;
     std::error_code ec;
-    if (fs::exists(path, ec)) return;
-    write_file(path, content);
+    if (!fs::exists(path, ec)) {
+        write_file(path, content);
+        return;
+    }
+    // 内蔵定義に builtin_rev が付いている場合は、ユーザー保存物より新しい版なら
+    // 更新する(セレクタ改良が既存環境に届くように。手改変は rev を上げる側にも
+    // 引き継がれるため、明示的に下げない限り上書きされる)。
+    static const std::regex rev_re(R"re(builtin_rev:\s*(\d+))re");
+    std::smatch m;
+    int have = 0;
+    {
+        std::ifstream in(path, std::ios::binary);
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        std::string cur = ss.str();
+        if (std::regex_search(cur, m, rev_re)) have = std::stoi(m[1]);
+    }
+    int want = 0;
+    if (std::regex_search(content, m, rev_re)) want = std::stoi(m[1]);
+    if (want > have) write_file(path, content);
 }
 
 bool copy_if_missing(const std::string& src, const std::string& dst) {

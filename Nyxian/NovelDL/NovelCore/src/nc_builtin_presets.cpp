@@ -201,6 +201,7 @@ webnovels_site: kakuyomu
 version: 2.2
 )NC"},
         {"parsers", "mid.syosetu.com", R"NC(
+builtin_rev: 2
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: mid.syosetu.com
@@ -217,7 +218,7 @@ toc_url_pattern: "https://mid.syosetu.com/{ncode}/"
 novel_info_url_pattern: "https://mid.syosetu.com/novelview/infotop/ncode/{ncode}/"
 novel_info_selectors:
   title: "h1.p-infotop-title a, title"
-  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername"
+  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername, .p-novel__author"
   story: "dd.p-infotop-data__value"
 
 last_successful_selectors: {}
@@ -226,6 +227,7 @@ last_successful_selectors: {}
 confirm_over18: yes
 )NC"},
         {"parsers", "mnlt.syosetu.com", R"NC(
+builtin_rev: 2
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: mnlt.syosetu.com
@@ -242,7 +244,7 @@ toc_url_pattern: "https://mnlt.syosetu.com/{ncode}/"
 novel_info_url_pattern: "https://mnlt.syosetu.com/novelview/infotop/ncode/{ncode}/"
 novel_info_selectors:
   title: "h1.p-infotop-title a, title"
-  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername"
+  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername, .p-novel__author"
   story: "dd.p-infotop-data__value"
 
 last_successful_selectors: {}
@@ -295,6 +297,7 @@ over18_cookie: "over_fifteen=yes"
 version: 1.0
 )NC"},
         {"parsers", "ncode.syosetu.com", R"NC(
+builtin_rev: 2
 extends: common/syosetu_2024
 name: 小説家になろう
 domain: ncode.syosetu.com
@@ -309,12 +312,16 @@ toc_url_pattern: "https://ncode.syosetu.com/{ncode}/"
 novel_info_url_pattern: "https://ncode.syosetu.com/novelview/infotop/ncode/{ncode}/"
 novel_info_selectors:
   title: "title"
-  author: ".p-novel__author a, .novel_writername a, .novel_writername"
+  author: ".p-novel__author a, .novel_writername a, .novel_writername, .p-novel__author"
+  story: "#novel_ex, .p-novel__summary"
+  updated: ".p-novel__date-published"
+  next_update: ".p-novel__update, .novel_update"
 # ------------------------------------------------------------
 # 横断検索メタ情報
 confirm_over18: no
 )NC"},
         {"parsers", "noc.syosetu.com", R"NC(
+builtin_rev: 2
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: noc.syosetu.com
@@ -331,7 +338,7 @@ toc_url_pattern: "https://noc.syosetu.com/{ncode}/"
 novel_info_url_pattern: "https://noc.syosetu.com/novelview/infotop/ncode/{ncode}/"
 novel_info_selectors:
   title: "h1.p-infotop-title a, title"
-  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername"
+  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername, .p-novel__author"
   story: "dd.p-infotop-data__value"
 
 last_successful_selectors: {}
@@ -377,6 +384,7 @@ confirm_over18: no
 version: 1.0
 )NC"},
         {"parsers", "novel18.syosetu.com", R"NC(
+builtin_rev: 2
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: novel18.syosetu.com
@@ -393,7 +401,7 @@ toc_url_pattern: "https://novel18.syosetu.com/{ncode}/"
 novel_info_url_pattern: "https://novel18.syosetu.com/novelview/infotop/ncode/{ncode}/"
 novel_info_selectors:
   title: "h1.p-infotop-title a, title"
-  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername"
+  author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername, .p-novel__author"
   story: "dd.p-infotop-data__value"
 
 last_successful_selectors: {}

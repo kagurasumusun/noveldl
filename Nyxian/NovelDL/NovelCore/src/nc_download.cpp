@@ -631,6 +631,10 @@ Value op_download(const DownloadOptions& opts) {
             mx.updated = meta.get_str("updated", "");
             if (!story.empty()) storage.update_novel_description(novel_id, story);
             storage.update_novel_meta(novel_id, mx);
+            // タイトル・作者も空でなければ最新化する(旧データの作者空欄を埋める)。
+            storage.update_novel_title_author(novel_id,
+                                              meta.get_str("title", ""),
+                                              meta.get_str("author", ""));
         } catch (const std::exception&) {
         }
     }
@@ -861,6 +865,10 @@ Value op_fetch_toc(const DownloadOptions& opts) {
             mx.updated = meta.get_str("updated", "");
             if (!story.empty()) storage.update_novel_description(novel_id, story);
             storage.update_novel_meta(novel_id, mx);
+            // タイトル・作者も空でなければ最新化する(旧データの作者空欄を埋める)。
+            storage.update_novel_title_author(novel_id,
+                                              meta.get_str("title", ""),
+                                              meta.get_str("author", ""));
         } catch (const std::exception&) {
         }
     }

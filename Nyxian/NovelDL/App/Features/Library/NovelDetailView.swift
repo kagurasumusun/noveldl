@@ -26,14 +26,37 @@ struct NovelDetailView: View {
     @State private var customCover: UIImage?
     @State private var showCoverPicker = false
     @State private var showDeleteConfirm = false
+    /// 目次の折りたたみ(章あり)。
+    @State private var collapsedGroups: Set<String> = []
+    @State private var groupsInitialized = false
+    /// 上端へ戻るチップの表示。
+    @State private var showScrollTop = false
 
     private var downloaded: Int { detail?.downloadedCount ?? item.downloadedCount ?? 0 }
     private var total: Int { max(detail?.novel.episodeCount ?? item.episodeCount, 1) }
 
+    private struct ScrollOffsetKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = nextValue()
+        }
+    }
+
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.l) {
                 heroCard
+                    .id("detailTop")
+                    .background(
+                        GeometryReader { geo -> Color in
+                            let minY = geo.frame(in: .named("detailScroll")).minY
+                            DispatchQueue.main.async {
+                                showScrollTop = minY < -240
+                            }
+                            return Color.clear
+                        }
+                    )
                 metaGrid
                 if let synopsis, !synopsis.isEmpty {
                     synopsisCard(synopsis)
@@ -46,6 +69,31 @@ struct NovelDetailView: View {
             .padding(.bottom, 40)
         }
         .background(AppPalette.canvas.ignoresSafeArea())
+        .coordinateSpace(name: "detailScroll")
+        .overlay(alignment: .bottomTrailing) {
+            // スクロールしたら「上端へ戻る」チップを出す。
+            if showScrollTop {
+                Button {
+                    Haptics.tap()
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo("detailTop", anchor: .top)
+                    }
+                } label: {
+                    Image(systemName: "chevron.up")
+                        .font(AppFont.ui(13, weight: .semibold))
+                        .foregroundStyle(AppPalette.ink)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(AppPalette.canvas.opacity(0.97)))
+                        .overlay(Circle().strokeBorder(AppPalette.hairline, lineWidth: 1))
+                        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .padding(.trailing, Spacing.m)
+                .padding(.bottom, 88)
+                .transition(.opacity)
+            }
+        }
+        }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(item: $readerRoute) { route in
@@ -284,67 +332,106 @@ struct NovelDetailView: View {
                 headerEN("INDEX", "目次")
                     .foregroundStyle(AppPalette.ink)
                 Spacer()
-                Text("全\(total)話")
+                Text("全\(total)話・取得 \(downloaded)")
                     .font(AppFont.ui(13))
                     .foregroundStyle(AppPalette.inkSoft)
                     .monospacedDigit()
             }
             .padding(.top, Spacing.s)
 
-            VStack(spacing: 0) {
-                let visible = Array(flatChapters.prefix(chapterLimit))
-                ForEach(visible.indices, id: \.self) { i in
-                    let ch = visible[i]
-                    if i == 0 || visible[i - 1].chapter != ch.chapter {
-                        if let group = ch.chapter, !group.isEmpty {
-                            Text(group)
-                                .font(AppFont.ui(12, weight: .semibold))
-                                .foregroundStyle(AppPalette.gold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, Spacing.l)
-                                .padding(.top, Spacing.l)
-                                .padding(.bottom, Spacing.xs)
-                                .background(AppPalette.canvas)
+            let groups = chapterGroups(flatChapters)
+            let hasNamed = groups.contains { $0.name != nil }
+            if hasNamed {
+                // 章あり: 章ごとの折りたたみ(開いている章だけ話を並べる)。
+                VStack(spacing: 0) {
+                    ForEach(Array(groups.enumerated()), id: \.offset) { gi, g in
+                        let key = g.name ?? "__flat__"
+                        let collapsed = collapsedGroups.contains(key)
+                        let done = g.chapters.filter { $0.bodyDownloaded == true }.count
+                        Button {
+                            Haptics.tap()
+                            if collapsed {
+                                collapsedGroups.remove(key)
+                            } else {
+                                collapsedGroups.insert(key)
+                            }
+                        } label: {
+                            HStack(spacing: Spacing.s) {
+                                Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                                    .font(AppFont.ui(10, weight: .semibold))
+                                    .foregroundStyle(AppPalette.inkFaint)
+                                Text(g.name ?? "章なし")
+                                    .font(AppFont.ui(13, weight: .semibold))
+                                    .foregroundStyle(AppPalette.ink)
+                                    .lineLimit(1)
+                                Text("\(g.chapters.count)話")
+                                    .font(AppFont.ui(11).monospacedDigit())
+                                    .foregroundStyle(AppPalette.inkFaint)
+                                Spacer()
+                                Text("\(done)/\(g.chapters.count)")
+                                    .font(AppFont.ui(11).monospacedDigit())
+                                    .foregroundStyle(done == g.chapters.count ? AppPalette.gold : AppPalette.inkFaint)
+                            }
+                            .padding(.horizontal, Spacing.l)
+                            .padding(.vertical, 12)
+                            .background(AppPalette.canvas)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PressableButtonStyle(haptic: false))
+                        if !collapsed {
+                            ForEach(g.chapters, id: \.index) { ch in
+                                chapterRow(ch)
+                                RowDivider(leading: Spacing.l)
+                            }
+                        }
+                        if gi != groups.count - 1 {
+                            RowDivider()
                         }
                     }
-                    chapterRow(ch)
-                    RowDivider(leading: Spacing.l)
                 }
-                if flatChapters.count > chapterLimit {
-                    // 末尾が見えたら自動で次を読み込む(ボタン操作は要らない)
-                    HStack(spacing: Spacing.s) {
-                        ProgressView().scaleEffect(0.7)
-                        Text("残り \(flatChapters.count - chapterLimit) 話…")
-                            .font(AppFont.ui(11))
-                            .foregroundStyle(AppPalette.inkFaint)
+                .background(PaperBackground())
+            } else {
+                // 章なし: まとめて逐次読み込み。
+                VStack(spacing: 0) {
+                    let visible = Array(flatChapters.prefix(chapterLimit))
+                    ForEach(visible.indices, id: \.self) { i in
+                        chapterRow(visible[i])
+                        RowDivider(leading: Spacing.l)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .onAppear {
-                        Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 80_000_000)
-                            if chapterLimit < flatChapters.count {
-                                chapterLimit += 300
+                    if flatChapters.count > chapterLimit {
+                        HStack(spacing: Spacing.s) {
+                            ProgressView().scaleEffect(0.7)
+                            Text("残り \(flatChapters.count - chapterLimit) 話…")
+                                .font(AppFont.ui(11))
+                                .foregroundStyle(AppPalette.inkFaint)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .onAppear {
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 80_000_000)
+                                if chapterLimit < flatChapters.count {
+                                    chapterLimit += 300
+                                }
                             }
                         }
                     }
                 }
+                .background(PaperBackground())
             }
-            .background(PaperBackground())
         }
     }
 
-    /// 英語の見出しを主役に、日本語は小さく添える(メリハリをはっきり)。
+    /// セクション見出し — 英語は小さなキッカー(上段)、日本語を見出しの主役に。
     private func headerEN(_ en: String, _ jp: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(en)
-                .font(AppFont.serif(15, weight: .semibold))
-                .foregroundStyle(AppPalette.ink)
-                .tracking(2.5)
+                .font(AppFont.ui(10, weight: .semibold))
+                .tracking(2.2)
+                .foregroundStyle(AppPalette.gold)
             Text(jp)
-                .font(AppFont.ui(10))
-                .foregroundStyle(AppPalette.inkFaint)
-            Spacer()
+                .font(AppFont.serif(17, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
         }
         .padding(.top, Spacing.m)
     }
@@ -403,8 +490,17 @@ struct NovelDetailView: View {
     }
 
     private func reload() async {
-        await refreshTocIfStale()
+        // まずローカルの内容で即表示(初回開いたとき空に見える問題の解消)。
         detail = try? await core.novelDetail(item.novelId)
+        flatChapters = detail?.chapters ?? []
+        customCover = CoverStore.customImage(item.storagePath)
+        initializeGroupsIfNeeded()
+        // その後、目次・改稿情報を取り直して差し替える。
+        await refreshTocIfStale()
+        if let fresh = try? await core.novelDetail(item.novelId) {
+            detail = fresh
+            flatChapters = fresh.chapters
+        }
         flatChapters = detail?.chapters ?? []
         customCover = CoverStore.customImage(item.storagePath)
         // 表紙が無ければサイト(og:image)から一度だけ取得して保存する。
@@ -422,6 +518,52 @@ struct NovelDetailView: View {
                 synopsis = (try? await core.novelInfo(url: item.tocUrl))?.story
             }
         }
+    }
+
+    /// 長編(40話超)は最初だけ最初の章を開き、他を折りたたむ。
+    private func initializeGroupsIfNeeded() {
+        guard !groupsInitialized else { return }
+        groupsInitialized = true
+        guard flatChapters.count > 40 else { return }
+        var firstSeen = false
+        for g in chapterGroups(flatChapters) {
+            let key = g.name ?? "__flat__"
+            if !firstSeen {
+                firstSeen = true
+                continue
+            }
+            collapsedGroups.insert(key)
+        }
+    }
+
+    private struct DetailGroup {
+        let name: String?
+        let chapters: [ChapterMeta]
+    }
+
+    /// 章名でグループ化(章が無い話は name = nil の一束)。
+    private func chapterGroups(_ chapters: [ChapterMeta]) -> [DetailGroup] {
+        var out: [DetailGroup] = []
+        var currentName: String? = nil
+        var bucket: [ChapterMeta] = []
+        func flush() {
+            if !bucket.isEmpty {
+                out.append(DetailGroup(name: currentName, chapters: bucket))
+                bucket = []
+            }
+        }
+        for ch in chapters {
+            let trimmed = (ch.chapter ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let nm: String? = trimmed.isEmpty ? nil : trimmed
+            if out.isEmpty && bucket.isEmpty { currentName = nm }
+            if nm != currentName {
+                flush()
+                currentName = nm
+            }
+            bucket.append(ch)
+        }
+        flush()
+        return out
     }
 
     /// 目次・改稿情報を最新にする(10分スロットル。本文は取得しないので

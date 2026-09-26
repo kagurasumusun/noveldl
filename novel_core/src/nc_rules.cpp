@@ -4,6 +4,7 @@
 #include "nc_regex.h"
 
 #include <algorithm>
+#include <regex>
 #include <set>
 
 namespace nc {
@@ -832,11 +833,47 @@ struct Engine {
         toc.title = extract_info(html, *doc, "title");
         toc.author = extract_info(html, *doc, "author");
         apply_info_rules(html, *doc, toc.title, toc.author);
+        // 作者は容器セレクタ一致時に「作者：名前」で取れることがあるので掃除する。
+        if (toc.author) {
+            std::string a = trim(*toc.author);
+            const std::string kPrefixes[] = {"作者：", "作者:", "作者 "};
+            for (const auto& pref : kPrefixes) {
+                if (starts_with(a, pref)) {
+                    a = trim(a.substr(pref.size()));
+                    break;
+                }
+            }
+            if (!a.empty()) toc.author = a;
+        }
         toc.story = extract_info(html, *doc, "story");
         toc.status = extract_info(html, *doc, "status");
         toc.next_update = extract_info(html, *doc, "next_update");
         toc.comment_count = extract_info(html, *doc, "comment_count");
         toc.updated = extract_info(html, *doc, "updated");
+        // 更新日系は日付だけを抜き出す(「最新エピソード掲載日：2026/09/25」等)。
+        if (toc.updated) {
+            static const std::regex date_re(R"((\d{4})[/-](\d{1,2})[/-](\d{1,2}))");
+            std::smatch m;
+            if (std::regex_search(*toc.updated, m, date_re)) {
+                std::string y = m[1].str();
+                std::string mo = std::to_string(std::stoi(m[2]));
+                std::string d = std::to_string(std::stoi(m[3]));
+                if (mo.size() < 2) mo = "0" + mo;
+                if (d.size() < 2) d = "0" + d;
+                toc.updated = y + "/" + mo + "/" + d;
+            }
+        }
+        // 「次話更新予定日：…」の接頭辞を落として値だけにする。
+        if (toc.next_update) {
+            std::string v = trim(*toc.next_update);
+            if (starts_with(v, "次話更新予定日")) {
+                v = trim(v.substr(std::string("次話更新予定日").size()));
+                if (starts_with(v, "：")) v = trim(v.substr(3));
+                else if (!v.empty() && v[0] == ':') v = trim(v.substr(1));
+            }
+            if (v.empty()) toc.next_update = std::nullopt;
+            else toc.next_update = v;
+        }
         for (auto& source : ordered_sources()) {
             if (!source.collects_chapters()) continue;
             collect_source(html, *doc, source, toc.chapters, {nullptr, nullptr});

@@ -437,6 +437,22 @@ void SectionStorage::update_novel_description(const std::string& novel_id,
     }
 }
 
+void SectionStorage::update_novel_title_author(const std::string& novel_id,
+                                               const std::string& title,
+                                               const std::string& author) {
+    if (title.empty() && author.empty()) return;
+    Stmt stmt(impl_->master.prepare(
+        "UPDATE novels SET"
+        " title = CASE WHEN ?1 != '' THEN ?1 ELSE title END,"
+        " author = CASE WHEN ?2 != '' THEN ?2 ELSE author END"
+        " WHERE novel_id = ?3"));
+    stmt.bind_text(1, title);
+    stmt.bind_text(2, author);
+    stmt.bind_text(3, novel_id);
+    while (stmt.step()) {
+    }
+}
+
 void SectionStorage::update_novel_meta(const std::string& novel_id,
                                        const NovelMetaExtra& mx) {
     Stmt stmt(impl_->master.prepare(

@@ -271,7 +271,8 @@ struct ReaderView: View {
     private var bottomBar: some View {
         HStack(spacing: 2) {
             chromeCaptioned(autoPlaying ? "pause.fill" : "play.fill",
-                            autoPlaying ? "停止" : "自動", hidesChrome: false) {
+                            autoPlaying ? "停止" : "自動",
+                            hidesChrome: false, active: autoPlaying) {
                 toggleAuto()
             }
             chromeCaptioned("chevron.left", "前話", enabled: canGoPrev) {
@@ -312,7 +313,8 @@ struct ReaderView: View {
     }
 
     private func chromeCaptioned(_ system: String, _ caption: String, enabled: Bool = true,
-                                 hidesChrome: Bool = true, act: @escaping () -> Void) -> some View {
+                                 hidesChrome: Bool = true, active: Bool = false,
+                                 act: @escaping () -> Void) -> some View {
         Button {
             act()
             Haptics.tap()
@@ -327,7 +329,11 @@ struct ReaderView: View {
                 Text(caption)
                     .font(AppFont.ui(8.5, weight: .medium))
             }
-            .foregroundStyle(enabled ? theme.ink : theme.ink.opacity(0.3))
+            .foregroundStyle(
+                !enabled ? theme.ink.opacity(0.3)
+                : active ? AppPalette.ember
+                : theme.ink
+            )
             .frame(width: 48, height: 34)
             .contentShape(Rectangle())
         }
@@ -452,7 +458,7 @@ struct ReaderView: View {
                                 applyStyle()
                             }
                         ))
-                        .frame(width: 190)
+                        .frame(width: 168)
                     }
                     RowDivider()
                     StepperRow(label: "文字サイズ", value: stepBinding($fontSize), range: 13...26, step: 1, suffix: "pt")
@@ -485,7 +491,7 @@ struct ReaderView: View {
                             get: { PageTurn.all.firstIndex(of: turn) ?? 0 },
                             set: { pageTurnRaw = PageTurn.all[$0].rawValue }
                         ))
-                        .frame(width: 210)
+                        .frame(width: 182)
                     }
                     RowDivider()
                     toggleRow("左右スワイプで送り", swipePaging) { swipePaging.toggle() }
@@ -788,6 +794,7 @@ struct ReaderView: View {
                     .frame(height: 1)
             }
         }
+        .padding(.top, Spacing.s)
     }
 
     private func goChapter(delta: Int) {

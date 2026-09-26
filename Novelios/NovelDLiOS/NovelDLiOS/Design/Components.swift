@@ -244,6 +244,8 @@ struct StepperRow: View {
             Text(label)
                 .font(AppFont.ui(15))
                 .foregroundStyle(AppPalette.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Spacer()
             HStack(spacing: Spacing.m) {
                 stepButton("minus") {
@@ -294,6 +296,8 @@ struct SettingRow<Trailing: View>: View {
                 Text(label)
                     .font(AppFont.ui(15))
                     .foregroundStyle(AppPalette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 if let detail {
                     Text(detail)
                         .font(AppFont.ui(12))
