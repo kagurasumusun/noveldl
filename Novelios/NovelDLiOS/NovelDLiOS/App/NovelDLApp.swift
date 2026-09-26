@@ -17,6 +17,11 @@ struct NovelDLApp: App {
                 .task {
                     core.bootstrap()
                 }
+                .onOpenURL { url in
+                    if let raw = UserFacingText.addURL(from: url) {
+                        core.pendingAddURL = raw
+                    }
+                }
         }
     }
 }

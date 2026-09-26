@@ -62,7 +62,7 @@ struct QueueView: View {
                 }
                 .padding(.horizontal, Metrics.gutter)
                 .padding(.top, Spacing.l)
-                .padding(.bottom, 72)
+                .padding(.bottom, Spacing.xl)
             }
             .background(AppPalette.canvas.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)

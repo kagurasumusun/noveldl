@@ -43,6 +43,9 @@ struct AppShell: View {
             content
                 .safeAreaInset(edge: .bottom, spacing: 0) { tabBar }
         }
+        .onChange(of: core.pendingAddURL) { _, url in
+            if !url.isEmpty { tab = .library }
+        }
     }
 
     private var content: some View {
