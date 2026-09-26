@@ -170,7 +170,7 @@ struct ReaderView: View {
                         pagePill
                     }
                 }
-                .padding(.bottom, 8)
+                .padding(.bottom, chromeVisible && showFooter ? 62 : 8)
             }
             .allowsHitTesting(false)
 
@@ -402,34 +402,45 @@ struct ReaderView: View {
     private var menuSheet: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.l) {
-                Text("読書メニュー")
-                    .font(AppFont.serif(20, weight: .semibold))
-                    .foregroundStyle(AppPalette.ink)
-                    .padding(.top, Spacing.s)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("READING")
+                        .font(AppFont.ui(10, weight: .semibold))
+                        .tracking(2.2)
+                        .foregroundStyle(AppPalette.gold)
+                    Text("読書メニュー")
+                        .font(AppFont.serif(20, weight: .semibold))
+                        .foregroundStyle(AppPalette.ink)
+                }
+                .padding(.top, Spacing.s)
 
                 menuSectionHeader("表示", "DISPLAY")
                 VStack(spacing: 0) {
-                    HStack(spacing: Spacing.s) {
+                    HStack(spacing: 0) {
                         ForEach(BookTheme.allCases, id: \.self) { t in
                             Button {
                                 themeRaw = t.rawValue
                                 applyStyle()
                                 Haptics.tap()
                             } label: {
-                                VStack(spacing: 4) {
+                                VStack(spacing: 5) {
                                     Circle()
                                         .fill(t.background)
                                         .frame(width: 34, height: 34)
-                                        .overlay(Circle().strokeBorder(t.ink.opacity(0.3), lineWidth: 1))
+                                        .overlay(
+                                            Circle().strokeBorder(
+                                                theme == t ? AppPalette.ember : t.ink.opacity(0.3),
+                                                lineWidth: theme == t ? 1.5 : 1
+                                            )
+                                        )
                                     Text(t.label)
-                                        .font(AppFont.ui(11))
-                                        .foregroundStyle(AppPalette.inkSoft)
+                                        .font(AppFont.ui(11, weight: theme == t ? .semibold : .regular))
+                                        .foregroundStyle(theme == t ? AppPalette.ink : AppPalette.inkSoft)
                                 }
-                                .opacity(theme == t ? 1 : 0.55)
+                                .frame(maxWidth: .infinity)
+                                .opacity(theme == t ? 1 : 0.6)
                             }
                             .buttonStyle(PressableButtonStyle(haptic: false))
                         }
-                        Spacer()
                     }
                     .padding(Spacing.m)
                     RowDivider()
@@ -636,6 +647,16 @@ struct ReaderView: View {
                 }
             }
         }
+        .onChange(of: core.progress.running) { _, running in
+            // 背景取得などが終わったら ✔ を即時反映する
+            if !running {
+                Task {
+                    if let fresh = try? await core.novelDetail(novelId) {
+                        detail = fresh
+                    }
+                }
+            }
+        }
         .presentationDetents([.medium, .large])
     }
 
@@ -750,21 +771,23 @@ struct ReaderView: View {
         }
     }
 
-    /// セクション見出し: 日本語を主体に、英語は小さく補助として添える。
+    /// セクション見出し — 英語は小さなキッカー(上段)、日本語を見出しの主役に。
+    /// 和欧混植の定石: 欧文は小サイズ+トラッキングで装飾に使い、和文の重みを残す。
     private func menuSectionHeader(_ title: String, _ en: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
-            Text(title)
-                .font(AppFont.serif(16, weight: .semibold))
-                .foregroundStyle(AppPalette.ink)
+        VStack(alignment: .leading, spacing: 4) {
             Text(en)
-                .font(AppFont.ui(9.5, weight: .semibold))
-                .foregroundStyle(AppPalette.inkFaint)
-                .tracking(1.5)
-            Rectangle()
-                .fill(AppPalette.hairline)
-                .frame(height: 1)
+                .font(AppFont.ui(10, weight: .semibold))
+                .tracking(2.2)
+                .foregroundStyle(AppPalette.gold)
+            HStack(spacing: Spacing.s) {
+                Text(title)
+                    .font(AppFont.serif(17, weight: .semibold))
+                    .foregroundStyle(AppPalette.ink)
+                Rectangle()
+                    .fill(AppPalette.hairline)
+                    .frame(height: 1)
+            }
         }
-        .padding(.top, Spacing.xs)
     }
 
     private func goChapter(delta: Int) {

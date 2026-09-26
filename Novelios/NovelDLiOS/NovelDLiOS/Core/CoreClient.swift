@@ -153,6 +153,15 @@ final class CoreClient: Observable, @unchecked Sendable {
         }
     }
 
+    /// 本棚から小説を削除する(保存本文・目次・表紙・改稿履歴もまとめて消える)。
+    func deleteNovel(novelId: String) async throws {
+        struct Deleted: Decodable, Sendable { let deleted: Bool }
+        _ = try await decode(Deleted.self) {
+            novel_core_novel_delete(Self.libraryRoot().path, novelId)
+        }
+        await reloadLibrary()
+    }
+
     func novelDetail(_ novelId: String) async throws -> LibraryNovelDetail {
         try await decode(LibraryNovelDetail.self) {
             novel_core_library_novel(Self.libraryRoot().path, novelId)

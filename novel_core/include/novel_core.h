@@ -96,6 +96,7 @@ char* novel_core_library_refresh(const char* root_dir);
 
 /* One chapter for the reader.
  * result: {index,subtitle,intro_xhtml,body_xhtml,post_xhtml,downloaded,source_url} */
+char* novel_core_novel_delete(const char* root_dir, const char* novel_id);
 char* novel_core_section_version_get(const char* root_dir, const char* novel_id,
                                      const char* chapter_index, int32_t offset);
 char* novel_core_section_get(const char* root_dir, const char* novel_id,

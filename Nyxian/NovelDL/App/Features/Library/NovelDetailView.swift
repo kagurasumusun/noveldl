@@ -25,6 +25,7 @@ struct NovelDetailView: View {
     @State private var readerRoute: ReaderRoute?
     @State private var customCover: UIImage?
     @State private var showCoverPicker = false
+    @State private var showDeleteConfirm = false
 
     private var downloaded: Int { detail?.downloadedCount ?? item.downloadedCount ?? 0 }
     private var total: Int { max(detail?.novel.episodeCount ?? item.episodeCount, 1) }
@@ -49,6 +50,37 @@ struct NovelDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(item: $readerRoute) { route in
             ReaderView(novelId: route.novelId, startAt: route.index, title: route.title, tocUrl: route.tocUrl)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("本棚から削除", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(AppFont.ui(15, weight: .medium))
+                        .foregroundStyle(AppPalette.ink)
+                }
+            }
+        }
+        .confirmationDialog(
+            "「\(item.title)」を本棚から削除しますか？",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("本棚から削除する", role: .destructive) {
+                Task {
+                    try? await core.deleteNovel(novelId: item.novelId)
+                    await core.reloadLibrary()
+                    dismiss()
+                }
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("保存した本文・目次・表紙・改稿履歴も端末から削除されます。\nサイト側のデータには影響しません。")
         }
         .alert("詳細", isPresented: Binding(
             get: { errorText != nil },
@@ -371,6 +403,7 @@ struct NovelDetailView: View {
     }
 
     private func reload() async {
+        await refreshTocIfStale()
         detail = try? await core.novelDetail(item.novelId)
         flatChapters = detail?.chapters ?? []
         customCover = CoverStore.customImage(item.storagePath)
@@ -389,6 +422,19 @@ struct NovelDetailView: View {
                 synopsis = (try? await core.novelInfo(url: item.tocUrl))?.story
             }
         }
+    }
+
+    /// 目次・改稿情報を最新にする(10分スロットル。本文は取得しないので
+    /// サイトから削除済みの話もローカルの保存分はそのまま残る)。
+    private func refreshTocIfStale() async {
+        guard !core.progress.running else { return }
+        guard !item.tocUrl.isEmpty, !item.outputDir.isEmpty else { return }
+        let key = "tocRefresh." + item.novelId
+        let last = UserDefaults.standard.double(forKey: key)
+        guard Date().timeIntervalSince1970 - last > 600 else { return }
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: key)
+        _ = try? await core.fetchToc(url: item.tocUrl, outputDir: item.outputDir)
+        await core.reloadLibrary()
     }
 
     private func shortDate(_ s: String) -> String {

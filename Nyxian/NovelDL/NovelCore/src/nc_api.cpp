@@ -243,6 +243,14 @@ char* novel_core_save_parser_yaml(const char* domain, const char* yaml) {
     });
 }
 
+char* novel_core_novel_delete(const char* root_dir, const char* novel_id) {
+    return guarded([&]() {
+        if (!root_dir || !novel_id) throw Error("null argument");
+        std::string root = root_dir && *root_dir ? root_dir : config::root_dir();
+        return op_novel_delete(root, novel_id);
+    });
+}
+
 char* novel_core_section_version_get(const char* root_dir, const char* novel_id,
                                      const char* chapter_index, int32_t offset) {
     return guarded([&]() {

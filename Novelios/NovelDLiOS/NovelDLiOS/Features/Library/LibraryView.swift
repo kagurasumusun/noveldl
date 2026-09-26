@@ -12,6 +12,9 @@ struct LibraryView: View {
 
     /// 本棚の並び: "grid"(2列) / "list"(1列)。
     @AppStorage("shelfLayout") private var shelfLayout = "grid"
+    /// 削除確認中の小説。
+    @State private var pendingDelete: LibraryNovelItem?
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -65,13 +68,12 @@ struct LibraryView: View {
         }
         .task {
             await core.reloadLibrary()
-            // 表示のたびに全件取り直すと重いので、10分に1回だけメタを更新する。
-            let key = "lastMetaRefreshAt"
-            let last = UserDefaults.standard.double(forKey: key)
-            if Date().timeIntervalSince1970 - last > 600 {
-                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: key)
-                _ = try? await core.refreshLibrary()
-                await core.reloadLibrary()
+            await refreshMetaIfStale()
+        }
+        // アプリが前面に戻ったときも小説の情報を更新する(最新の目次・改稿・完結状況)。
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await refreshMetaIfStale() }
             }
         }
     }
@@ -125,11 +127,44 @@ struct LibraryView: View {
     // MARK: 本棚 = 横広の表紙を 1 列に
 
     private var bookshelf: some View {
-        if shelfLayout == "grid" {
-            bookshelfGrid
-        } else {
-            bookshelfList
+        Group {
+            if shelfLayout == "grid" {
+                bookshelfGrid
+            } else {
+                bookshelfList
+            }
         }
+        .confirmationDialog(
+            "「\(pendingDelete?.title ?? "")」を本棚から削除しますか？",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("本棚から削除する", role: .destructive) {
+                if let target = pendingDelete {
+                    pendingDelete = nil
+                    Task {
+                        try? await core.deleteNovel(novelId: target.novelId)
+                        await core.reloadLibrary()
+                    }
+                }
+            }
+            Button("キャンセル", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text("保存した本文・目次・表紙・改稿履歴も端末から削除されます。サイト側のデータには影響しません。")
+        }
+    }
+
+    /// 表示時・復帰時のメタ更新(10分スロットルで全件取り直しを避ける)。
+    private func refreshMetaIfStale() async {
+        let key = "lastMetaRefreshAt"
+        let last = UserDefaults.standard.double(forKey: key)
+        guard Date().timeIntervalSince1970 - last > 600 else { return }
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: key)
+        _ = try? await core.refreshLibrary()
+        await core.reloadLibrary()
     }
 
     /// 2列のグリッド(表紙主導)。
@@ -158,6 +193,13 @@ struct LibraryView: View {
                     }
                 }
                 .buttonStyle(PressableButtonStyle())
+                .contextMenu {
+                    Button(role: .destructive) {
+                        pendingDelete = item
+                    } label: {
+                        Label("本棚から削除", systemImage: "trash")
+                    }
+                }
             }
         }
     }
@@ -187,6 +229,13 @@ struct LibraryView: View {
                     }
                 }
                 .buttonStyle(PressableButtonStyle())
+                .contextMenu {
+                    Button(role: .destructive) {
+                        pendingDelete = item
+                    } label: {
+                        Label("本棚から削除", systemImage: "trash")
+                    }
+                }
             }
         }
     }

@@ -118,6 +118,9 @@ public:
                                                      const std::string& chapter_index,
                                                      long long offset);
 
+    // 本棚から小説を丸ごと削除する(シャード DB・出力ディレクトリ・マスタ行)。
+    bool delete_novel(const std::string& novel_id);
+
     std::vector<NovelListItem> list_novels();
 
     static std::vector<NovelListItem> list_novels_in_existing_db(

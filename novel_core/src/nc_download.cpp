@@ -1075,6 +1075,20 @@ Value op_section_version_get(const std::string& root_dir, const std::string& nov
     return v;
 }
 
+// 本棚から小説を削除する(保存本文・目次・版履歴・表紙もまとめて)。
+Value op_novel_delete(const std::string& root_dir, const std::string& novel_id) {
+    std::string master = root_dir + "/master.db";
+    std::error_code ec;
+    if (!fs::exists(master, ec)) master = root_dir + "/sections.sqlite3";
+    if (!fs::exists(master, ec)) throw Error("library not found at " + root_dir);
+    SectionStorage storage(master);
+    if (!storage.delete_novel(novel_id)) throw Error("novel not found: " + novel_id);
+    Value v = Value::map_();
+    v.set("deleted", Value::boolean(true));
+    v.set("novel_id", Value::string(novel_id));
+    return v;
+}
+
 Value op_export_txt_zip(const Value& options) {
     std::string root_dir = options.get_str("root_dir", config::root_dir());
     std::string novel_id = options.get_str("novel_id");

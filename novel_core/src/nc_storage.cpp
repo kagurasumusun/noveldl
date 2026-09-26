@@ -856,6 +856,39 @@ std::optional<StoredSection> SectionStorage::get_section_version(const std::stri
     return sec;
 }
 
+bool SectionStorage::delete_novel(const std::string& novel_id) {
+    // マスタ側から所在情報を取得してから消す。
+    std::string domain;
+    std::string output_dir;
+    {
+        Stmt stmt(impl_->master.prepare(
+            "SELECT domain, output_dir FROM novels WHERE novel_id = ?1"));
+        stmt.bind_text(1, novel_id);
+        if (!stmt.step()) return false;
+        domain = stmt.col_text(0);
+        output_dir = stmt.col_text(1);
+    }
+    std::error_code ec;
+    // 話ごとのシャード DB(本文・版履歴・画像・辞書)はこの小説専用ディレクトリ。
+    if (!domain.empty()) {
+        std::string dir = novel_shard_dir(impl_->root, domain, novel_id);
+        fs::remove_all(dir, ec);
+        // 空になったドメインディレクトリも掃除する(空でなければ失敗するだけ)。
+        std::error_code ec3;
+        fs::remove(impl_->root + "/" + kNovelsDirName + "/" + safe_path_component(domain), ec3);
+    }
+    // 出力ディレクトリ(raw/cache)もこの小説専用スラッグなので削除。
+    if (!output_dir.empty()) {
+        std::error_code ec2;
+        fs::remove_all(output_dir, ec2);
+    }
+    // マスタ行(目次キャッシュ等の小説スコープの情報もここから辿れる)。
+    Stmt del(impl_->master.prepare("DELETE FROM novels WHERE novel_id = ?1"));
+    del.bind_text(1, novel_id);
+    del.step();
+    return true;
+}
+
 std::vector<NovelListItem> SectionStorage::list_novels() {
     return list_novels_in_existing_db(impl_->master_path, impl_->root);
 }

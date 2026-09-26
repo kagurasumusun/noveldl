@@ -59,6 +59,8 @@ int main(int argc, char** argv) {
         print(novel_core_library_novel(argv[2], argv[3]));
     } else if (cmd == "section" && argc >= 5) {
         print(novel_core_section_get(argv[2], argv[3], argv[4]));
+    } else if (cmd == "delete" && argc >= 4) {
+        print(novel_core_novel_delete(argv[2], argv[3]));
     } else if (cmd == "export" && argc >= 4) {
         std::string json = std::string("{\"root_dir\":\"") + argv[2] +
                            "\",\"novel_id\":\"" + argv[3] + "\"}";
