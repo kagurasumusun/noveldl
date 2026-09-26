@@ -15,26 +15,24 @@
 /* ── scene-aware key window / navigation completion ──────────────────── */
 #import <UIKit/UIKit.h>
 
+/* 常に scene API だけを使う(iOS15+ で UIApplication.windows/keyWindow は
+ * 非推奨、iOS17 SDK では deprecated 警告がエラー扱いになるため)。 */
 static UIView* nc_apple_key_scene_view(void) {
-  if (@available(iOS 13.0, *)) {
-    UIScene* scene = nil;
-    for (UIScene* s in [UIApplication sharedApplication].connectedScenes)
-      if (s.activationState == UISceneActivationStateForegroundActive) { scene = s; break; }
-    if (!scene)
-      scene = [UIApplication sharedApplication].connectedScenes.anyObject;
-    UIWindowScene* ws = (UIWindowScene*)scene;
-    if ([ws isKindOfClass:[UIWindowScene class]]) {
-      for (UIWindow* w in ws.windows)
-        if (w.isKeyWindow) return w.rootViewController.view ?: w;
-    }
-    NSArray<UIWindow*>* wins = [UIApplication sharedApplication].windows;
-    for (UIWindow* w in wins) if (w.isKeyWindow) return w.rootViewController.view ?: w;
-    return wins.firstObject;
+  NSSet<UIScene*>* scenes = [UIApplication sharedApplication].connectedScenes;
+  UIScene* pick = nil;
+  for (UIScene* s in scenes)
+    if (s.activationState == UISceneActivationStateForegroundActive) { pick = s; break; }
+  if (!pick) pick = scenes.anyObject;
+  if (![pick isKindOfClass:[UIWindowScene class]]) return nil;
+  UIWindowScene* ws = (UIWindowScene*)pick;
+  UIWindow* key = nil, *first = nil;
+  for (UIWindow* w in ws.windows) {
+    if (!first) first = w;
+    if (w.isKeyWindow) { key = w; break; }
   }
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  return [UIApplication sharedApplication].keyWindow.rootViewController.view;
-#pragma clang diagnostic pop
+  UIWindow* w = key ?: first;
+  if (!w) return nil;
+  return w.rootViewController.view ?: w;
 }
 
 /* WKWebView には completionHandler 付きロード API が無いため、delegate コールバック
@@ -101,16 +99,20 @@ static NSString* nc_webview_fetch(NSURL* url, NSTimeInterval timeout,
       WKWebView* wv = [[WKWebView alloc] initWithFrame:CGRectMake(0, 0, 390, 1400)
                                          configuration:cfg];
       wv.hidden = YES;
-      UIView* host = nc_apple_key_scene_view();
-      if (!host) { finish(nil); return; }
-      [host addSubview:wv];
 
       NSTimeInterval cap = timeout > 0 ? timeout + 18.0 : 40.0;
+      /* host チェックより前に定義が必要なため block 変数で保持。
+       * ブロック内から自分自身を触らないので retain cycle は無い。
+       * 二重呼び出し時も signal は冪等扱い(待ち側は1回のため安全)。 */
       void (^finish)(NSString*) = ^(NSString* result) {
         html = result;
         [wv removeFromSuperview];
         dispatch_semaphore_signal(sem);
       };
+
+      UIView* host = nc_apple_key_scene_view();
+      if (!host) { finish(nil); return; }
+      [host addSubview:wv];
 
       /* WKWebView に loadRequest:completionHandler: は存在しない。
        * navigation delegate(didFinish/didFail) を受けてから続行する。 */
