@@ -367,12 +367,7 @@ struct PresetFormView: View {
                 fields[key] = (fields[key] == "true") ? "false" : "true"
                 Haptics.tap()
             } label: {
-                Text(fields[key] == "true" ? "ON" : "OFF")
-                    .font(AppFont.ui(13, weight: .semibold))
-                    .foregroundStyle(fields[key] == "true" ? .white : AppPalette.inkSoft)
-                    .padding(.horizontal, 14)
-                    .frame(height: 32)
-                    .background(Capsule().fill(fields[key] == "true" ? AppPalette.ember : AppPalette.track))
+                InkSwitch(isOn: fields[key] == "true")
             }
             .buttonStyle(PressableButtonStyle(haptic: false))
         }

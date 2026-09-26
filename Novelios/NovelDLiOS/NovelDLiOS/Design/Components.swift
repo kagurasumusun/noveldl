@@ -245,8 +245,8 @@ struct StepperRow: View {
                 .font(AppFont.ui(15))
                 .foregroundStyle(AppPalette.ink)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            Spacer()
+                .minimumScaleFactor(0.72)
+            Spacer(minLength: Spacing.s)
             HStack(spacing: Spacing.m) {
                 stepButton("minus") {
                     value = max(range.lowerBound, value - step)
@@ -340,29 +340,28 @@ struct SectionBanner: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.xs) {
-            if let eyebrow {
+        // 和文が主役。欧文は上の小さなキッカーに限る。
+        // 和文にトラッキングを掛けると字間が空き、見出しが散って見える。
+        VStack(alignment: .leading, spacing: 3) {
+            if let eyebrow, !eyebrow.isEmpty {
                 Text(eyebrow.uppercased())
-                    .font(AppFont.ui(11, weight: .semibold))
-                    .tracking(2)
+                    .font(AppFont.ui(10, weight: .semibold))
+                    .tracking(2.2)
                     .foregroundStyle(AppPalette.gold)
             }
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(title)
-                    .font(AppFont.serif(18, weight: .medium))
-                    .foregroundStyle(AppPalette.ink)
-                    .tracking(2)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(AppFont.ui(10.5))
-                        .foregroundStyle(AppPalette.inkFaint)
-                }
-                Spacer()
+            Text(title)
+                .font(AppFont.serif(22, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(AppFont.ui(12))
+                    .foregroundStyle(AppPalette.inkFaint)
+                    .lineLimit(2)
             }
             Rectangle()
                 .fill(AppPalette.ink.opacity(0.85))
-                .frame(width: 18, height: 1)
-                .padding(.top, 2)
+                .frame(width: 22, height: 1.5)
+                .padding(.top, 4)
         }
     }
 }
@@ -629,13 +628,16 @@ struct SegmentTabs: View {
                     Haptics.tap()
                 } label: {
                     Text(titles[i])
-                        .font(AppFont.ui(13, weight: .semibold))
-                        .foregroundStyle(selection == i ? .white : AppPalette.inkSoft)
+                        .font(AppFont.ui(12.5, weight: .semibold))
+                        .foregroundStyle(selection == i ? Color.white : AppPalette.inkSoft)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                        .padding(.horizontal, 2)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 38)
+                        .frame(height: 36)
                         .background(
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(selection == i ? AppPalette.ink : Color.clear)
+                                .fill(selection == i ? AppPalette.ember : Color.clear)
                         )
                 }
                 .buttonStyle(PressableButtonStyle(haptic: false))
@@ -650,5 +652,25 @@ struct SegmentTabs: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(AppPalette.hairline, lineWidth: 1)
         )
+    }
+}
+
+
+/// 言語に依存しない小さなスイッチ。ON/OFF の欧文を行ごとに置かない。
+struct InkSwitch: View {
+    let isOn: Bool
+    var body: some View {
+        ZStack(alignment: isOn ? .trailing : .leading) {
+            Capsule()
+                .fill(isOn ? AppPalette.ember : AppPalette.track)
+                .frame(width: 46, height: 28)
+            Circle()
+                .fill(Color.white)
+                .frame(width: 22, height: 22)
+                .padding(3)
+                .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
+        }
+        .animation(.easeInOut(duration: 0.16), value: isOn)
+        .accessibilityLabel(isOn ? "オン" : "オフ")
     }
 }

@@ -242,6 +242,16 @@ final class ScrollBox {
         }
     }
 
+    /// 指定ページへ飛ぶ。スライダー操作なのでアニメーションは掛けない。
+    func jump(to index: Int) {
+        guard pageCount > 0, view != nil else { return }
+        let clamped = min(max(index, 0), pageCount - 1)
+        guard clamped != pageIndex else { return }
+        pageIndex = clamped
+        displayCurrent(force: true)
+        notifyPage()
+    }
+
     @discardableResult
     func pageDown() -> Bool {
         guard pageIndex + 1 < pageCount else { return false }  // 最終ページ = 次の話へ

@@ -78,7 +78,7 @@ struct AppShell: View {
                         Image(systemName: item.icon)
                             .font(AppFont.ui(17, weight: .medium))
                         Text(item.title)
-                            .font(AppFont.ui(10, weight: .semibold))
+                            .font(AppFont.ui(11, weight: .semibold))
                     }
                     .foregroundStyle(tab == item ? AppPalette.ember : AppPalette.inkFaint)
                     .frame(maxWidth: .infinity)

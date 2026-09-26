@@ -82,14 +82,17 @@ struct LibraryView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Spacing.m) {
-            HStack(alignment: .lastTextBaseline) {
-                VStack(alignment: .leading, spacing: Spacing.xs) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("LIBRARY")
-                        .font(AppFont.serif(21, weight: .medium))
+                        .font(AppFont.ui(10, weight: .semibold))
+                        .tracking(2.2)
+                        .foregroundStyle(AppPalette.gold)
+                    Text("本棚")
+                        .font(AppFont.serif(22, weight: .semibold))
                         .foregroundStyle(AppPalette.ink)
-                        .tracking(3.5)
-                    Text("本棚 — " + shelfSubtitle)
-                        .font(AppFont.ui(10.5))
+                    Text(shelfSubtitle)
+                        .font(AppFont.ui(12))
                         .foregroundStyle(AppPalette.inkFaint)
                 }
                 Spacer()
@@ -112,6 +115,7 @@ struct LibraryView: View {
                         showAddSheet = true
                     }
                 }
+                .padding(.top, 16)
             }
             Rectangle().fill(AppPalette.ink).frame(width: 28, height: 2)
         }
@@ -188,8 +192,8 @@ struct LibraryView: View {
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         Text("\(item.downloadedCount ?? 0)/\(max(item.episodeCount, 1)) 話")
-                            .font(AppFont.ui(10.5).monospacedDigit())
-                            .foregroundStyle(AppPalette.inkFaint)
+                            .font(AppFont.ui(12).monospacedDigit())
+                            .foregroundStyle(AppPalette.inkSoft)
                     }
                 }
                 .buttonStyle(PressableButtonStyle())

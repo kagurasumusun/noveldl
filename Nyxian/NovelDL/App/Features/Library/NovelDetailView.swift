@@ -297,23 +297,24 @@ struct NovelDetailView: View {
                 .buttonStyle(PressableButtonStyle())
             }
 
-            HStack(spacing: Spacing.s) {
-                Text("読み始めると未取得の話を順に取得します。")
-                    .font(AppFont.ui(11.5))
-                    .foregroundStyle(AppPalette.inkFaint)
-                Spacer()
-                Button {
-                    Task { await exportZip() }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.and.arrow.up")
-                        Text("書き出し")
-                    }
-                    .font(AppFont.ui(13, weight: .semibold))
-                    .foregroundStyle(AppPalette.ink)
+            Text("読み始めると、未取得の話を順に取得します。")
+                .font(AppFont.ui(12))
+                .foregroundStyle(AppPalette.inkFaint)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                Task { await exportZip() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "square.and.arrow.up")
+                    Text("テキストを書き出す")
                 }
-                .buttonStyle(PressableButtonStyle())
+                .font(AppFont.ui(13, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
             }
+            .buttonStyle(PressableButtonStyle())
         }
     }
 
@@ -437,7 +438,9 @@ struct NovelDetailView: View {
                 Text(ch.index)
                     .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
                     .foregroundStyle(AppPalette.inkFaint)
-                    .frame(width: 36, alignment: .trailing)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(minWidth: 28, alignment: .trailing)
                 Text(ch.subtitle)
                     .font(AppFont.serif(15))
                     .foregroundStyle(AppPalette.ink)

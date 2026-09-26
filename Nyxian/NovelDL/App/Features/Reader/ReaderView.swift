@@ -38,6 +38,8 @@ struct ReaderView: View {
     @AppStorage("readerShowIntroPost") private var showIntroPost = false
     /// 章タイトルの見出し表示。
     @AppStorage("readerShowChapterTitle") private var showChapterTitle = true
+    /// 読書中は画面を消さない(既定オン。設定メニューから切れる)。
+    @AppStorage("readerKeepAwake") private var keepAwake = true
 
     @State private var chromeVisible = true
     @State private var lastHTML = ""
@@ -58,7 +60,9 @@ struct ReaderView: View {
     /// 保存された旧版(改稿バージョン)。
     @State private var savedVersions = 0
     @State private var viewingOldVersion = false
+    @State private var versionCursor = 0
     @State private var oldVersionDate = ""
+    @State private var refetching = false
     @State private var backupHTML = ""
     @State private var backupIntro = ""
     @State private var backupPost = ""
@@ -80,6 +84,9 @@ struct ReaderView: View {
 
     private var theme: BookTheme { BookTheme(rawValue: themeRaw) ?? .paper }
     private var turn: PageTurn { PageTurn(rawValue: pageTurnRaw) ?? .curl }
+    private var pageTurnIndex: Int {
+        [PageTurn.curl, .fade, .slide, .none].firstIndex(of: turn) ?? 0
+    }
     private var chapters: [ChapterMeta] { detail?.chapters ?? [] }
     private var total: Int { max(chapters.count, 1) }
     private var pos: Int { chapters.firstIndex { $0.index == chapterIndex } ?? 0 }
@@ -151,10 +158,13 @@ struct ReaderView: View {
                 VStack(spacing: 5) {
                     if let msg = messagePillText {
                         Text(msg)
-                            .font(AppFont.ui(11, weight: .medium))
+                            .font(AppFont.ui(12, weight: .medium))
                             .foregroundStyle(theme.ink)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
                             .padding(.horizontal, Spacing.m)
                             .padding(.vertical, 6)
+                            .frame(maxWidth: 280)
                             .background(Capsule().fill(theme.background.opacity(0.92)))
                             .overlay(Capsule().strokeBorder(theme.ink.opacity(0.12), lineWidth: 1))
                             .task {
@@ -208,7 +218,7 @@ struct ReaderView: View {
         }
         .onAppear {
             // 読書中は画面を自動ロックさせない(読書アプリの基本動作)。
-            UIApplication.shared.isIdleTimerDisabled = true
+            UIApplication.shared.isIdleTimerDisabled = keepAwake
             // 頁カウンタの更新はボックスからの通知で受ける。
             readerBox.onPage = { idx, cnt in
                 currentPage = idx
@@ -223,6 +233,9 @@ struct ReaderView: View {
                 }
             }
         }
+        .onChange(of: keepAwake) { _, on in
+            UIApplication.shared.isIdleTimerDisabled = on || autoPlaying
+        }
         .onDisappear {
             // 離脱時に自動めくりと自動ロックを戻す。
             autoPlaying = false
@@ -236,29 +249,39 @@ struct ReaderView: View {
     // MARK: 上下バー(中央タップで出没)
 
     private var topBar: some View {
-        HStack(spacing: Spacing.s) {
-            chromeButton("chevron.left", "詳細へ戻る") { dismiss() }
-            chromeButton("list.bullet", "目次") { sheet = .toc }
-            Spacer(minLength: 0)
+        // 左右のボタン幅を揃えて、題名が画面中央に来るようにする。
+        // (右にボタンが多いと、固定幅の題名が左に寄って見えていた)
+        ZStack {
+            HStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    chromeButton("chevron.left", "詳細へ戻る") { dismiss() }
+                    chromeButton("list.bullet", "目次") { sheet = .toc }
+                }
+                .frame(width: 96, alignment: .leading)
+                Spacer(minLength: 0)
+                HStack(spacing: 0) {
+                    chromeButton(bookmarked ? "bookmark.fill" : "bookmark", "栞") {
+                        bookmarked.toggle()
+                        saveBookmark(on: bookmarked)
+                        Haptics.tap()
+                    }
+                    chromeButton("square.and.arrow.up", "共有") { share() }
+                    chromeButton("gearshape", "読書設定") { sheet = .menu }
+                }
+                .frame(width: 96, alignment: .trailing)
+            }
             VStack(spacing: 1) {
                 Text(title)
                     .font(AppFont.serif(14, weight: .semibold))
                     .lineLimit(1)
                 Text(chapterTitle.isEmpty ? chapterLabel : chapterTitle)
-                    .font(AppFont.ui(12))
+                    .font(AppFont.ui(11))
                     .opacity(0.75)
                     .lineLimit(1)
             }
             .foregroundStyle(theme.ink)
-            .frame(maxWidth: 180)
-            Spacer(minLength: 0)
-            chromeButton(bookmarked ? "bookmark.fill" : "bookmark", "栞") {
-                bookmarked.toggle()
-                saveBookmark(on: bookmarked)
-                Haptics.tap()
-            }
-            chromeButton("square.and.arrow.up", "共有") { share() }
-            chromeButton("gearshape", "設定") { sheet = .menu }
+            .padding(.horizontal, 100)
+            .allowsHitTesting(false)
         }
         .padding(.horizontal, Spacing.s)
         .padding(.vertical, 3)
@@ -270,7 +293,7 @@ struct ReaderView: View {
     }
 
     private var bottomBar: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 0) {
             chromeCaptioned(autoPlaying ? "pause.fill" : "play.fill",
                             autoPlaying ? "停止" : "自動",
                             hidesChrome: false, active: autoPlaying) {
@@ -324,18 +347,21 @@ struct ReaderView: View {
                 withAnimation(.easeInOut(duration: 0.25)) { chromeVisible = false }
             }
         } label: {
-            VStack(spacing: 1) {
+            VStack(spacing: 2) {
                 Image(systemName: system)
-                    .font(AppFont.ui(12, weight: .semibold))
+                    .font(AppFont.ui(13, weight: .semibold))
                 Text(caption)
-                    .font(AppFont.ui(8.5, weight: .medium))
+                    .font(AppFont.ui(10, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .foregroundStyle(
                 !enabled ? theme.ink.opacity(0.3)
                 : active ? AppPalette.ember
                 : theme.ink
             )
-            .frame(width: 48, height: 34)
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle(haptic: false))
@@ -343,7 +369,7 @@ struct ReaderView: View {
     }
 
     private var hintPill: some View {
-        Text("左右スワイプか左右タップで送り・中央タップでバー")
+        Text("中央タップでバー。左右でページを送る")
             .font(AppFont.ui(12, weight: .medium))
             .foregroundStyle(theme.ink)
             .padding(.horizontal, Spacing.m)
@@ -358,9 +384,11 @@ struct ReaderView: View {
         HStack(spacing: 8) {
             ProgressView()
                 .scaleEffect(0.7)
-            Text(core.progress.running ? "他の取得の完了を待っています…" : "この話を自動取得中…")
+            Text(core.progress.running ? "別の取得が終わるまで待ちます" : "この話を取得しています")
                 .font(AppFont.ui(12, weight: .medium))
                 .foregroundStyle(theme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
         .padding(.horizontal, Spacing.m)
         .padding(.vertical, Spacing.s)
@@ -374,10 +402,12 @@ struct ReaderView: View {
             ProgressView()
                 .scaleEffect(0.7)
             Text(core.progress.total > 0
-                 ? "背景で取得中 \(core.progress.done + core.progress.skipped)/\(core.progress.total)"
-                 : "背景で取得中…")
-                .font(AppFont.ui(11, weight: .medium).monospacedDigit())
+                 ? "続きを取得中 \(core.progress.done + core.progress.skipped)/\(core.progress.total)"
+                 : "続きを取得しています")
+                .font(AppFont.ui(12, weight: .medium).monospacedDigit())
                 .foregroundStyle(theme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
         .padding(.horizontal, Spacing.m)
         .padding(.vertical, 6)
@@ -389,13 +419,13 @@ struct ReaderView: View {
     private var pagePill: some View {
         HStack(spacing: 6) {
             Text(chapterLabel)
-                .font(AppFont.ui(10, weight: .semibold).monospacedDigit())
-                .foregroundStyle(theme.ink.opacity(0.75))
+                .font(AppFont.ui(11, weight: .semibold).monospacedDigit())
+                .foregroundStyle(theme.ink.opacity(0.8))
             Text("・")
-                .font(AppFont.ui(10))
+                .font(AppFont.ui(11))
                 .foregroundStyle(theme.ink.opacity(0.35))
             Text(pageCount > 1 ? "\(currentPage + 1)/\(pageCount)頁" : "1/1頁")
-                .font(AppFont.ui(10, weight: .medium).monospacedDigit())
+                .font(AppFont.ui(11, weight: .medium).monospacedDigit())
                 .foregroundStyle(theme.ink.opacity(0.75))
         }
         .padding(.horizontal, 10)
@@ -414,153 +444,288 @@ struct ReaderView: View {
                         .font(AppFont.ui(10, weight: .semibold))
                         .tracking(2.2)
                         .foregroundStyle(AppPalette.gold)
-                    Text("読書メニュー")
-                        .font(AppFont.serif(20, weight: .semibold))
+                    Text("読書の設定")
+                        .font(AppFont.serif(22, weight: .semibold))
                         .foregroundStyle(AppPalette.ink)
+                    Text(chapterTitle.isEmpty ? chapterLabel : "\(chapterLabel)　\(chapterTitle)")
+                        .font(AppFont.ui(12))
+                        .foregroundStyle(AppPalette.inkSoft)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.top, Spacing.s)
 
-                menuSectionHeader("表示", "DISPLAY")
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        ForEach(BookTheme.allCases, id: \.self) { t in
-                            Button {
-                                themeRaw = t.rawValue
-                                applyStyle()
-                                Haptics.tap()
-                            } label: {
-                                VStack(spacing: 5) {
-                                    Circle()
-                                        .fill(t.background)
-                                        .frame(width: 34, height: 34)
-                                        .overlay(
-                                            Circle().strokeBorder(
-                                                theme == t ? AppPalette.ember : t.ink.opacity(0.3),
-                                                lineWidth: theme == t ? 1.5 : 1
-                                            )
-                                        )
-                                    Text(t.label)
-                                        .font(AppFont.ui(11, weight: theme == t ? .semibold : .regular))
-                                        .foregroundStyle(theme == t ? AppPalette.ink : AppPalette.inkSoft)
+                menuCard("紙面", "TYPE") {
+                    themePicker
+                    menuField("書体") {
+                        SegmentTabs(
+                            titles: ["明朝", "ゴシック", "丸ゴシック"],
+                            selection: Binding(
+                                get: { fontDesign == "serif" ? 0 : (fontDesign == "rounded" ? 2 : 1) },
+                                set: { i in
+                                    fontDesign = i == 0 ? "serif" : (i == 2 ? "rounded" : "sans")
+                                    applyStyle()
                                 }
-                                .frame(maxWidth: .infinity)
-                                .opacity(theme == t ? 1 : 0.6)
-                            }
-                            .buttonStyle(PressableButtonStyle(haptic: false))
-                        }
+                            )
+                        )
                     }
-                    .padding(Spacing.m)
-                    RowDivider()
-                    SettingRow(label: "書体") {
-                        SegmentTabs(titles: ["明朝", "ゴシック", "等幅"], selection: Binding(
-                            get: { fontDesign == "sans" ? 1 : (fontDesign == "mono" ? 2 : 0) },
-                            set: {
-                                fontDesign = $0 == 1 ? "sans" : ($0 == 2 ? "mono" : "serif")
-                                applyStyle()
-                            }
-                        ))
-                        .frame(width: 168)
-                    }
-                    RowDivider()
-                    StepperRow(label: "文字サイズ", value: stepBinding($fontSize), range: 13...26, step: 1, suffix: "pt")
-                    RowDivider()
-                    StepperRow(label: "行間", value: stepBinding($lineSpacing), range: 2...14, step: 1, suffix: "pt")
-                    RowDivider()
-                    StepperRow(label: "余白", value: stepBinding($margin), range: 4...32, step: 2, suffix: "pt")
+                    StepperRow(label: "文字の大きさ",
+                               value: Binding(get: { fontSize }, set: { fontSize = $0; applyStyle() }),
+                               range: 14...28)
+                    StepperRow(label: "行間",
+                               value: Binding(get: { lineSpacing }, set: { lineSpacing = $0; applyStyle() }),
+                               range: 2...18)
+                    StepperRow(label: "余白",
+                               value: Binding(get: { margin }, set: { margin = $0; applyStyle() }),
+                               range: 4...36, step: 2)
+                    typePreview
+                        .padding(.top, Spacing.s)
                 }
-                .background(PaperBackground())
 
-                menuSectionHeader("表示項目", "ITEMS")
-                VStack(spacing: 0) {
-                    toggleRow("ルビ(振り仮名)", showRuby) { showRuby.toggle(); applyStyle() }
+                menuCard("表示する項目", "SHOW") {
+                    toggleRow("ルビ", showRuby) { showRuby.toggle(); applyStyle() }
                     RowDivider()
-                    toggleRow("章タイトル", showChapterTitle) { showChapterTitle.toggle(); applyStyle() }
+                    toggleRow("話の見出し", showChapterTitle) { showChapterTitle.toggle(); applyStyle() }
                     RowDivider()
                     toggleRow("前書き・後書き", showIntroPost) { showIntroPost.toggle(); applyStyle() }
                     RowDivider()
-                    toggleRow("ヘッダー(タイトル)", showHeader) { showHeader.toggle() }
+                    toggleRow("上のバー", showHeader) { showHeader.toggle() }
                     RowDivider()
-                    toggleRow("フッター(進捗)", showFooter) { showFooter.toggle() }
+                    toggleRow("下のバー", showFooter) { showFooter.toggle() }
+                    Text("前書き・後書きを隠しても、挿絵は本文に残ります。")
+                        .font(AppFont.ui(12))
+                        .foregroundStyle(AppPalette.inkFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 6)
+                        .padding(.bottom, 2)
                 }
-                .padding(Spacing.m)
-                .background(PaperBackground())
 
-                menuSectionHeader("送り", "PAGING")
-                VStack(spacing: 0) {
-                    SettingRow(label: "めくりの演出") {
-                        SegmentTabs(titles: PageTurn.all.map(\.label), selection: Binding(
-                            get: { PageTurn.all.firstIndex(of: turn) ?? 0 },
-                            set: { pageTurnRaw = PageTurn.all[$0].rawValue }
-                        ))
-                        .frame(width: 182)
+                menuCard("めくり", "PAGE") {
+                    menuField("アニメーション") {
+                        SegmentTabs(
+                            titles: PageTurn.all.map(\.label),
+                            selection: Binding(
+                                get: { pageTurnIndex },
+                                set: { pageTurnRaw = PageTurn.all[$0].rawValue }
+                            )
+                        )
                     }
+                    toggleRow("左右のスワイプで送る", swipePaging) { swipePaging.toggle() }
                     RowDivider()
-                    toggleRow("左右スワイプで送り", swipePaging) { swipePaging.toggle() }
-                    RowDivider()
-                    toggleRow("自動めくり", autoPlaying) {
-                        toggleAuto()
-                    }
+                    toggleRow("自動でめくる", autoPlaying) { toggleAuto() }
                     if autoPlaying {
-                        RowDivider()
-                        StepperRow(label: "めくる間隔",
-                                   value: Binding(get: { autoSeconds },
-                                                  set: { autoSeconds = $0 }),
-                                   range: 3...30, step: 1, suffix: "秒")
+                        StepperRow(label: "めくる間隔", value: $autoSeconds, range: 3...30, suffix: "秒")
                     }
+                    RowDivider()
+                    toggleRow("画面を消さない", keepAwake) { keepAwake.toggle() }
                 }
-                .background(PaperBackground())
 
-                menuSectionHeader("移動", "GO")
-                if savedVersions > 0 {
-                    VStack(spacing: 0) {
-                        SettingRow(label: viewingOldVersion
-                                   ? "旧版を表示中\(oldVersionDate.isEmpty ? "" : "(\(oldVersionDate))")"
-                                   : "この話の改稿前の本文") {
-                            HStack(spacing: Spacing.s) {
-                                if viewingOldVersion {
-                                    QuietButton(title: "戻す", systemImage: "arrow.uturn.backward") {
-                                        restoreCurrentVersion()
-                                    }
-                                } else {
-                                    QuietButton(title: "旧版を見る", systemImage: "clock.arrow.circlepath") {
-                                        Task { await showOldVersion() }
-                                    }
-                                }
+                menuCard("この話", "CHAPTER") {
+                    if pageCount > 1 {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text("ページ")
+                                    .font(AppFont.ui(15))
+                                    .foregroundStyle(AppPalette.ink)
+                                Spacer()
+                                Text("\(currentPage + 1) / \(pageCount)")
+                                    .font(AppFont.ui(13, weight: .semibold))
+                                    .foregroundStyle(AppPalette.inkSoft)
+                                    .monospacedDigit()
                             }
+                            Slider(
+                                value: Binding(
+                                    get: { Double(currentPage) },
+                                    set: { readerBox.jump(to: Int($0.rounded())) }
+                                ),
+                                in: 0...Double(pageCount - 1),
+                                step: 1
+                            )
+                            .tint(AppPalette.ember)
                         }
+                        .padding(.vertical, 8)
                         RowDivider()
-                        Text("改稿時に自動で保存した直前の本文です(最大8版)。")
-                            .font(AppFont.ui(11))
-                            .foregroundStyle(AppPalette.inkFaint)
-                            .padding(.horizontal, Spacing.m)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .background(PaperBackground())
-                }
-                HStack(spacing: Spacing.s) {
-                    QuietButton(title: "目次", systemImage: "list.bullet") {
-                        sheet = .toc
+
+                    HStack(spacing: Spacing.s) {
+                        QuietButton(title: "古い版", systemImage: "clock.arrow.circlepath",
+                                    disabled: viewingOldVersion && versionCursor + 1 >= max(savedVersions, 1)) {
+                            Task { await stepVersion(older: true) }
+                        }
+                        QuietButton(title: viewingOldVersion ? "新しい版" : "最新", systemImage: "arrow.uturn.backward",
+                                    disabled: !viewingOldVersion) {
+                            Task { await stepVersion(older: false) }
+                        }
                     }
-                    QuietButton(title: "前の話", systemImage: "chevron.left", disabled: !canGoPrev) {
+                    .padding(.vertical, 8)
+                    if viewingOldVersion {
+                        Text(oldVersionDate.isEmpty ? "古い版を表示中" : "\(oldVersionDate) の版を表示中")
+                            .font(AppFont.ui(12, weight: .semibold))
+                            .foregroundStyle(AppPalette.gold)
+                            .padding(.bottom, 4)
+                    }
+                    Text(savedVersions > 0
+                         ? "改稿前の本文が \(savedVersions) 版残っています。最大8版。"
+                         : "改稿すると、直前の本文を最大8版残します。")
+                        .font(AppFont.ui(12))
+                        .foregroundStyle(AppPalette.inkFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 8)
+                    RowDivider()
+                    menuLink(refetching ? "取り直しています…" : "この話を取り直す",
+                             system: "arrow.clockwise", disabled: refetching) {
+                        Task { await refetchCurrent() }
+                    }
+                    RowDivider()
+                    menuLink("目次を開く", system: "list.bullet") { sheet = .toc }
+                    RowDivider()
+                    menuLink("前の話へ", system: "chevron.left", disabled: !canGoPrev) {
                         sheet = nil
                         goChapter(delta: -1)
                     }
-                    QuietButton(title: "次の話", systemImage: "chevron.right", disabled: !canGoNext) {
+                    RowDivider()
+                    menuLink("次の話へ", system: "chevron.right", disabled: !canGoNext) {
                         sheet = nil
                         goChapter(delta: 1)
                     }
                 }
-                QuietButton(title: "閉じて作品詳細へ", systemImage: "xmark") {
+
+                QuietButton(title: "表示を初期値に戻す", systemImage: "arrow.counterclockwise") {
+                    resetReadingStyle()
+                }
+                QuietButton(title: "作品詳細へ戻る", systemImage: "chevron.left") {
                     sheet = nil
                     dismiss()
                 }
-                .padding(.bottom, Spacing.xl)
             }
             .padding(.horizontal, Metrics.gutter)
+            .padding(.bottom, Spacing.xxl)
         }
-        .presentationDetents([.height(640), .large])
+        .scrollIndicators(.hidden)
+        .background(AppPalette.canvas)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
         .presentationCornerRadius(20)
+        .presentationBackground(AppPalette.canvas)
+    }
+
+    private var themePicker: some View {
+        HStack(spacing: Spacing.s) {
+            ForEach(BookTheme.allCases, id: \.self) { item in
+                let on = theme == item
+                Button {
+                    themeRaw = item.rawValue
+                    applyStyle()
+                    Haptics.tap()
+                } label: {
+                    VStack(spacing: 6) {
+                        Circle()
+                            .fill(item.background)
+                            .frame(width: 34, height: 34)
+                            .overlay(Circle().strokeBorder(item == .night ? AppPalette.inkFaint : item.hairline, lineWidth: 1))
+                            .overlay {
+                                if on {
+                                    Circle()
+                                        .strokeBorder(AppPalette.ember, lineWidth: 2)
+                                        .padding(-4)
+                                }
+                            }
+                        Text(item.label)
+                            .font(AppFont.ui(12, weight: on ? .semibold : .regular))
+                            .foregroundStyle(on ? AppPalette.ink : AppPalette.inkSoft)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(on ? AppPalette.surface : Color.clear)
+                    )
+                }
+                .buttonStyle(PressableButtonStyle(haptic: false))
+            }
+        }
+        .padding(.bottom, 4)
+    }
+
+    private var typePreview: some View {
+        Text("吾輩は猫である。名前はまだ無い。")
+            .font(.system(size: min(fontSize, 22),
+                          design: fontDesign == "serif" ? .serif : (fontDesign == "rounded" ? .rounded : .default)))
+            .foregroundStyle(theme.ink)
+            .lineSpacing(max(2, lineSpacing * 0.35))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Spacing.m)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(theme.background)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(theme.hairline, lineWidth: 1)
+            )
+    }
+
+    private func menuCard<Content: View>(_ title: String, _ en: String,
+                                         @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(en)
+                    .font(AppFont.ui(10, weight: .semibold))
+                    .tracking(1.8)
+                    .foregroundStyle(AppPalette.gold)
+                Text(title)
+                    .font(AppFont.ui(15, weight: .semibold))
+                    .foregroundStyle(AppPalette.ink)
+            }
+            .padding(.horizontal, Spacing.m)
+            .padding(.top, Spacing.m)
+            .padding(.bottom, 6)
+            content()
+                .padding(.horizontal, Spacing.m)
+                .padding(.bottom, Spacing.s)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PaperBackground())
+    }
+
+    private func menuField<Content: View>(_ title: String,
+                                          @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(AppFont.ui(13))
+                .foregroundStyle(AppPalette.inkSoft)
+            content()
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func menuLink(_ title: String, system: String, disabled: Bool = false,
+                          act: @escaping () -> Void) -> some View {
+        Button(action: {
+            guard !disabled else { return }
+            Haptics.tap()
+            act()
+        }) {
+            HStack(spacing: 10) {
+                Image(systemName: system)
+                    .font(AppFont.ui(14, weight: .semibold))
+                    .foregroundStyle(disabled ? AppPalette.inkFaint : AppPalette.ember)
+                    .frame(width: 22)
+                Text(title)
+                    .font(AppFont.ui(15))
+                    .foregroundStyle(disabled ? AppPalette.inkFaint : AppPalette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(AppFont.ui(11, weight: .semibold))
+                    .foregroundStyle(AppPalette.inkFaint)
+            }
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle(haptic: false))
+        .disabled(disabled)
     }
 
     private var tocSheet: some View {
@@ -600,6 +765,8 @@ struct ReaderView: View {
                                 Text(name)
                                     .font(AppFont.ui(13, weight: .semibold))
                                     .foregroundStyle(AppPalette.ink)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.75)
                                 Text("\(group.chapters.count)話")
                                     .font(AppFont.ui(11).monospacedDigit())
                                     .foregroundStyle(AppPalette.inkFaint)
@@ -672,7 +839,10 @@ struct ReaderView: View {
                 }
             }
         }
+        .background(AppPalette.canvas)
         .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(AppPalette.canvas)
     }
 
     private struct TocGroup {
@@ -718,10 +888,12 @@ struct ReaderView: View {
             }
         } label: {
             HStack(spacing: Spacing.m) {
-                Text("\(ch.index)")
+                Text(ch.index)
                     .font(AppFont.ui(12, weight: .semibold).monospacedDigit())
                     .foregroundStyle(AppPalette.inkFaint)
-                    .frame(width: 36, alignment: .trailing)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(minWidth: 28, alignment: .trailing)
                 Text(ch.subtitle)
                     .font(AppFont.serif(15))
                     .foregroundStyle(AppPalette.ink)
@@ -770,40 +942,25 @@ struct ReaderView: View {
     }
 
     private func toggleRow(_ label: String, _ isOn: Bool, _ act: @escaping () -> Void) -> some View {
-        SettingRow(label: label) {
-            Button {
-                act()
-                Haptics.tap()
-            } label: {
-                Text(isOn ? "ON" : "OFF")
-                    .font(AppFont.ui(13, weight: .semibold))
-                    .foregroundStyle(isOn ? .white : AppPalette.inkSoft)
-                    .padding(.horizontal, 14)
-                    .frame(height: 32)
-                    .background(Capsule().fill(isOn ? AppPalette.ember : AppPalette.track))
-            }
-            .buttonStyle(PressableButtonStyle(haptic: false))
-        }
-    }
-
-    /// セクション見出し — 英語は小さなキッカー(上段)、日本語を見出しの主役に。
-    /// 和欧混植の定石: 欧文は小サイズ+トラッキングで装飾に使い、和文の重みを残す。
-    private func menuSectionHeader(_ title: String, _ en: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(en)
-                .font(AppFont.ui(10, weight: .semibold))
-                .tracking(2.2)
-                .foregroundStyle(AppPalette.gold)
-            HStack(spacing: Spacing.s) {
-                Text(title)
-                    .font(AppFont.serif(17, weight: .semibold))
+        Button(action: {
+            act()
+            Haptics.tap()
+        }) {
+            HStack(spacing: 12) {
+                Text(label)
+                    .font(AppFont.ui(15))
                     .foregroundStyle(AppPalette.ink)
-                Rectangle()
-                    .fill(AppPalette.hairline)
-                    .frame(height: 1)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 8)
+                InkSwitch(isOn: isOn)
             }
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
-        .padding(.top, Spacing.s)
+        .buttonStyle(PressableButtonStyle(haptic: false))
+        .accessibilityLabel(label)
+        .accessibilityValue(isOn ? "オン" : "オフ")
     }
 
     private func goChapter(delta: Int) {
@@ -864,6 +1021,7 @@ struct ReaderView: View {
     private func toggleAuto() {
         if autoPlaying {
             autoPlaying = false
+            UIApplication.shared.isIdleTimerDisabled = keepAwake
             return
         }
         autoPlaying = true
@@ -877,28 +1035,47 @@ struct ReaderView: View {
                         goChapter(delta: 1)
                     } else {
                         autoPlaying = false
-                        UIApplication.shared.isIdleTimerDisabled = false
+                        UIApplication.shared.isIdleTimerDisabled = keepAwake
                     }
                 }
             }
         }
     }
 
-    /// 改稿で保存された直前の版を表示する。
-    private func showOldVersion() async {
-        guard !viewingOldVersion else { return }
-        guard let ver = try? await core.sectionVersion(novelId: novelId, index: chapterIndex, offset: 0),
-              !(ver.bodyXhtml ?? "").isEmpty else {
-            messagePillText = "旧版が見つかりませんでした"
+    /// 改稿で残した版を、新しい順に offset 0 から辿る。
+    private func stepVersion(older: Bool) async {
+        if !older {
+            if versionCursor > 0 {
+                await openVersion(offset: versionCursor - 1)
+            } else {
+                restoreCurrentVersion()
+            }
             return
         }
-        backupHTML = lastHTML
-        backupIntro = lastIntro
-        backupPost = lastPost
+        let next = viewingOldVersion ? versionCursor + 1 : 0
+        if viewingOldVersion, savedVersions > 0, next >= savedVersions {
+            messagePillText = "これ以上古い版はありません"
+            return
+        }
+        await openVersion(offset: next)
+    }
+
+    private func openVersion(offset: Int) async {
+        guard let ver = try? await core.sectionVersion(novelId: novelId, index: chapterIndex, offset: offset),
+              !(ver.bodyXhtml ?? "").isEmpty else {
+            messagePillText = offset == 0 ? "古い版はまだありません" : "これ以上古い版はありません"
+            return
+        }
+        if !viewingOldVersion {
+            backupHTML = lastHTML
+            backupIntro = lastIntro
+            backupPost = lastPost
+        }
         lastHTML = ver.bodyXhtml ?? ""
         lastIntro = ver.introXhtml ?? ""
         lastPost = ver.postXhtml ?? ""
         oldVersionDate = String((ver.updatedAt ?? "").prefix(10))
+        versionCursor = offset
         viewingOldVersion = true
         rebuild()
     }
@@ -909,7 +1086,70 @@ struct ReaderView: View {
         lastIntro = backupIntro
         lastPost = backupPost
         viewingOldVersion = false
+        versionCursor = 0
         rebuild()
+    }
+
+    /// この話だけ取り直す。リーダーを開いたまま、取得の完了を待つ。
+    private func refetchCurrent() async {
+        guard !refetching, !tocUrl.isEmpty,
+              let rawDir = detail?.novel.outputDir, !rawDir.isEmpty else {
+            messagePillText = "この話は取り直せません"
+            return
+        }
+        refetching = true
+        defer { refetching = false }
+        sheet = nil
+        messagePillText = "この話を取り直しています"
+        if core.progress.running {
+            core.cancel()
+            for _ in 0..<40 where core.progress.running {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
+        do {
+            _ = try await core.download(CoreClient.DownloadOptions(
+                url: tocUrl,
+                outputDir: CoreClient.effectiveOutputDir(rawDir),
+                episodes: 1,
+                fromIndex: chapterIndex,
+                mode: "refresh"
+            ))
+            let sec = try await core.section(novelId: novelId, index: chapterIndex)
+            lastHTML = sec.bodyXhtml ?? ""
+            lastIntro = sec.introXhtml ?? ""
+            lastPost = sec.postXhtml ?? ""
+            savedVersions = sec.versions ?? savedVersions
+            viewingOldVersion = false
+            versionCursor = 0
+            if lastHTML.isEmpty {
+                messagePillText = "本文を取得できませんでした"
+            } else {
+                rebuild()
+                messagePillText = "取り直しました"
+            }
+        } catch {
+            messagePillText = "取り直せませんでした"
+        }
+    }
+
+    private func resetReadingStyle() {
+        themeRaw = BookTheme.paper.rawValue
+        fontSize = 19
+        lineSpacing = 8
+        margin = 12
+        fontDesign = "serif"
+        showRuby = true
+        showChapterTitle = true
+        showIntroPost = false
+        showHeader = true
+        showFooter = true
+        swipePaging = true
+        pageTurnRaw = PageTurn.curl.rawValue
+        keepAwake = true
+        applyStyle()
+        Haptics.tap()
+        messagePillText = "表示を初期値に戻しました"
     }
 
     /// 見出し/前書き/本文/後書きを組み立てて表示テキストを作る。

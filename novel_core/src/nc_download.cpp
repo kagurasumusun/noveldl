@@ -1020,6 +1020,7 @@ Value op_download(const DownloadOptions& opts) {
     auto states = storage.section_download_states(novel_id);
 
     const bool reader_mode = opts.mode == "reader";
+    const bool refresh_one = opts.mode == "refresh";
     const size_t flush_batch = 5;
     const size_t reader_window = 15;
 
@@ -1057,7 +1058,10 @@ Value op_download(const DownloadOptions& opts) {
                     needs = false;
             }
         }
-        if (!needs) {
+        // refresh: 指定した1話は署名が同じでも取り直す(挿絵の欠け・取得失敗のやり直し)。
+        // 本文が変わっていないときは版を増やさない(下の archive は needs のときだけ)。
+        const bool force_this = refresh_one && trim(ch.index) == trim(opts.from_index);
+        if (!needs && !force_this) {
             ++skipped;
             set_progress(total, downloaded, skipped, failed, ch.subtitle, true);
             continue;
@@ -1180,7 +1184,8 @@ Value op_download(const DownloadOptions& opts) {
         up.source_signature = sig;
         up.updated_at = now_rfc3339();
         // 改稿(既存話の差し替え)のとき、上書き前に旧本文を版として保存する。
-        if (was_done) {
+        // 署名が変わったときだけ旧本文を版として残す。同じ本文の取り直しでは版を増やさない。
+        if (was_done && needs) {
             try { storage.archive_section_version(novel_id, ch.index, now_rfc3339()); }
             catch (const std::exception&) {}
         }
