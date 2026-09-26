@@ -95,6 +95,19 @@ final class ReaderMarkup: @unchecked Sendable {
         ])
     }
 
+    /// XHTML から <img> タグだけを抜き出し、1枚1段落にして返す。
+    /// (前書き/後書き非表示時の「挿絵のみ表示」用)
+    static func imageOnlyXhtml(_ xhtml: String) -> String {
+        guard xhtml.contains("<img") else { return "" }
+        let ns = xhtml as NSString
+        let re = try! NSRegularExpression(pattern: #"(?is)<img\s+[^>]*>"#)
+        var out: [String] = []
+        for mm in re.matches(in: xhtml, range: NSRange(location: 0, length: ns.length)) {
+            out.append("<p>" + ns.substring(with: mm.range) + "</p>")
+        }
+        return out.joined()
+    }
+
     private func parseInner(_ xhtml: String, style: Style, images: inout [ImageRef]) -> NSAttributedString {
         let para = NSMutableParagraphStyle()
         para.lineSpacing = style.lineSpacing

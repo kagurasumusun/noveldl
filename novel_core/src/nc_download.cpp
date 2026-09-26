@@ -240,9 +240,16 @@ void fetch_section_images(HttpClient& http, const AccessSettings& access,
                           const std::string& img_dir, const std::string& chapter_index,
                           std::vector<std::string*>& fragments) {
     std::vector<std::string> srcs;
-    for (auto* frag : fragments) {
-        if (!frag || frag->empty()) continue;
-        for (auto& src : parser.parse_image_srcs(*frag)) srcs.push_back(src);
+    {
+        // 前書きと後書きに同じ挿絵が貼られることがあるため、絶対URL単位で重複除去
+        // (除去しないと同一画像が 2 ファイルに保存され、無駄な通信と容量になる)。
+        std::set<std::string> seen_srcs;
+        for (auto* frag : fragments) {
+            if (!frag || frag->empty()) continue;
+            for (auto& src : parser.parse_image_srcs(*frag)) {
+                if (seen_srcs.insert(url_absolute(join_base, src)).second) srcs.push_back(src);
+            }
+        }
     }
     if (srcs.empty()) return;
     std::error_code ec;

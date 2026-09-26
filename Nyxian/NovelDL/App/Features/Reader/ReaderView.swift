@@ -941,6 +941,19 @@ struct ReaderView: View {
             }
             combined.append(r.text)
             combined.append(ReaderMarkup.dividerBlock(style: style))
+        } else if !showIntroPost {
+            // 前書き非表示でも挿絵だけは表示する(なろう系は前書きに挿絵を置く作家が多い。
+            // 非表示 = 文章を隠すだけ で、挿絵まで消えるのは読書体験として壊れている)。
+            let imgs = ReaderMarkup.imageOnlyXhtml(lastIntro)
+            if !imgs.isEmpty {
+                let r = markup.parse(imgs, style: style)
+                for im in r.images {
+                    refs.append(ImageRef(
+                        range: NSRange(location: im.range.location + combined.length, length: im.range.length),
+                        src: im.src))
+                }
+                combined.append(r.text)
+            }
         }
         let bodyBase = combined.length
         let body = markup.parse(lastHTML, style: style)
@@ -959,6 +972,17 @@ struct ReaderView: View {
                     src: im.src))
             }
             combined.append(r.text)
+        } else if !showIntroPost {
+            let imgs = ReaderMarkup.imageOnlyXhtml(lastPost)
+            if !imgs.isEmpty {
+                let r = markup.parse(imgs, style: style)
+                for im in r.images {
+                    refs.append(ImageRef(
+                        range: NSRange(location: im.range.location + combined.length, length: im.range.length),
+                        src: im.src))
+                }
+                combined.append(r.text)
+            }
         }
         attributed = combined
         imageRefs = refs
@@ -1057,8 +1081,21 @@ struct ReaderView: View {
     private func loadImages(_ refs: [ImageRef]) async {
         let width = UIScreen.main.bounds.width - max(margin, 12) * 2
         let base = URL(string: tocUrl)
+        // 保存時に埋め込まれた絶対パスは、アプリ再インストール等でコンテナUUIDが
+        // 変わると死ぬ。/novels/ 以降の相対位置を現 outputDir 配下へ張り直す。
+        var baseDir: String?
+        if let rawDir = detail?.novel.outputDir, !rawDir.isEmpty {
+            baseDir = CoreClient.effectiveOutputDir(rawDir)
+        }
         for ref in refs {
-            guard let url = ReaderImageStore.resolve(ref.src, base: base) else { continue }
+            var src = ref.src
+            if src.hasPrefix("/"), let bd = baseDir,
+               !FileManager.default.fileExists(atPath: src),
+               let r = src.range(of: "/novels/") {
+                let candidate = bd + String(src[r.lowerBound...])
+                if FileManager.default.fileExists(atPath: candidate) { src = candidate }
+            }
+            guard let url = ReaderImageStore.resolve(src, base: base) else { continue }
             if let img = await ReaderImageStore.shared.load(url) {
                 readerBox.applyImage(at: ref.range, image: img, displayWidth: width)
             }
@@ -1093,9 +1130,14 @@ enum ReaderImageStore {
     static func resolve(_ src: String, base: URL?) -> URL? {
         if src.hasPrefix("file://") { return URL(string: src) }
         if src.hasPrefix("/") { return URL(fileURLWithPath: src) }
+        // プロトコル相対(//host/... — なろうのみてみん挿絵など)
+        if src.hasPrefix("//") { return URL(string: "https:" + src) }
         if src.hasPrefix("http://") || src.hasPrefix("https://") { return URL(string: src) }
         guard let base else { return nil }
-        return URL(string: src, relativeTo: base)?.absoluteURL
+        if let u = URL(string: src, relativeTo: base)?.absoluteURL { return u }
+        // 日本語ファイル名等で URL(string:) が失敗する場合の percent-encode 再試行
+        guard let enc = src.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
+        return URL(string: enc, relativeTo: base)?.absoluteURL
     }
 
     private static func downscale(_ img: UIImage, maxW: CGFloat) -> UIImage {
