@@ -1,4 +1,5 @@
 name: エブリスタ
+builtin_rev: 2
 domain: estar.jp
 encoding: UTF-8
 top_url: https://estar.jp
@@ -15,17 +16,28 @@ access:
     on_challenge: browser_fetch_command
 
 toc_url_pattern: "https://estar.jp/novels/{ncode}"
+# 2026 現行: 詳細ページの目次(episodeList)は href 無しの JS 遷移、viewer 本文も
+# __NUXT_DATA__(参照位置番号エンコード)からクライアント描画。HTTP 単体では
+# 1話目(最初から読むボタン)までしか列挙できず本文も空 → 実運用は
+# browser_fallback(WKWebView / Playwright 等のレンダリング結果)が前提。
+# fallback レンダリング後の DOM でも episodeList に href は付かないため、
+# viewer 遷移 URL は link[rel=next] 連鎖で辿れる(それが YAML 側の上限)。
 toc_sources:
   - source: page
     mode: next_link
-    selector: "a[href*='/viewer?page=']"
+    priority: 20
+    selector: "link[rel='next']"
+    href: ":self::attr(href)"
+    href_pattern: "viewer/\\?page=\\d+$"
+    description: "viewer ページ連鎖(link[rel=next])"
+  - source: selector
     priority: 10
-    url_template: "/novels/{id}/viewer?page={page}"
-    start_page: 1
+    selector: "a[href$='/viewer']"
+    href_pattern: "/viewer$"
     item_selectors:
       subtitle: ":self"
       href: ":self::attr(href)"
-    description: "エブリスタ viewer ページ列"
+    description: "作品を読むボタン(=viewer 1ページ目)"
 
 body_selectors:
   - selector: "#novel-page-body, .novel-page-body"
@@ -37,13 +49,14 @@ body_selectors:
 
 novel_info_selectors:
   title: "h1"
-  author: "meta[property='og:title']::attr(content)"
+  author: "a[href^='/users/'], .userCard a[href^='/users/']"
   story: "meta[name='description']::attr(content)"
+  # 更新日時は <time itemprop=dateModified datetime="ISO8601"> で保持
+  updated: "time[itemprop='dateModified']::attr(datetime)"
+  cover: "meta[property='og:image']::attr(content)"
 
 append_title_to_folder_name: yes
-# R-18(大人向け)作品対応
-confirm_over18: yes
-over18_cookie: "over_fifteen=yes"
-# 年齢ゲート「はい」リンク抽出（既定の日本語パターンで可。必要なら上書き）
-age_gate_link_regex: "href=\"([^\"]+)\"[^>]*>[^<]*(?:はい|Yes|Enter|18)"
-version: 1.0
+# R-15 作品用の over_fifteen クッキーは「送らない」。送ると SSR が別バリアント
+# (371KB) になり HTML パースが壊れることが実測で判明(2026-09)。
+confirm_over18: no
+version: 1.1

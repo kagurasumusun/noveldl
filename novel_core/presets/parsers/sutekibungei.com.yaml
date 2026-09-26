@@ -1,4 +1,5 @@
 name: ステキブンゲイ
+builtin_rev: 2
 domain: sutekibungei.com
 encoding: UTF-8
 top_url: https://sutekibungei.com
@@ -26,11 +27,14 @@ body_selectors:
     extract: "inner_html"
 
 novel_info_selectors:
-  title: ".font-weight-bold.subtitle-1, h1"
-  author: ".subtitle-2.wrap a, .subtitle-2.wrap"
+  # 2026 実測: 作品見出しは div.headline.marker。著者は /users/ リンク。
+  # status は v-chip(連載中/完結)。
+  title: "div.headline.marker, h1"
+  author: "a[href^='/users/']"
   story: "meta[name='description']::attr(content)"
+  status: ".v-chip__content:contains(連載中), .v-chip__content:contains(完結)"
 
 append_title_to_folder_name: yes
 title_strip_pattern: " - ステキブンゲイ| -ステキブンゲイ"
 confirm_over18: no
-version: 1.0
+version: 1.1

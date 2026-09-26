@@ -1,6 +1,6 @@
-builtin_rev: 3
+builtin_rev: 4
 metadata_api:
-  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  url: "https://api.syosetu.com/novel18api/api/?out=json&ncode={ncode}"
   fields:
     title: "title"
     author: "writer"

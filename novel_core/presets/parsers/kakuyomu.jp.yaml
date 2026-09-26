@@ -38,6 +38,8 @@ novel_info_selectors:
   # 2025年以降の新レイアウト(CSSモジュール名)に対応
   story: "div[class*='CollapseTextWithKakuyomuLinks_collapseText']"
   status: "ul[class*='Meta_disc'] div:contains(連載中), ul[class*='Meta_disc'] div:contains(完結済)"
+  # 最終更新は Meta 内の「YYYY年M月D日 更新」ブロック(新レイアウトで only ここにしか無い)
+  updated: "ul[class*='Meta_disc'] div:contains(更新)"
 
 # 目次の予備経路: ページ埋め込み JSON(__NEXT_DATA__)から話リストを組み立てる。
 # HTML セレクタが効かない将来のレイアウト変更でも取得を続けられる。

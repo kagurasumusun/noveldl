@@ -1,4 +1,4 @@
-builtin_rev: 2
+builtin_rev: 3
 name: ハーメルン
 domain: syosetu.org
 encoding: UTF-8
@@ -84,7 +84,12 @@ postscript_selectors:
 novel_info_selectors:
   title: "#pagetitle [itemprop='name'], div#maind [itemprop='name'], [itemprop='name']"
   author: "[itemprop='author'] a, div#maind [itemprop='author'], [itemprop='author']"
-  story: "div#maind div.ss:nth-of-type(2)"
+  # 旧レイアウトの div#maind div.ss は廃止。目次ページでは meta description が
+  # あらすじの冒頭を保持する(?mode=ss_detail は Cloudflare チャレンジで機械取得不可)。
+  # 2026-09 実測: 目次・作品情報頁は取得可だが「章本文ページ」(N.html)は
+  # データセンタ IP だと Cloudflare チャレンジ(Just a moment)になる。
+  # 端末回線+実ブラウザなら通る想定 → browser_fallback 併用。
+  story: "meta[name='description']::attr(content)"
 # ------------------------------------------------------------
 # 横断検索メタ情報
 # R-18作品: confirm_over18 で年齢クッキーを注入（一般作品には無害）
@@ -93,4 +98,4 @@ over18_cookie: "over18=on"
 append_title_to_folder_name: yes
 title_strip_pattern: null
 webnovels_site: hameln
-version: 1.3
+version: 1.4

@@ -1,4 +1,4 @@
-builtin_rev: 2
+builtin_rev: 3
 name: 暁
 domain: www.akatsuki-novels.com
 encoding: UTF-8
@@ -45,7 +45,9 @@ postscript_selectors:
 novel_info_selectors:
   title: "#LookNovel"
   author: "a[href^='/users/view/']"
-  story: "div.body-x1 div.txt-c ~ div"
+  # 旧: div.body-x1 div.txt-c ~ div(現行は無し)。あらすじは
+  # div.body-normal > div(原作表記コンテナ) > div の3層目に来る。
+  story: "div.body-normal > div > div, div.body-x1 div.txt-c ~ div"
 
 # 横断検索メタ情報
 confirm_over18: no

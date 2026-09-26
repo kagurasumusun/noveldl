@@ -1,9 +1,44 @@
 extends: www.no-ichigo.jp
 name: ノベマ！
+builtin_rev: 2
 domain: novema.jp
 encoding: UTF-8
 top_url: https://novema.jp
 sitename: ノベマ！
 toc_url_pattern: "https://novema.jp/book/{ncode}"
+# 親(野いちご)の range テンプレは no-ichigo.jp 固定のため novema.jp で差し替え。
+toc_sources:
+  - source: page
+    mode: range
+    priority: 20
+    url_template: "https://novema.jp/book/{ncode}/{page}"
+    max_page_selector: "dd:contains(ページ)"
+    start_page: 1
+    description: "ページ数 dd から全話ページURLを生成"
+  - source: selector
+    priority: 10
+    selector: ".bookChapterList a[href]"
+    href_pattern: "/book/[a-z0-9]+/\\d+$"
+    index_from_href_regex: "(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "ノベマ！ SSR 目次(章見出し/実タイトル)"
+  - source: selector
+    priority: 5
+    selector: "a[itemprop='item']"
+    href_pattern: "/book/[a-z0-9]+/\\d+$"
+    index_from_href_regex: "(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "ノベマ！パンくず話リンク"
+# 著者要素は本文 DOM に無く <title>/og:title のみ(「タイトル　作者／著 | ノベマ！」)。
+novel_info_rules:
+  author_from_source_regex: yes
+  author_regex: "　([^　]+)／著"
+  author_capture_group: 1
 confirm_over18: no
-version: 1.0
+version: 1.2

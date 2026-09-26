@@ -1,4 +1,5 @@
 name: NOVEL DAYS
+builtin_rev: 2
 domain: novel.daysneo.com
 encoding: UTF-8
 top_url: https://novel.daysneo.com
@@ -6,6 +7,11 @@ sitename: NOVEL DAYS
 access:
   profile: chrome_desktop
   referer: toc_parent
+  # 2026-09 実測: トップ・作品頁とも iPhone/PC 両 UA で 403(データセンタ IP 時)。
+  # 端末回線+実ブラウザなら通る想定 → チャレンジ/403時は browser_fallback。
+  browser_fallback: true
+  fallback:
+    on_challenge: browser_fetch_command
 
 toc_url_pattern: "https://novel.daysneo.com/works/{ncode}.html"
 toc_sources:
@@ -32,4 +38,4 @@ novel_info_selectors:
 
 append_title_to_folder_name: yes
 confirm_over18: no
-version: 1.0
+version: 1.1

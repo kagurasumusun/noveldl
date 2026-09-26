@@ -1,4 +1,5 @@
 name: アルファポリス
+builtin_rev: 2
 domain: www.alphapolis.co.jp
 encoding: UTF-8
 top_url: https://www.alphapolis.co.jp
@@ -6,6 +7,8 @@ sitename: アルファポリス
 
 # AWS WAF (JavaScript チャレンジ) 保護下。ページ取得は通常の HTTP では
 # チャレンジページが返るため、browser_fallback と browser_fetch_command を併用する。
+# 2026-09 実測: データセンタ IP には JS チャレンジ(curl は 0B、コアは challenge 検出)。
+# 端末回線+実ブラウザ想定 → on_challenge で browser_fallback。
 access:
   profile: chrome_desktop
   referer: toc_parent

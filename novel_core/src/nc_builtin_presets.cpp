@@ -94,6 +94,7 @@ version: 2.3
 )NC"},
         {"parsers", "estar.jp", R"NC(
 name: エブリスタ
+builtin_rev: 2
 domain: estar.jp
 encoding: UTF-8
 top_url: https://estar.jp
@@ -110,17 +111,28 @@ access:
     on_challenge: browser_fetch_command
 
 toc_url_pattern: "https://estar.jp/novels/{ncode}"
+# 2026 現行: 詳細ページの目次(episodeList)は href 無しの JS 遷移、viewer 本文も
+# __NUXT_DATA__(参照位置番号エンコード)からクライアント描画。HTTP 単体では
+# 1話目(最初から読むボタン)までしか列挙できず本文も空 → 実運用は
+# browser_fallback(WKWebView / Playwright 等のレンダリング結果)が前提。
+# fallback レンダリング後の DOM でも episodeList に href は付かないため、
+# viewer 遷移 URL は link[rel=next] 連鎖で辿れる(それが YAML 側の上限)。
 toc_sources:
   - source: page
     mode: next_link
-    selector: "a[href*='/viewer?page=']"
+    priority: 20
+    selector: "link[rel='next']"
+    href: ":self::attr(href)"
+    href_pattern: "viewer/\\?page=\\d+$"
+    description: "viewer ページ連鎖(link[rel=next])"
+  - source: selector
     priority: 10
-    url_template: "/novels/{id}/viewer?page={page}"
-    start_page: 1
+    selector: "a[href$='/viewer']"
+    href_pattern: "/viewer$"
     item_selectors:
       subtitle: ":self"
       href: ":self::attr(href)"
-    description: "エブリスタ viewer ページ列"
+    description: "作品を読むボタン(=viewer 1ページ目)"
 
 body_selectors:
   - selector: "#novel-page-body, .novel-page-body"
@@ -132,22 +144,24 @@ body_selectors:
 
 novel_info_selectors:
   title: "h1"
-  author: "meta[property='og:title']::attr(content)"
+  author: "a[href^='/users/'], .userCard a[href^='/users/']"
   story: "meta[name='description']::attr(content)"
+  # 更新日時は <time itemprop=dateModified datetime="ISO8601"> で保持
+  updated: "time[itemprop='dateModified']::attr(datetime)"
+  cover: "meta[property='og:image']::attr(content)"
 
 append_title_to_folder_name: yes
-# R-18(大人向け)作品対応
-confirm_over18: yes
-over18_cookie: "over_fifteen=yes"
-# 年齢ゲート「はい」リンク抽出（既定の日本語パターンで可。必要なら上書き）
-age_gate_link_regex: "href=\"([^\"]+)\"[^>]*>[^<]*(?:はい|Yes|Enter|18)"
-version: 1.0
+# R-15 作品用の over_fifteen クッキーは「送らない」。送ると SSR が別バリアント
+# (371KB) になり HTML パースが壊れることが実測で判明(2026-09)。
+confirm_over18: no
+version: 1.1
 )NC"},
         {"parsers", "h.syosetu.org", R"NC(
 # ハーメルン R-18（h.syosetu.org サブドメイン）
 # 一般側(syosetu.org)と同じ目次構造を継承し、年齢ゲート自動通過だけを有効化。
 extends: syosetu.org
 name: ハーメルン(R-18)
+builtin_rev: 2
 domain: h.syosetu.org
 top_url: https://h.syosetu.org
 sitename: ハーメルン(R-18)
@@ -155,6 +169,8 @@ sitename: ハーメルン(R-18)
 toc_url_pattern: "https://h.syosetu.org/novel/{ncode}/"
 
 # 「R18閲覧確認ページ」の「はい」リンク(?cookie_set=r18)を自動クリック
+# 2026-09 実測: 未ログイン IP には Cloudflare チャレンジ(_cf_chl_opt)が先に来る。
+# 機械取得は不可 → browser_fallback(WKWebView)が前提。
 confirm_over18: yes
 age_gate_link_regex: "href=\"([^\"]*cookie_set[^\"]*)\""
 )NC"},
@@ -199,6 +215,8 @@ novel_info_selectors:
   # 2025年以降の新レイアウト(CSSモジュール名)に対応
   story: "div[class*='CollapseTextWithKakuyomuLinks_collapseText']"
   status: "ul[class*='Meta_disc'] div:contains(連載中), ul[class*='Meta_disc'] div:contains(完結済)"
+  # 最終更新は Meta 内の「YYYY年M月D日 更新」ブロック(新レイアウトで only ここにしか無い)
+  updated: "ul[class*='Meta_disc'] div:contains(更新)"
 
 # 目次の予備経路: ページ埋め込み JSON(__NEXT_DATA__)から話リストを組み立てる。
 # HTML セレクタが効かない将来のレイアウト変更でも取得を続けられる。
@@ -222,9 +240,9 @@ webnovels_site: kakuyomu
 version: 2.2
 )NC"},
         {"parsers", "mid.syosetu.com", R"NC(
-builtin_rev: 3
+builtin_rev: 4
 metadata_api:
-  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  url: "https://api.syosetu.com/novel18api/api/?out=json&ncode={ncode}"
   fields:
     title: "title"
     author: "writer"
@@ -256,9 +274,9 @@ last_successful_selectors: {}
 confirm_over18: yes
 )NC"},
         {"parsers", "mnlt.syosetu.com", R"NC(
-builtin_rev: 3
+builtin_rev: 4
 metadata_api:
-  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  url: "https://api.syosetu.com/novel18api/api/?out=json&ncode={ncode}"
   fields:
     title: "title"
     author: "writer"
@@ -291,6 +309,7 @@ confirm_over18: yes
 )NC"},
         {"parsers", "monogatary.com", R"NC(
 name: monogatary.com
+builtin_rev: 2
 domain: monogatary.com
 encoding: UTF-8
 top_url: https://monogatary.com
@@ -324,8 +343,9 @@ body_selectors:
 
 novel_info_selectors:
   title: "$.storyTitle"
-  author: "$.user.nickname"
-  story: "$.description"
+  author: "$.nickname"
+  story: "$.storySummary"
+  updated: "$.storyUpdatedAt"
 
 append_title_to_folder_name: yes
 # overFifteen 年齢制限作品対応
@@ -402,6 +422,7 @@ confirm_over18: yes
 )NC"},
         {"parsers", "novel.daysneo.com", R"NC(
 name: NOVEL DAYS
+builtin_rev: 2
 domain: novel.daysneo.com
 encoding: UTF-8
 top_url: https://novel.daysneo.com
@@ -409,6 +430,11 @@ sitename: NOVEL DAYS
 access:
   profile: chrome_desktop
   referer: toc_parent
+  # 2026-09 実測: トップ・作品頁とも iPhone/PC 両 UA で 403(データセンタ IP 時)。
+  # 端末回線+実ブラウザなら通る想定 → チャレンジ/403時は browser_fallback。
+  browser_fallback: true
+  fallback:
+    on_challenge: browser_fetch_command
 
 toc_url_pattern: "https://novel.daysneo.com/works/{ncode}.html"
 toc_sources:
@@ -435,12 +461,12 @@ novel_info_selectors:
 
 append_title_to_folder_name: yes
 confirm_over18: no
-version: 1.0
+version: 1.1
 )NC"},
         {"parsers", "novel18.syosetu.com", R"NC(
-builtin_rev: 3
+builtin_rev: 4
 metadata_api:
-  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  url: "https://api.syosetu.com/novel18api/api/?out=json&ncode={ncode}"
   fields:
     title: "title"
     author: "writer"
@@ -603,13 +629,48 @@ age_gate_link_regex: "href=\"([^\"]+)\"[^>]*>[^<]*(?:はい|Yes|Enter|18)"
         {"parsers", "novema.jp", R"NC(
 extends: www.no-ichigo.jp
 name: ノベマ！
+builtin_rev: 2
 domain: novema.jp
 encoding: UTF-8
 top_url: https://novema.jp
 sitename: ノベマ！
 toc_url_pattern: "https://novema.jp/book/{ncode}"
+# 親(野いちご)の range テンプレは no-ichigo.jp 固定のため novema.jp で差し替え。
+toc_sources:
+  - source: page
+    mode: range
+    priority: 20
+    url_template: "https://novema.jp/book/{ncode}/{page}"
+    max_page_selector: "dd:contains(ページ)"
+    start_page: 1
+    description: "ページ数 dd から全話ページURLを生成"
+  - source: selector
+    priority: 10
+    selector: ".bookChapterList a[href]"
+    href_pattern: "/book/[a-z0-9]+/\\d+$"
+    index_from_href_regex: "(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "ノベマ！ SSR 目次(章見出し/実タイトル)"
+  - source: selector
+    priority: 5
+    selector: "a[itemprop='item']"
+    href_pattern: "/book/[a-z0-9]+/\\d+$"
+    index_from_href_regex: "(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "ノベマ！パンくず話リンク"
+# 著者要素は本文 DOM に無く <title>/og:title のみ(「タイトル　作者／著 | ノベマ！」)。
+novel_info_rules:
+  author_from_source_regex: yes
+  author_regex: "　([^　]+)／著"
+  author_capture_group: 1
 confirm_over18: no
-version: 1.0
+version: 1.2
 )NC"},
         {"parsers", "solispia.com", R"NC(
 name: ソリスピア
@@ -661,6 +722,7 @@ version: 1.0
 )NC"},
         {"parsers", "sutekibungei.com", R"NC(
 name: ステキブンゲイ
+builtin_rev: 2
 domain: sutekibungei.com
 encoding: UTF-8
 top_url: https://sutekibungei.com
@@ -688,17 +750,20 @@ body_selectors:
     extract: "inner_html"
 
 novel_info_selectors:
-  title: ".font-weight-bold.subtitle-1, h1"
-  author: ".subtitle-2.wrap a, .subtitle-2.wrap"
+  # 2026 実測: 作品見出しは div.headline.marker。著者は /users/ リンク。
+  # status は v-chip(連載中/完結)。
+  title: "div.headline.marker, h1"
+  author: "a[href^='/users/']"
   story: "meta[name='description']::attr(content)"
+  status: ".v-chip__content:contains(連載中), .v-chip__content:contains(完結)"
 
 append_title_to_folder_name: yes
 title_strip_pattern: " - ステキブンゲイ| -ステキブンゲイ"
 confirm_over18: no
-version: 1.0
+version: 1.1
 )NC"},
         {"parsers", "syosetu.org", R"NC(
-builtin_rev: 2
+builtin_rev: 3
 name: ハーメルン
 domain: syosetu.org
 encoding: UTF-8
@@ -784,7 +849,12 @@ postscript_selectors:
 novel_info_selectors:
   title: "#pagetitle [itemprop='name'], div#maind [itemprop='name'], [itemprop='name']"
   author: "[itemprop='author'] a, div#maind [itemprop='author'], [itemprop='author']"
-  story: "div#maind div.ss:nth-of-type(2)"
+  # 旧レイアウトの div#maind div.ss は廃止。目次ページでは meta description が
+  # あらすじの冒頭を保持する(?mode=ss_detail は Cloudflare チャレンジで機械取得不可)。
+  # 2026-09 実測: 目次・作品情報頁は取得可だが「章本文ページ」(N.html)は
+  # データセンタ IP だと Cloudflare チャレンジ(Just a moment)になる。
+  # 端末回線+実ブラウザなら通る想定 → browser_fallback 併用。
+  story: "meta[name='description']::attr(content)"
 # ------------------------------------------------------------
 # 横断検索メタ情報
 # R-18作品: confirm_over18 で年齢クッキーを注入（一般作品には無害）
@@ -793,10 +863,10 @@ over18_cookie: "over18=on"
 append_title_to_folder_name: yes
 title_strip_pattern: null
 webnovels_site: hameln
-version: 1.3
+version: 1.4
 )NC"},
         {"parsers", "www.akatsuki-novels.com", R"NC(
-builtin_rev: 2
+builtin_rev: 3
 name: 暁
 domain: www.akatsuki-novels.com
 encoding: UTF-8
@@ -843,7 +913,9 @@ postscript_selectors:
 novel_info_selectors:
   title: "#LookNovel"
   author: "a[href^='/users/view/']"
-  story: "div.body-x1 div.txt-c ~ div"
+  # 旧: div.body-x1 div.txt-c ~ div(現行は無し)。あらすじは
+  # div.body-normal > div(原作表記コンテナ) > div の3層目に来る。
+  story: "div.body-normal > div > div, div.body-x1 div.txt-c ~ div"
 
 # 横断検索メタ情報
 confirm_over18: no
@@ -854,6 +926,7 @@ version: 2.0
 )NC"},
         {"parsers", "www.alphapolis.co.jp", R"NC(
 name: アルファポリス
+builtin_rev: 2
 domain: www.alphapolis.co.jp
 encoding: UTF-8
 top_url: https://www.alphapolis.co.jp
@@ -861,6 +934,8 @@ sitename: アルファポリス
 
 # AWS WAF (JavaScript チャレンジ) 保護下。ページ取得は通常の HTTP では
 # チャレンジページが返るため、browser_fallback と browser_fetch_command を併用する。
+# 2026-09 実測: データセンタ IP には JS チャレンジ(curl は 0B、コアは challenge 検出)。
+# 端末回線+実ブラウザ想定 → on_challenge で browser_fallback。
 access:
   profile: chrome_desktop
   referer: toc_parent
@@ -952,13 +1027,41 @@ version: 1.0
         {"parsers", "www.berrys-cafe.jp", R"NC(
 extends: www.no-ichigo.jp
 name: berry's cafe
+builtin_rev: 2
 domain: www.berrys-cafe.jp
 encoding: UTF-8
 top_url: https://www.berrys-cafe.jp
 sitename: berry's cafe
 toc_url_pattern: "https://www.berrys-cafe.jp/book/{ncode}"
+# 親(野いちご)の range テンプレは no-ichigo.jp 固定のため berry's 用に自前定義。
+toc_sources:
+  - source: selector
+    priority: 10
+    selector: ".bookChapterList a[href]"
+    href_pattern: "/book/[a-z0-9]+/\\d+$"
+    index_from_href_regex: "(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "berry's SSR 目次(章見出し/実タイトル)"
+  - source: selector
+    priority: 5
+    selector: "a[itemprop='item']"
+    href_pattern: "/book/[a-z0-9]+/\\d+$"
+    index_from_href_regex: "(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "berry's パンくず話リンク"
+# 著者要素は本文 DOM に無く og:title のみ(「タイトル 作者／著 | ベリーズカフェ」)。
+novel_info_rules:
+  author_from_source_regex: yes
+  author_regex: "　([^　]+)／著"
+  author_capture_group: 1
 confirm_over18: no
-version: 1.0
+version: 1.1
 )NC"},
         {"parsers", "www.mai-net.net", R"NC(
 name: Arcadia
@@ -1007,6 +1110,7 @@ version: 2.0
 )NC"},
         {"parsers", "www.neopage.com", R"NC(
 name: ネオページ
+builtin_rev: 2
 domain: www.neopage.com
 encoding: UTF-8
 top_url: https://www.neopage.com
@@ -1043,16 +1147,18 @@ body_selectors:
     extract: "inner_html"
 
 novel_info_selectors:
-  title: ".header-title-wrap .title, h1 .title"
-  author: ".author a, .author"
+  # 作品h1は style 属性付き(ロゴ/フッタのh1は無し)。著者リンクは /uid/ 含む絶対URL。
+  title: "h1[style], .header-title-wrap .title, h1 .title"
+  author: "a[href*='/uid/'], .author a"
   story: "meta[name='description']::attr(content)"
 
 append_title_to_folder_name: yes
 confirm_over18: no
-version: 1.0
+version: 1.1
 )NC"},
         {"parsers", "www.no-ichigo.jp", R"NC(
 name: 野いちご
+builtin_rev: 2
 domain: www.no-ichigo.jp
 encoding: UTF-8
 top_url: https://www.no-ichigo.jp
@@ -1062,19 +1168,40 @@ access:
   referer: toc_parent
 
 # スターズ出版系（野いちご・ノベマ！・berry's cafe は共通プラットフォーム）
-# 目次: .bookChapterList に章 li → ページ ul の二段。全ページを平坦に取得する。
+# 2026: 目次一覧は SPA 化(web-api は未ログイン不可)。SSR からは ページ数/パンくず/章リストで構成。
 toc_url_pattern: "https://www.no-ichigo.jp/book/{ncode}"
 toc_sources:
+  # 2026 現行: 目次リストは JS 遅延(web-api は未ログインだと status:3 で拒否)。
+  # SSR されるのは ページ数(dd) と各話ページのパンくずリンクのみ。
+  - source: page
+    mode: range
+    priority: 20
+    url_template: "https://www.no-ichigo.jp/book/{ncode}/{page}"
+    max_page_selector: "dd:contains(ページ)"
+    start_page: 1
+    description: "ページ数 dd から全話ページURLを生成"
+  # 章・ページ両対応の SSR 目次(存在すればこちらが優先・実タイトル付き)
   - source: selector
-    selector: ".bookChapterList a[href]"
     priority: 10
+    selector: ".bookChapterList a[href]"
     href_pattern: "/book/[a-z0-9]+/\\d+$"
     index_from_href_regex: "(\\d+)$"
     index_capture_group: 1
     item_selectors:
       subtitle: ":self"
       href: ":self::attr(href)"
-    description: "野いちご目次（章・ページ両対応）"
+    description: "野いちご SSR 目次(章見出し/実タイトル)"
+  # 各話ページのパンくず「Nページ」(自己リンク) → 全話を href ベースで収集
+  - source: selector
+    priority: 5
+    selector: "a[itemprop='item']"
+    href_pattern: "/book/[a-z0-9]+/\\d+$"
+    index_from_href_regex: "(\\d+)$"
+    index_capture_group: 1
+    item_selectors:
+      subtitle: ":self"
+      href: ":self::attr(href)"
+    description: "野いちごパンくず話リンク"
 
 body_selectors:
   - selector: "article.bookText > div"
@@ -1100,7 +1227,7 @@ novel_info_selectors:
 append_title_to_folder_name: yes
 title_strip_pattern: "【書籍化原作】|【書籍化】"
 confirm_over18: no
-version: 1.0
+version: 1.1
 )NC"},
     };
     return presets;

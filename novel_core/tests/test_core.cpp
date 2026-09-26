@@ -314,7 +314,9 @@ static void test_rules_kakuyomu() {
 static void test_rules_hameln() {
     config::seed_default_presets();
     RulesParser parser(config::load_effective_preset("syosetu.org"));
-    std::string html = R"(<html><body>
+    std::string html = R"(<html><head>
+        <meta name="description" content="あらすじ本文">
+        </head><body>
         <div id="maind">
           <span itemprop="name">作品名</span>
           <span itemprop="author">作者名</span>

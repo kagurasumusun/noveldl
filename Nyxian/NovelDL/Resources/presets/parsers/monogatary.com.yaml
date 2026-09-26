@@ -1,4 +1,5 @@
 name: monogatary.com
+builtin_rev: 2
 domain: monogatary.com
 encoding: UTF-8
 top_url: https://monogatary.com
@@ -32,8 +33,9 @@ body_selectors:
 
 novel_info_selectors:
   title: "$.storyTitle"
-  author: "$.user.nickname"
-  story: "$.description"
+  author: "$.nickname"
+  story: "$.storySummary"
+  updated: "$.storyUpdatedAt"
 
 append_title_to_folder_name: yes
 # overFifteen 年齢制限作品対応

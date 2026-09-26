@@ -17,6 +17,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <filesystem>
@@ -660,6 +661,14 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
     std::set<std::string> seen_chapters;
     std::set<std::string> seen_indices;
     AccessSettings access = AccessSettings::from_preset(preset);
+    // 目次URL由来の ncode(ページURLテンプレート {ncode} / toc_api url 用の共通解決値)。
+    // note: toc_url_pattern が {ncode} を含まないサイト(estar /novels/{id} 等)では空。
+    std::string ncode;
+    {
+        static const std::regex nre(R"(/(n[0-9a-z]{4,12})(/|$))", std::regex::icase);
+        std::smatch nm;
+        if (std::regex_search(toc_url, nm, nre)) ncode = nm[1].str();
+    }
     int fetched_pages = 0;
     bool toc_api_done = false;
     while (!pages.queue.empty()) {
@@ -681,12 +690,6 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
             if (sp.from_script) {
                 js = embedded_json_from_html(sp.script_marker, body);
             } else if (!toc_api_done && !sp.url_tpl.empty()) {
-                std::string ncode;
-                {
-                    static const std::regex nre(R"(/(n[0-9a-z]{4,12})(/|$))", std::regex::icase);
-                    std::smatch nm;
-                    if (std::regex_search(toc_url, nm, nre)) ncode = nm[1].str();
-                }
                 try {
                     js = http.fetch(replace_all(sp.url_tpl, "{ncode}", ncode), access, toc_url);
                 } catch (...) {
@@ -734,7 +737,11 @@ TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const st
             result.chapters.push_back(ch);
         }
         if (on_page) on_page(result);
-        for (auto& href : parser.parse_toc_page_hrefs(body)) pages.schedule(url, href);
+        for (auto& href : parser.parse_toc_page_hrefs(body)) {
+            // Range/next_link の url_template に残る {ncode} はここで共通解決する
+            // (collect_page_hrefs は {page} しか置換しない)。
+            pages.schedule(url, ncode.empty() ? href : replace_all(href, "{ncode}", ncode));
+        }
     }
     return result;
 }
@@ -1225,10 +1232,19 @@ Value op_fetch_toc(const DownloadOptions& opts) {
 }
 
 Value op_novel_info(const std::string& url) {
-    std::string domain = url_host(url);
-    Value preset = config::load_effective_preset(domain);
     HttpClient http;
-    return fetch_metadata_via_rules(url, preset, http);
+    // なろう族ホスト(R18作品は mnlt/mid ドメインに実体が無いケースがある)は
+    // 目次/ダウンロードと同様に族フォールバックで解決する。
+    std::string first_error;
+    for (auto& cand : family_url_candidates(url)) {
+        try {
+            Value preset = config::load_effective_preset(url_host(cand));
+            return fetch_metadata_via_rules(cand, preset, http);
+        } catch (const std::exception& e) {
+            if (first_error.empty()) first_error = e.what();
+        }
+    }
+    throw Error(first_error.empty() ? "info failed" : first_error);
 }
 
 Value op_test_site(const std::string& url, const std::string& yaml) {

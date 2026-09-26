@@ -1,4 +1,5 @@
 name: ネオページ
+builtin_rev: 2
 domain: www.neopage.com
 encoding: UTF-8
 top_url: https://www.neopage.com
@@ -35,10 +36,11 @@ body_selectors:
     extract: "inner_html"
 
 novel_info_selectors:
-  title: ".header-title-wrap .title, h1 .title"
-  author: ".author a, .author"
+  # 作品h1は style 属性付き(ロゴ/フッタのh1は無し)。著者リンクは /uid/ 含む絶対URL。
+  title: "h1[style], .header-title-wrap .title, h1 .title"
+  author: "a[href*='/uid/'], .author a"
   story: "meta[name='description']::attr(content)"
 
 append_title_to_folder_name: yes
 confirm_over18: no
-version: 1.0
+version: 1.1
