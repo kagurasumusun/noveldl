@@ -2,6 +2,10 @@
 #ifndef NC_HTTP_APPLE_H
 #define NC_HTTP_APPLE_H
 
+/* BOOL/YES/NO は objc/objc.h 純C定義。Foundation import 前にブリッジヘッダから
+ * include されても型が通るよう、このヘッダ単体で完結させる。 */
+#include <objc/objc.h>
+
 #include "../../include/novel_core.h"
 
 #ifdef __cplusplus
