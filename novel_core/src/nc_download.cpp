@@ -1609,7 +1609,7 @@ Value op_export_txt_zip(const Value& options) {
         ++count;
     }
     if (files.empty()) throw Error("missing downloaded bodies: " + std::to_string(missing));
-    files.emplace_back(title + "/" + title + " 全一話.txt", combined);
+    files.emplace_back(title + "/" + title + " 全話.txt", combined);
 
     std::string out_zip = options.get_str("output_zip");
     if (out_zip.empty()) {

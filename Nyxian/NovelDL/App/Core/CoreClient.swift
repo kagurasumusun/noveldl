@@ -51,6 +51,13 @@ final class CoreClient: Observable, @unchecked Sendable {
         set { withMutation(keyPath: \.covers) { _covers = newValue } }
     }
 
+    /// 共有シートから渡された作品アドレス。本棚が取り込んで空にする。
+    private var _pendingAddURL = ""
+    var pendingAddURL: String {
+        get { access(keyPath: \.pendingAddURL); return _pendingAddURL }
+        set { withMutation(keyPath: \.pendingAddURL) { _pendingAddURL = newValue } }
+    }
+
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -351,5 +358,46 @@ enum CoreError: Error, LocalizedError {
         case .badJSON: return "内部処理の結果を読めませんでした。"
         case .message(let text): return text
         }
+    }
+}
+
+/// 画面に出すエラー。英語の内部メッセージはそのまま出さない。
+enum UserFacingText {
+    static func message(_ error: Error, fallback: String) -> String {
+        let raw = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let mapped = known(raw) { return mapped }
+        if raw.contains(where: isJapanese) { return raw }
+        return fallback
+    }
+
+    /// novelios://add?url= から作品アドレスを取り出す。
+    static func addURL(from url: URL) -> String? {
+        guard url.scheme == "novelios", url.host == "add" else { return nil }
+        let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first { $0.name == "url" }?
+            .value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let raw, !raw.isEmpty else { return nil }
+        return raw
+    }
+
+    private static func known(_ raw: String) -> String? {
+        let s = raw.lowercased()
+        if s.contains("missing downloaded") { return "取得済みの本文がないため、書き出せません" }
+        if s.contains("no chapters") { return "目次がないため、書き出せません" }
+        if s.contains("library not found") { return "本棚のデータが見つかりません" }
+        if s.contains("novel not found") { return "この作品は本棚にありません" }
+        if s.contains("cannot write") { return "ファイルを書き出せませんでした" }
+        if s.contains("cancelled") || s.contains("canceled") { return "中止しました" }
+        if s.contains("offline") || s.contains("not connected") { return "ネットワークに接続できません" }
+        if s.contains("timed out") || s.contains("timeout") { return "接続がタイムアウトしました" }
+        if s.contains("429") { return "サイトが一時的に制限しています。少し待ってからもう一度試してください" }
+        return nil
+    }
+
+    private static func isJapanese(_ c: Character) -> Bool {
+        guard let v = c.unicodeScalars.first?.value else { return false }
+        return (0x3040...0x30FF).contains(v) || (0x4E00...0x9FFF).contains(v)
     }
 }

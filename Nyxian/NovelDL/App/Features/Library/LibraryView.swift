@@ -45,7 +45,7 @@ struct LibraryView: View {
                 }
                 .padding(.horizontal, Metrics.gutter)
                 .padding(.top, Spacing.l)
-                .padding(.bottom, 72)
+                .padding(.bottom, Spacing.xl)
             }
             .background(AppPalette.canvas.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
@@ -55,7 +55,7 @@ struct LibraryView: View {
                 get: { errorText != nil },
                 set: { if !$0 { errorText = nil } }
             )) {
-                Button("OK", role: .cancel) { errorText = nil }
+                Button("閉じる", role: .cancel) { errorText = nil }
             } message: {
                 Text(errorText ?? "")
             }
@@ -69,6 +69,11 @@ struct LibraryView: View {
         .task {
             await core.reloadLibrary()
             await refreshMetaIfStale()
+            await consumePendingAdd()
+        }
+        .onChange(of: core.pendingAddURL) { _, url in
+            guard !url.isEmpty else { return }
+            Task { await consumePendingAdd() }
         }
         // アプリが前面に戻ったときも小説の情報を更新する(最新の目次・改稿・完結状況)。
         .onChange(of: scenePhase) { _, phase in
@@ -316,6 +321,16 @@ struct LibraryView: View {
         }
     }
 
+    /// 共有から渡されたアドレスを、本棚の追加と同じ経路で取り込む。
+    private func consumePendingAdd() async {
+        let url = core.pendingAddURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty else { return }
+        core.pendingAddURL = ""
+        importUrl = url
+        showAddSheet = true
+        await runImport(url: url)
+    }
+
     private func runImport(url: String) async {
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -351,7 +366,7 @@ struct LibraryView: View {
             errorText = "「\(fetched.title)」を追加しました(目次のみ)。読み始めると続きを自動で取得します。"
         } catch {
             activeStatus = nil
-            errorText = "取り込みに失敗しました: \(error.localizedDescription)"
+            errorText = UserFacingText.message(error, fallback: "取り込みに失敗しました")
         }
     }
 }

@@ -998,6 +998,12 @@ struct ReaderView: View {
 
     private var bookmarkKey: String { "readerBookmarks" }
 
+    private func rememberLastChapter() {
+        var map = UserDefaults.standard.dictionary(forKey: "readerLastChapter") as? [String: String] ?? [:]
+        map[novelId] = chapterIndex
+        UserDefaults.standard.set(map, forKey: "readerLastChapter")
+    }
+
     private func loadBookmark() {
         let list = UserDefaults.standard.stringArray(forKey: bookmarkKey) ?? []
         bookmarked = list.contains("\(novelId)#\(chapterIndex)")
@@ -1368,8 +1374,9 @@ struct ReaderView: View {
             savedVersions = sec.versions ?? 0
             viewingOldVersion = false
             rebuild()
+            rememberLastChapter()
         } catch {
-            loadError = "読めませんでした: \(error.localizedDescription)"
+            loadError = UserFacingText.message(error, fallback: "この話を読めませんでした")
         }
     }
 

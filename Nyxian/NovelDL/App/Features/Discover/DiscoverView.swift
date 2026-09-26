@@ -32,7 +32,7 @@ struct DiscoverView: View {
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
         )) {
-            Button("OK", role: .cancel) { errorText = nil }
+            Button("閉じる", role: .cancel) { errorText = nil }
         } message: {
             Text(errorText ?? "")
         }
@@ -132,7 +132,7 @@ struct DiscoverView: View {
             }
             .padding(.horizontal, Metrics.gutter)
             .padding(.top, Spacing.l)
-            .padding(.bottom, 72)
+            .padding(.bottom, Spacing.xl)
         }
         // キーボードの出入りで結果一覧が押し動かされないようにする。
         .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -313,7 +313,7 @@ struct DiscoverView: View {
                 ? nil
                 : "一部のサイトは応答しませんでした（\(outcome.failures.count)）"
         } catch {
-            errorText = error.localizedDescription
+            errorText = UserFacingText.message(error, fallback: "検索できませんでした")
         }
     }
 
@@ -402,7 +402,7 @@ struct DiscoverView: View {
             Haptics.success()
             errorText = "「\(toc.title)」を本棚に追加しました(目次のみ)。\n読み始めると続きを自動で取得します。"
         } catch {
-            errorText = error.localizedDescription
+            errorText = UserFacingText.message(error, fallback: "追加できませんでした")
         }
     }
 }

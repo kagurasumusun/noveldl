@@ -63,32 +63,31 @@ struct NovelDetailView: View {
         }
         .background(AppPalette.canvas.ignoresSafeArea())
         .coordinateSpace(name: "detailScroll")
-        .overlay(alignment: .bottomTrailing) {
-            // スクロールしたら「上端へ戻る」チップを出す。
-            if showScrollTop {
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                // 上端（題名）をタップすると最上部へ戻る。下端には置かない。
                 Button {
                     Haptics.tap()
                     withAnimation(.easeInOut(duration: 0.3)) {
                         proxy.scrollTo("detailTop", anchor: .top)
                     }
                 } label: {
-                    Image(systemName: "chevron.up")
-                        .font(AppFont.ui(13, weight: .semibold))
-                        .foregroundStyle(AppPalette.ink)
-                        .frame(width: 36, height: 36)
-                        .background(Circle().fill(AppPalette.canvas.opacity(0.97)))
-                        .overlay(Circle().strokeBorder(AppPalette.hairline, lineWidth: 1))
-                        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                    HStack(spacing: 4) {
+                        if showScrollTop {
+                            Image(systemName: "chevron.up")
+                                .font(AppFont.ui(11, weight: .semibold))
+                        }
+                        Text(item.title)
+                            .font(AppFont.ui(15, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(AppPalette.ink)
+                    .frame(maxWidth: 220)
                 }
-                .buttonStyle(PressableButtonStyle())
-                .padding(.trailing, Spacing.m)
-                .padding(.bottom, 88)
-                .transition(.opacity)
             }
         }
-        }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(item: $readerRoute) { route in
             ReaderView(novelId: route.novelId, startAt: route.index, title: route.title, tocUrl: route.tocUrl)
         }
@@ -127,11 +126,12 @@ struct NovelDetailView: View {
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
         )) {
-            Button("OK", role: .cancel) { errorText = nil }
+            Button("閉じる", role: .cancel) { errorText = nil }
         } message: {
             Text(errorText ?? "")
         }
         .task { await reload() }
+        }
     }
 
     // MARK: 書誌(書影の布を帯に展開した装丁)
@@ -279,7 +279,7 @@ struct NovelDetailView: View {
                 }, label: {
                     HStack(spacing: 6) {
                         Image(systemName: "book")
-                        Text(resume != nil ? "読む(続きから)" : "読む(先頭)")
+                        Text(resume != nil ? "続きから読む" : "先頭から読む")
                     }
                     .font(AppFont.ui(15, weight: .semibold))
                     .foregroundStyle(AppPalette.ember)
@@ -467,6 +467,11 @@ struct NovelDetailView: View {
 
     /// 栞(ブックマーク)に記憶した続きの話index。詳細内に存在する話のみ返す。
     private func resumeChapterIndex() -> String? {
+        if let map = UserDefaults.standard.dictionary(forKey: "readerLastChapter") as? [String: String],
+           let idx = map[item.novelId],
+           detail?.chapters.contains(where: { $0.index == idx }) == true {
+            return idx
+        }
         let list = UserDefaults.standard.stringArray(forKey: "readerBookmarks") ?? []
         let prefix = item.novelId + "#"
         for entry in list.reversed() where entry.hasPrefix(prefix) {
@@ -575,10 +580,34 @@ struct NovelDetailView: View {
     private func exportZip() async {
         do {
             let result = try await core.exportZip(novelId: item.novelId)
-            errorText = "\(result.files)ファイルを書き出しました: \(result.zipPath)"
+            let url = URL(fileURLWithPath: result.zipPath)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                errorText = "書き出したファイルが見つかりません"
+                return
+            }
+            presentShare(url, missing: result.missingBodies ?? 0)
         } catch {
-            errorText = error.localizedDescription
+            errorText = UserFacingText.message(error, fallback: "書き出せませんでした")
         }
+    }
+
+    private func presentShare(_ url: URL, missing: Int) {
+        let av = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        if missing > 0 {
+            av.completionWithItemsHandler = { _, _, _, _ in
+                DispatchQueue.main.async {
+                    self.errorText = "未取得の \(missing) 話は含めていません"
+                }
+            }
+        }
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let root = scene.keyWindow?.rootViewController else {
+            errorText = "共有画面を開けませんでした"
+            return
+        }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
+        top.present(av, animated: true)
     }
 }
 

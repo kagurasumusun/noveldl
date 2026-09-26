@@ -1,16 +1,17 @@
 import UIKit
 import UniformTypeIdentifiers
 
-/// Share extension — hand a TOC URL to the shelf and fetch it in place.
+/// 共有された作品アドレスを本体アプリへ渡す。
+/// 拡張機能の書類フォルダへ保存すると本棚に出ないため、ここでは取得しない。
 final class ShareViewController: UIViewController {
     private let statusLabel = UILabel()
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.964, green: 0.952, blue: 0.925, alpha: 1)
+        view.backgroundColor = UIColor(red: 0.106, green: 0.102, blue: 0.094, alpha: 1)
 
         statusLabel.font = .preferredFont(forTextStyle: .body)
-        statusLabel.textColor = UIColor(red: 0.13, green: 0.12, blue: 0.1, alpha: 1)
+        statusLabel.textColor = UIColor(red: 0.925, green: 0.910, blue: 0.878, alpha: 1)
         statusLabel.textAlignment = .center
         statusLabel.numberOfLines = 0
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -24,80 +25,61 @@ final class ShareViewController: UIViewController {
     }
 
     private func handleIncoming() {
-        nc_http_apple_install()
-        let root = sharedLibraryRoot().path
-        _ = callCore { novel_core_set_root_dir(root) }
-
         guard let item = extensionContext?.inputItems.first as? NSExtensionItem,
-            let provider = item.attachments?.first
+              let provider = item.attachments?.first
         else {
-            finish("Nothing to save.")
+            finish("渡すものがありません")
             return
         }
 
         if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
             provider.loadItem(forTypeIdentifier: UTType.url.identifier) { [weak self] data, _ in
                 guard let self, let url = data as? URL else {
-                    self?.finish("Could not read the shared URL.")
+                    self?.finish("共有されたアドレスを読めませんでした")
                     return
                 }
-                self.importURL(url: url)
+                self.handOff(url)
             }
         } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
             provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) { [weak self] data, _ in
-                guard let self, let text = data as? String, let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-                    self?.finish("Could not read the shared text.")
+                guard let self,
+                      let text = data as? String,
+                      let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines))
+                else {
+                    self?.finish("共有された文字を読めませんでした")
                     return
                 }
-                self.importURL(url: url)
+                self.handOff(url)
             }
         } else {
-            finish("Unsupported share payload.")
+            finish("この形式には対応していません")
         }
     }
 
-    private func importURL(url: URL) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let slug = url.absoluteString
-                .replacingOccurrences(of: "https://", with: "")
-                .replacingOccurrences(of: "/", with: "_")
-            let dir = self?.sharedLibraryRoot()
-                .appendingPathComponent(slug, isDirectory: true).path ?? ""
-            struct Box: Encodable { let url: String; let output_dir: String }
-            let enc = JSONEncoder()
-            enc.outputFormatting = [.withoutEscapingSlashes]
-            let data = (try? enc.encode(Box(url: url.absoluteString, output_dir: dir))) ?? Data()
-            let options = String(data: data, encoding: .utf8) ?? "{}"
-            guard let cstr = novel_core_fetch_toc(options) else {
-                self?.finish("Fetch failed.")
+    private func handOff(_ url: URL) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            var parts = URLComponents()
+            parts.scheme = "novelios"
+            parts.host = "add"
+            parts.queryItems = [URLQueryItem(name: "url", value: url.absoluteString)]
+            guard let open = parts.url else {
+                self.finish("アドレスを渡せませんでした")
                 return
             }
-            let payload = String(cString: cstr)
-            novel_core_string_free(cstr)
-            let ok = payload.contains("\"ok\":true")
-            DispatchQueue.main.async {
-                self?.finish(ok ? "Saved “\(url.host ?? url.absoluteString)” to your shelf." : "Fetch failed — check the site preset.")
+            self.extensionContext?.open(open) { ok in
+                self.finish(ok
+                    ? "本棚に追加しています"
+                    : "アプリを開けませんでした。アドレスをコピーして、本棚から追加してください。",
+                    linger: ok ? 1.2 : 2.4)
             }
         }
     }
 
-    private func callCore(_ body: () -> UnsafeMutablePointer<CChar>?) -> String? {
-        guard let cstr = body() else { return nil }
-        defer { novel_core_string_free(cstr) }
-        return String(cString: cstr)
-    }
-
-    private func sharedLibraryRoot() -> URL {
-        let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dir = base.appendingPathComponent("NovelLibrary", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }
-
-    private func finish(_ message: String) {
+    private func finish(_ message: String, linger: TimeInterval = 1.2) {
         DispatchQueue.main.async {
             self.statusLabel.text = message
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + linger) {
                 self.extensionContext?.completeRequest(returningItems: nil)
             }
         }
