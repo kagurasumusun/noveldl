@@ -136,20 +136,23 @@ static NSString* nc_webview_fetch(NSURL* url, NSTimeInterval timeout,
                         cookies = list;
                         if (one && nc_looks_like_challenge(0, [one dataUsingEncoding:NSUTF8StringEncoding])) {
                           /* まだチャレンジ中: 再挑戦して 1 回だけ待ち直す */
-                          dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                                       (int64_t)(4.5 * NSEC_PER_SEC)),
-                                         dispatch_get_main_queue(), ^{
-                            [wv evaluateJavaScript:@"document.documentElement.outerHTML"
-                                 completionHandler:^(id r2, NSError* e2) {
-                                   (void)e2;
-                                   finish([r2 isKindOfClass:[NSString class]] ? r2 : one);
-                                 }];
-                          });
+                          dispatch_after(
+                              dispatch_time(DISPATCH_TIME_NOW,
+                                            (int64_t)(4.5 * NSEC_PER_SEC)),
+                              dispatch_get_main_queue(), ^{
+                                [wv evaluateJavaScript:
+                                         @"document.documentElement.outerHTML"
+                                     completionHandler:^(id r2, NSError* e2) {
+                                       (void)e2;
+                                       finish([r2 isKindOfClass:[NSString class]] ? r2
+                                                                                 : one);
+                                     }];
+                              });
                         } else {
                           finish(one);
                         }
                       }];
-                }]);
+                }];
       });
 
       /* 安全弁: cap を過ぎたら諦める */
