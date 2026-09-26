@@ -3,6 +3,8 @@
 
 #include "nc_common.h"
 #include "nc_value.h"
+#include "nc_rules.h"
+#include "nc_http.h"
 
 namespace nc {
 
@@ -17,6 +19,14 @@ struct DownloadOptions {
     static DownloadOptions from_json(const Value& v);
 };
 
+struct TocResult {
+    std::string title;
+    std::string author;
+    std::vector<Chapter> chapters;
+};
+TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const std::string& domain,
+                          const Value& preset, const std::string& initial_html,
+                          const std::function<void(const TocResult&)>& on_page);
 Value op_download(const DownloadOptions& opts);
 Value op_fetch_toc(const DownloadOptions& opts);
 Value op_novel_info(const std::string& url);

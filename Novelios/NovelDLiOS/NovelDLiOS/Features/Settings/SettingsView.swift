@@ -13,6 +13,9 @@ struct SettingsView: View {
     @State private var showNewPreset = false
     @State private var showImporter = false
     @State private var importedDraft: String?
+    /// サイト別クッキー(bot対策の手動取り込み。WKWebView を使わない経路)。
+    @AppStorage("manualCookieDomain") private var manualCookieDomain = ""
+    @AppStorage("manualCookieValue") private var manualCookieValue = ""
 
     private var appVersion: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -43,6 +46,33 @@ struct SettingsView: View {
                             step: 1,
                             suffix: "秒"
                         )
+                    }
+
+                    sectionCard(
+                        title: "サイト別クッキー",
+                        footer: "Bot検証で取得できないサイト用。Safari で対象サイトを一度開いて通過した後、クッキー名=値(例: cf_clearance=xxx)を貼ると、このアプリの通信にだけそのクッキーが送られます。WKWebView を使わない方式です。"
+                    ) {
+                        TextField("ドメイン(例: novelup.plus)", text: $manualCookieDomain)
+                            .font(AppFont.ui(14).monospacedDigit())
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .padding(Spacing.s)
+                            .background(AppPalette.canvas)
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AppPalette.hairline, lineWidth: 1))
+                        TextField("クッキー(名前=値)", text: $manualCookieValue)
+                            .font(AppFont.ui(14).monospacedDigit())
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .padding(Spacing.s)
+                            .background(AppPalette.canvas)
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AppPalette.hairline, lineWidth: 1))
+                        QuietButton(title: "この設定を適用", systemImage: "checkmark") {
+                            let d = manualCookieDomain.trimmingCharacters(in: .whitespaces)
+                            let v = manualCookieValue.trimmingCharacters(in: .whitespaces)
+                            guard !d.isEmpty, !v.isEmpty else { return }
+                            core.setDomainCookie(domain: d, cookie: v)
+                            Haptics.success()
+                        }
                     }
 
                     siteCatalog

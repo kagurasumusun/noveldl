@@ -205,11 +205,6 @@ struct TocPageQueue {
     }
 };
 
-struct TocResult {
-    std::vector<Chapter> chapters;
-    std::string title;
-    std::string author;
-};
 
 namespace {
 std::string image_ext_for(const std::string& url) {
@@ -276,58 +271,6 @@ void fetch_section_images(HttpClient& http, const AccessSettings& access,
 }
 }  // namespace
 
-TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const std::string& domain,
-                          const Value& preset, const std::string& initial_html,
-                          const std::function<void(const TocResult&)>& on_page) {
-    RulesParser parser(preset);
-    TocPageQueue pages;
-    pages.scheduled.insert(toc_url);
-    if (!initial_html.empty())
-        pages.queue.emplace_back(toc_url, initial_html);
-    else
-        pages.queue.emplace_back(toc_url, std::nullopt);
-
-    TocResult result;
-    std::set<std::string> seen_chapters;
-    std::set<std::string> seen_indices;
-    AccessSettings access = AccessSettings::from_preset(preset);
-    int fetched_pages = 0;
-    while (!pages.queue.empty()) {
-        pages.sort_queue();
-        if (++fetched_pages > 400) break;  // 異常なページ連鎖の保険
-        if (cancel_requested()) throw Error("cancelled");
-        auto [url, html] = pages.queue.front();
-        pages.queue.pop_front();
-        std::string body = html ? *html
-                              : http.fetch(url == toc_url ? apply_fetch_url_template(preset, url) : url,
-                                           access, toc_url);
-        ParsedToc toc = parser.parse_toc(body);
-        if (result.title.empty() && toc.title) result.title = *toc.title;
-        if (result.author.empty() && toc.author) result.author = *toc.author;
-        for (auto& ch : toc.chapters) {
-            if (!seen_chapters.insert(ch.href).second) continue;
-            // なろう系など、ページ内での連番("1","2",...)しか取れないサイトでは
-            // 2ページ目以降も毎回 1 から採番され直すため、そのまま使うと
-            // sections テーブルの PRIMARY KEY(novel_id, chapter_index) が
-            // 1ページ目の話数と衝突し、後から読んだページ(=最新ページ)の内容で
-            // 前のページの話を上書きしてしまう(結果的に最後のページ分しか
-            // 残らないように見える)。同じ index が既に使われていた場合のみ、
-            // 通し番号(これまでに確定した話数+1)へ振り直して重複を避ける。
-            if (!seen_indices.insert(ch.index).second) {
-                std::string fresh;
-                long long candidate = (long long)result.chapters.size() + 1;
-                do {
-                    fresh = std::to_string(candidate++);
-                } while (!seen_indices.insert(fresh).second);
-                ch.index = fresh;
-            }
-            result.chapters.push_back(ch);
-        }
-        if (on_page) on_page(result);
-        for (auto& href : parser.parse_toc_page_hrefs(body)) pages.schedule(url, href);
-    }
-    return result;
-}
 
 std::optional<std::pair<std::string, std::string>> split_pair(const std::string& s, char sep) {
     size_t at = s.find(sep);
@@ -523,6 +466,278 @@ Value fetch_metadata_via_rules(const std::string& url, const Value& preset, Http
 }
 
 } // namespace
+// ── API / 埋め込みJSON 型サイトの共通エンジン(YAML 宣言だけで動く) ────────
+//
+// toc_api:                # 目次(話のリスト)を JSON から組み立てる
+//   from: script          # script(本文書に埋め込み) | url(API を取得)
+//   script_marker: "__NEXT_DATA__"      # from: script 時の <script id="...">
+//   url: "https://api.example.com/works/{ncode}/episodes"   # from: url 時
+//   data_path: "props.pageProps.__APOLLO_STATE__"  # JSON 内の位置(空ならルート)
+//   key_prefix: "Episode:"              # data が map のときのキー前方フィルタ
+//   fields:                             # 値の取り出し(JSONパス)
+//     subtitle: "title"
+//     id: "id"
+//     chapter: "chapter_title"          # 任意
+//     subupdate: "publishedAt"          # 任意
+//   href_template: "episodes/{id}"      # 任意({id} を置換)
+//   sort_by: "publishedAt"              # 任意。文字列比較で安定ソート
+//
+// section_api:            # 本文を JSON API から取得する
+//   url: "https://api.example.com/episodes/{id}"   # {id} {href} {url} {ncode} が使える
+//   data_path: ""         # 任意
+//   fields:
+//     body: "content"
+//     introduction: "preface"           # 任意
+//     postscript: "afterword"           # 任意
+//
+// サイト固有の処理は C++ に書かない。宣言をサイト別 YAML に足すだけ。
+struct ApiTocSpec {
+    bool from_script = false;
+    std::string script_marker;
+    std::string url_tpl;
+    std::string data_path;
+    std::string key_prefix;
+    std::vector<std::pair<std::string, std::string>> fields;  // target -> json path
+    std::string href_tpl;
+    std::string sort_by;
+};
+
+static ApiTocSpec parse_api_toc_spec(const Value& tapi) {
+    ApiTocSpec sp;
+    sp.from_script = tapi.get_str("from", "url") == "script";
+    sp.script_marker = tapi.get_str("script_marker", "__NEXT_DATA__");
+    sp.url_tpl = tapi.get_str("url", "");
+    sp.data_path = tapi.get_str("data_path", "");
+    sp.key_prefix = tapi.get_str("key_prefix", "");
+    sp.href_tpl = tapi.get_str("href_template", "");
+    sp.sort_by = tapi.get_str("sort_by", "");
+    if (const Value* f = tapi.get("fields")) {
+        for (auto& kv : f->map) {
+            if (kv.second.is_str() && !kv.second.s.empty()) {
+                sp.fields.emplace_back(kv.first, kv.second.s);
+            }
+        }
+    }
+    return sp;
+}
+
+static size_t api_toc_from_json(const ApiTocSpec& sp, const Value& j,
+                                std::vector<Chapter>& out) {
+    const Value* data = sp.data_path.empty() ? &j : json_path(j, sp.data_path);
+    if (!data) return 0;
+    std::vector<const Value*> items;
+    if (data->is_array()) {
+        for (auto& e : data->arr) items.push_back(&e);
+    } else if (data->is_map()) {
+        for (auto& kv : data->map) {
+            if (!sp.key_prefix.empty() &&
+                kv.first.rfind(sp.key_prefix, 0) != 0) continue;
+            items.push_back(&kv.second);
+        }
+    }
+    struct Draft { Chapter ch; std::string sort_key; };
+    std::vector<Draft> drafts;
+    for (const Value* e : items) {
+        std::string subtitle, id, chapter, subupdate;
+        for (auto& f : sp.fields) {
+            auto v = json_path_string(*e, f.second);
+            if (!v) continue;
+            if (f.first == "subtitle") subtitle = *v;
+            else if (f.first == "id") id = *v;
+            else if (f.first == "chapter") chapter = *v;
+            else if (f.first == "subupdate") subupdate = *v;
+        }
+        if (subtitle.empty() && id.empty()) continue;
+        Chapter ch;
+        ch.subtitle = subtitle;
+        ch.href = sp.href_tpl.empty() ? id : replace_all(sp.href_tpl, "{id}", id);
+        if (!chapter.empty()) ch.chapter = chapter;
+        if (!subupdate.empty()) ch.subupdate = subupdate;
+        drafts.push_back({std::move(ch), sp.sort_by.empty() ? std::string()
+                                                : json_path_string(*e, sp.sort_by).value_or("")});
+    }
+    if (!sp.sort_by.empty()) {
+        std::stable_sort(drafts.begin(), drafts.end(),
+                         [](const Draft& a, const Draft& b) { return a.sort_key < b.sort_key; });
+    }
+    for (size_t k = 0; k < drafts.size(); ++k) {
+        if (drafts[k].ch.index.empty()) drafts[k].ch.index = std::to_string(k + 1);
+        out.push_back(std::move(drafts[k].ch));
+    }
+    return drafts.size();
+}
+
+// 埋め込み JSON(<script id="__NEXT_DATA__">{...}</script> 等を HTML から抜く)。
+// 正規表現は巨大 HTML でバックトラックが爆発するため、素直な文字列走査で行う。
+static std::string embedded_json_from_html(const std::string& marker,
+                                           const std::string& html) {
+    auto lower_find = [](const std::string& hay, const std::string& needle,
+                         size_t from) -> size_t {
+        if (needle.empty() || hay.size() < needle.size()) return std::string::npos;
+        for (size_t i = from; i + needle.size() <= hay.size(); ++i) {
+            size_t j = 0;
+            while (j < needle.size() &&
+                   std::tolower((unsigned char)hay[i + j]) ==
+                       std::tolower((unsigned char)needle[j]))
+                ++j;
+            if (j == needle.size()) return i;
+        }
+        return std::string::npos;
+    };
+    // 1) <script id="marker" ...> JSON </script>
+    {
+        const std::string pat = "id=\"" + marker + "\"";
+        size_t p = lower_find(html, pat, 0);
+        if (p == std::string::npos) {
+            const std::string pat2 = "id=" + marker;  // 引用符なし
+            p = lower_find(html, pat2, 0);
+        }
+        if (p != std::string::npos) {
+            size_t gt = html.find('>', p);
+            size_t end = (gt == std::string::npos)
+                             ? std::string::npos
+                             : lower_find(html, "</script", gt);
+            if (gt != std::string::npos && end != std::string::npos) {
+                std::string body = trim(html.substr(gt + 1, end - gt - 1));
+                if (!body.empty()) return body;
+            }
+        }
+    }
+    // 2) marker = {...}; 形式(window.__INITIAL_STATE__ 等)。波括弧の対応で取る。
+    {
+        size_t p = lower_find(html, marker, 0);
+        while (p != std::string::npos) {
+            size_t brace = html.find('{', p + marker.size());
+            // marker と { の間に '=' が必要(別の語の一部を掴まない)
+            if (brace != std::string::npos) {
+                std::string between = html.substr(p + marker.size(), brace - p - marker.size());
+                if (between.find('=') != std::string::npos &&
+                    between.find(';') == std::string::npos) {
+                    int depth = 0;
+                    bool in_str = false;
+                    char quote = 0;
+                    for (size_t i = brace; i < html.size(); ++i) {
+                        char c = html[i];
+                        if (in_str) {
+                            if (c == '\\') {
+                                ++i;
+                            } else if (c == quote) {
+                                in_str = false;
+                            }
+                            continue;
+                        }
+                        if (c == '"' || c == '\'') {
+                            in_str = true;
+                            quote = c;
+                        } else if (c == '{') {
+                            ++depth;
+                        } else if (c == '}') {
+                            if (--depth == 0) {
+                                return html.substr(brace, i - brace + 1);
+                            }
+                        }
+                    }
+                }
+            }
+            p = lower_find(html, marker, p + marker.size());
+        }
+    }
+    return "";
+}
+
+TocResult fetch_toc_pages(HttpClient& http, const std::string& toc_url, const std::string& domain,
+                          const Value& preset, const std::string& initial_html,
+                          const std::function<void(const TocResult&)>& on_page) {
+    RulesParser parser(preset);
+    TocPageQueue pages;
+    pages.scheduled.insert(toc_url);
+    if (!initial_html.empty())
+        pages.queue.emplace_back(toc_url, initial_html);
+    else
+        pages.queue.emplace_back(toc_url, std::nullopt);
+
+    TocResult result;
+    std::set<std::string> seen_chapters;
+    std::set<std::string> seen_indices;
+    AccessSettings access = AccessSettings::from_preset(preset);
+    int fetched_pages = 0;
+    bool toc_api_done = false;
+    while (!pages.queue.empty()) {
+        pages.sort_queue();
+        if (++fetched_pages > 400) break;  // 異常なページ連鎖の保険
+        if (cancel_requested()) throw Error("cancelled");
+        auto [url, html] = pages.queue.front();
+        pages.queue.pop_front();
+        std::string body = html ? *html
+                              : http.fetch(url == toc_url ? apply_fetch_url_template(preset, url) : url,
+                                           access, toc_url);
+        ParsedToc toc = parser.parse_toc(body);
+        if (result.title.empty() && toc.title) result.title = *toc.title;
+        if (result.author.empty() && toc.author) result.author = *toc.author;
+        // API/埋め込みJSON 型の目次(toc_api): HTML と併用できる(href で重複除去)。
+        if (const Value* tapi = preset.get("toc_api")) {
+            ApiTocSpec sp = parse_api_toc_spec(*tapi);
+            std::string js;
+            if (sp.from_script) {
+                js = embedded_json_from_html(sp.script_marker, body);
+            } else if (!toc_api_done && !sp.url_tpl.empty()) {
+                std::string ncode;
+                {
+                    static const std::regex nre(R"(/(n[0-9a-z]{4,12})(/|$))", std::regex::icase);
+                    std::smatch nm;
+                    if (std::regex_search(toc_url, nm, nre)) ncode = nm[1].str();
+                }
+                try {
+                    js = http.fetch(replace_all(sp.url_tpl, "{ncode}", ncode), access, toc_url);
+                } catch (...) {
+                }
+                toc_api_done = true;
+            }
+            if (!js.empty()) {
+                try {
+                    Value j = json_parse(js);
+                    std::vector<Chapter> more;
+                    api_toc_from_json(sp, j, more);
+                    for (auto& ch : more) {
+                        if (!seen_chapters.insert(ch.href).second) continue;
+                        if (!seen_indices.insert(ch.index).second) {
+                            std::string fresh;
+                            long long cand = (long long)result.chapters.size() + 1;
+                            do { fresh = std::to_string(cand++); }
+                            while (!seen_indices.insert(fresh).second);
+                            ch.index = fresh;
+                        }
+                        result.chapters.push_back(ch);
+                    }
+                } catch (...) {
+                    // API が失敗しても HTML 側の目次は生かす
+                }
+            }
+        }
+        for (auto& ch : toc.chapters) {
+            if (!seen_chapters.insert(ch.href).second) continue;
+            // なろう系など、ページ内での連番("1","2",...)しか取れないサイトでは
+            // 2ページ目以降も毎回 1 から採番され直すため、そのまま使うと
+            // sections テーブルの PRIMARY KEY(novel_id, chapter_index) が
+            // 1ページ目の話数と衝突し、後から読んだページ(=最新ページ)の内容で
+            // 前のページの話を上書きしてしまう(結果的に最後のページ分しか
+            // 残らないように見える)。同じ index が既に使われていた場合のみ、
+            // 通し番号(これまでに確定した話数+1)へ振り直して重複を避ける。
+            if (!seen_indices.insert(ch.index).second) {
+                std::string fresh;
+                long long candidate = (long long)result.chapters.size() + 1;
+                do {
+                    fresh = std::to_string(candidate++);
+                } while (!seen_indices.insert(fresh).second);
+                ch.index = fresh;
+            }
+            result.chapters.push_back(ch);
+        }
+        if (on_page) on_page(result);
+        for (auto& href : parser.parse_toc_page_hrefs(body)) pages.schedule(url, href);
+    }
+    return result;
+}
 
 DownloadOptions DownloadOptions::from_json(const Value& v) {
     DownloadOptions o;
@@ -759,9 +974,7 @@ Value op_download(const DownloadOptions& opts) {
             flush();
             throw Error("cancelled");
         }
-        std::string body_html;
-        try {
-            std::string join_base = toc_url_used.empty() ? opts.url : toc_url_used;
+        std::string join_base = toc_url_used.empty() ? opts.url : toc_url_used;
         {
             std::string path = url_path(join_base);
             auto sl = path.rfind('/');
@@ -771,6 +984,58 @@ Value op_download(const DownloadOptions& opts) {
                 join_base += '/';
         }
         std::string abs = url_absolute(join_base, ch.href);
+
+        // API型サイト(section_api): 本文を JSON API から(YAML 宣言のみで動く)。
+        ParsedSection sec;
+        bool sec_from_api = false;
+        if (const Value* sapi = preset.get("section_api")) {
+            std::string tpl = sapi->get_str("url", "");
+            if (!tpl.empty()) {
+                try {
+                    std::string id = ch.href;
+                    {
+                        while (!id.empty() && (id.back() == '/' || id.back() == '?')) id.pop_back();
+                        auto q = id.find('?');
+                        if (q != std::string::npos) id = id.substr(0, q);
+                        auto sl2 = id.rfind('/');
+                        id = sl2 == std::string::npos ? id : id.substr(sl2 + 1);
+                    }
+                    std::string ncode;
+                    {
+                        static const std::regex nre(R"(/(n[0-9a-z]{4,12})(/|$))", std::regex::icase);
+                        std::smatch nm;
+                        if (std::regex_search(join_base, nm, nre)) ncode = nm[1].str();
+                    }
+                    std::string api_url = replace_all(tpl, "{id}", id);
+                    api_url = replace_all(api_url, "{href}", ch.href);
+                    api_url = replace_all(api_url, "{url}", abs);
+                    api_url = replace_all(api_url, "{ncode}", ncode);
+                    std::string js = http.fetch(api_url, access, opts.url);
+                    Value j = json_parse(js);
+                    std::string dp = sapi->get_str("data_path", "");
+                    const Value* obj = dp.empty() ? &j : json_path(j, dp);
+                    if (obj) {
+                        std::string body, intro, post;
+                        if (const Value* f = sapi->get("fields")) {
+                            body = json_path_string(*obj, f->get_str("body", "")).value_or("");
+                            intro = json_path_string(*obj, f->get_str("introduction", "")).value_or("");
+                            post = json_path_string(*obj, f->get_str("postscript", "")).value_or("");
+                        }
+                        if (!body.empty()) {
+                            sec.body = body;
+                            if (!intro.empty()) sec.introduction = intro;
+                            if (!post.empty()) sec.postscript = post;
+                            sec_from_api = true;
+                        }
+                    }
+                } catch (...) {
+                    // 失敗時は通常の HTML 取得へフォールバック
+                }
+            }
+        }
+        if (!sec_from_api) {
+        std::string body_html;
+        try {
             body_html = http.fetch(apply_fetch_url_template(preset, abs, true), access, opts.url);
         } catch (const std::exception& e) {
             if (std::getenv("NC_DEBUG")) std::fprintf(stderr, "[dl-fail] fetch %s: %s\n", ch.href.c_str(), e.what());
@@ -779,7 +1044,6 @@ Value op_download(const DownloadOptions& opts) {
                          "取得失敗: " + ch.subtitle, true);
             continue;
         }
-        ParsedSection sec;
         try {
             sec = parser.parse_section(body_html);
         } catch (const std::exception& e) {
@@ -788,6 +1052,7 @@ Value op_download(const DownloadOptions& opts) {
             set_progress(total, downloaded, skipped, failed,
                          "解析失敗: " + ch.subtitle, true);
             continue;
+        }
         }
         // 挿絵・画像は取得時にローカル保存(小説追加=全話取得に伴って揃う)。
         {

@@ -335,6 +335,39 @@ static void test_rules_hameln() {
     CHECK_EQ(toc.chapters[0].subupdate.value_or(""), std::string("revised"));
 }
 
+static void test_toc_api_embedded_json() {
+    // API/埋め込みJSON 型サイトの共通エンジン: <script id> の JSON から目次を作る。
+    Value preset = Value::map_();
+    preset.set("domain", Value::string("example.test"));
+    Value tapi = Value::map_();
+    tapi.set("from", Value::string("script"));
+    tapi.set("script_marker", Value::string("__NEXT_DATA__"));
+    tapi.set("data_path", Value::string("props.episodes"));
+    tapi.set("sort_by", Value::string("publishedAt"));
+    tapi.set("href_template", Value::string("episodes/{id}"));
+    Value fields = Value::map_();
+    fields.set("subtitle", Value::string("title"));
+    fields.set("id", Value::string("id"));
+    tapi.set("fields", fields);
+    preset.set("toc_api", tapi);
+
+    std::string html = R"(<html><body>
+        <script id="__NEXT_DATA__" type="application/json">{"props":{"episodes":[
+            {"id":"e2","title":"第2話","publishedAt":"2026-02-01T00:00:00Z"},
+            {"id":"e1","title":"第1話","publishedAt":"2026-01-01T00:00:00Z"},
+            {"id":"e3","title":"第3話","publishedAt":"2026-03-01T00:00:00Z"}]}}</script>
+        </body></html>)";
+    HttpClient http;
+    TocResult r = fetch_toc_pages(http, "https://example.test/w/1/", "example.test",
+                                  preset, html, nullptr);
+    CHECK_EQ(r.chapters.size(), (size_t)3);
+    if (r.chapters.size() == 3) {
+        CHECK_EQ(r.chapters[0].subtitle, std::string("第1話"));
+        CHECK_EQ(r.chapters[0].href, std::string("episodes/e1"));
+        CHECK_EQ(r.chapters[2].subtitle, std::string("第3話"));
+    }
+}
+
 static void test_rules_narou_full_toc() {
     config::seed_default_presets();
     RulesParser parser(config::load_effective_preset("ncode.syosetu.com"));
@@ -574,6 +607,7 @@ int main() {
     RUN(test_html_select);
     RUN(test_image_srcs);
     RUN(test_toc_next_page_detection);
+    RUN(test_toc_api_embedded_json);
     RUN(test_rules_injection);
     RUN(test_rules_page_range);
     RUN(test_rules_custom_site_no_defaults);

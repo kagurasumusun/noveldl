@@ -197,6 +197,20 @@ novel_info_selectors:
   # 2025年以降の新レイアウト(CSSモジュール名)に対応
   story: "div[class*='CollapseTextWithKakuyomuLinks_collapseText']"
   status: "ul[class*='Meta_disc'] div:contains(連載中), ul[class*='Meta_disc'] div:contains(完結済)"
+
+# 目次の予備経路: ページ埋め込み JSON(__NEXT_DATA__)から話リストを組み立てる。
+# HTML セレクタが効かない将来のレイアウト変更でも取得を続けられる。
+# (toc_api エンジン: href で重複除去されるので HTML 目次と併用可)
+toc_api:
+  from: script
+  script_marker: "__NEXT_DATA__"
+  data_path: "props.pageProps.__APOLLO_STATE__"
+  key_prefix: "Episode:"
+  fields:
+    subtitle: "title"
+    id: "id"
+  href_template: "episodes/{id}"
+  sort_by: "publishedAt"
 # ------------------------------------------------------------
 # 横断検索メタ情報
 confirm_over18: no
