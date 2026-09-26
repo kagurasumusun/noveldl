@@ -5,18 +5,21 @@
  * run an ephemeral NSURLSession data task and wait on a semaphore.  Cookies
  * are reported back as set_cookies lines ("name=value; domain=..; path=/"),
  * the core stores them per domain and replays them via the Cookie header.
+ *
+ * WKWebView challenge fallback is resolved at RUNTIME (objc_getClass /
+ * NSClassFromString) and this file does NOT link WebKit.framework.  On-device
+ * IDE builds (no "-framework WebKit" in the link line) therefore still
+ * compile & run; if WKWebView is unavailable the fallback is simply skipped.
  */
 #import <Foundation/Foundation.h>
-#import <WebKit/WebKit.h>
+#import <UIKit/UIKit.h>
+#import <objc/runtime.h>
+#import <objc/message.h>
 #include <stdlib.h>
 #include <string.h>
 #include "nc_http_apple.h"
 
-/* ── scene-aware key window / navigation completion ──────────────────── */
-#import <UIKit/UIKit.h>
-
-/* 常に scene API だけを使う(iOS15+ で UIApplication.windows/keyWindow は
- * 非推奨、iOS17 SDK では deprecated 警告がエラー扱いになるため)。 */
+/* ── scene-aware key window (UIKit のみ・deprecated API 不使用) ─────────── */
 static UIView* nc_apple_key_scene_view(void) {
   NSSet<UIScene*>* scenes = [UIApplication sharedApplication].connectedScenes;
   UIScene* pick = nil;
@@ -35,18 +38,21 @@ static UIView* nc_apple_key_scene_view(void) {
   return w.rootViewController.view ?: w;
 }
 
-/* WKWebView には completionHandler 付きロード API が無いため、delegate コールバック
- * をブロックで受ける最小プロキシ。 */
-@interface NCHttpNavDelegate : NSObject <WKNavigationDelegate>
-@property(copy) void (^onFinish)(WKNavigation*);
-@property(copy) void (^onFail)(WKNavigation*, NSError*);
+/* WKWebView の navigation delegate をブロックで受ける最小プロキシ。
+ * WebKit ヘッダ無しで実装するため型は id(セレクタ名さえ合っていればOK)。 */
+@interface NCHttpNavDelegate : NSObject
+@property(copy) void (^onFinish)(id navigation);
+@property(copy) void (^onFail)(id navigation, id error);
 @end
 @implementation NCHttpNavDelegate
-- (void)webView:(WKWebView*)webView didFinishNavigation:(WKNavigation*)navigation {
+- (void)webView:(id)webView didFinishNavigation:(id)navigation {
   (void)webView; if (self.onFinish) self.onFinish(navigation);
 }
-- (void)webView:(WKWebView*)webView didFailNavigation:(WKNavigation*)navigation
-       withError:(NSError*)error {
+- (void)webView:(id)webView didFailNavigation:(id)navigation withError:(id)error {
+  (void)webView; if (self.onFail) self.onFail(navigation, error);
+}
+- (void)webView:(id)webView didFailProvisionalNavigation:(id)navigation
+       withError:(id)error {
   (void)webView; if (self.onFail) self.onFail(navigation, error);
 }
 @end
@@ -84,75 +90,87 @@ static BOOL nc_looks_like_challenge(int status, NSData* data) {
     return NO;
 }
 
-/* WKWebView で JS 実行つき取得。 challeng ページが自滅的に再読込するため、
- * didFinish 後に余裕を持って待ってから outerHTML とクッキーを回収する。 */
+/* WKWebView で JS 実行つき取得。challenge ページが自滅的に再読込するため、
+ * didFinish 後に余裕を持って待ってから outerHTML とクッキーを回収する。
+ * すべての WK* クラスはランタイム参照(WebKit.framework リンク不要)。 */
 static NSString* nc_webview_fetch(NSURL* url, NSTimeInterval timeout,
                                   NSArray<NSHTTPCookie*>** outCookies) {
     /* main thread で semaphore 待ちするとデッドロックするため排除 */
     if ([[NSThread currentThread] isMainThread]) return nil;
+
+    Class wvCls = NSClassFromString(@"WKWebView");
+    Class cfgCls = NSClassFromString(@"WKWebViewConfiguration");
+    Class storeCls = NSClassFromString(@"WKWebsiteDataStore");
+    if (!wvCls || !cfgCls || !storeCls) return nil;  /* WebKit 非搭載環境 */
+
     __block NSString* html = nil;
     __block NSArray<NSHTTPCookie*>* cookies = nil;
     __block dispatch_semaphore_t sem = dispatch_semaphore_create(0);
     dispatch_async(dispatch_get_main_queue(), ^{
-      WKWebViewConfiguration* cfg = [[WKWebViewConfiguration alloc] init];
-      cfg.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
-      WKWebView* wv = [[WKWebView alloc] initWithFrame:CGRectMake(0, 0, 390, 1400)
-                                         configuration:cfg];
-      wv.hidden = YES;
+      id cfg = [[cfgCls alloc] init];
+      id ds = [storeCls performSelector:@selector(defaultDataStore)];
+      if (ds) [cfg setValue:ds forKey:@"websiteDataStore"];
+      id wv = [[wvCls alloc] initWithFrame:CGRectMake(0, 0, 390, 1400)
+                             configuration:cfg];
+      [wv setHidden:YES];
 
       NSTimeInterval cap = timeout > 0 ? timeout + 18.0 : 40.0;
-      /* host チェックより前に定義が必要なため block 変数で保持。
-       * ブロック内から自分自身を触らないので retain cycle は無い。
-       * 二重呼び出し時も signal は冪等扱い(待ち側は1回のため安全)。 */
       void (^finish)(NSString*) = ^(NSString* result) {
         html = result;
-        [wv removeFromSuperview];
+        [(UIView*)wv removeFromSuperview];
         dispatch_semaphore_signal(sem);
       };
 
       UIView* host = nc_apple_key_scene_view();
       if (!host) { finish(nil); return; }
-      [host addSubview:wv];
+      [host addSubview:(UIView*)wv];
 
-      /* WKWebView に loadRequest:completionHandler: は存在しない。
-       * navigation delegate(didFinish/didFail) を受けてから続行する。 */
       NCHttpNavDelegate* nav = [NCHttpNavDelegate new];
-      nav.onFinish = ^(WKNavigation* n2) { (void)n2; };
-      nav.onFail = ^(WKNavigation* n2, NSError* e2) { (void)n2; (void)e2; };
-      wv.navigationDelegate = nav;
-      [wv loadRequest:[NSURLRequest requestWithURL:url
-                                       cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
-                                   timeoutInterval:timeout > 0 ? timeout : 30.0]];
+      nav.onFinish = ^(id n2) { (void)n2; };
+      nav.onFail = ^(id n2, id e2) { (void)n2; (void)e2; };
+      [wv setValue:nav forKey:@"navigationDelegate"];
+
+      [wv performSelector:@selector(loadRequest:)
+               withObject:[NSURLRequest requestWithURL:url
+                                           cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
+                                       timeoutInterval:timeout > 0 ? timeout : 30.0]];
+
+      /* evaluateJavaScript:completionHandler: は 2 引数 → objc_msgSend 直呼び */
+      void (*eval)(id, SEL, NSString*, void (^)(id, NSError*)) =
+          (void (*)(id, SEL, NSString*, void (^)(id, NSError*)))objc_msgSend;
+      SEL evalSel = @selector(evaluateJavaScript:completionHandler:);
+
       /* JS チャレンジの再読込が落ち着くまで待つ(didFinish 後に最低 2.8s) */
       dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                      (int64_t)(2.8 * NSEC_PER_SEC)),
-                        dispatch_get_main_queue(), ^{
-           [wv evaluateJavaScript:@"document.documentElement.outerHTML"
-                completionHandler:^(id result, NSError* err) {
-                  (void)err;
-                  NSString* one = [result isKindOfClass:[NSString class]] ? result : nil;
-                  [[WKWebsiteDataStore defaultDataStore].httpCookieStore
-                      getAllCookies:^(NSArray<NSHTTPCookie*>* list) {
-                        cookies = list;
-                        if (one && nc_looks_like_challenge(0, [one dataUsingEncoding:NSUTF8StringEncoding])) {
-                          /* まだチャレンジ中: 再挑戦して 1 回だけ待ち直す */
-                          dispatch_after(
-                              dispatch_time(DISPATCH_TIME_NOW,
-                                            (int64_t)(4.5 * NSEC_PER_SEC)),
-                              dispatch_get_main_queue(), ^{
-                                [wv evaluateJavaScript:
-                                         @"document.documentElement.outerHTML"
-                                     completionHandler:^(id r2, NSError* e2) {
-                                       (void)e2;
-                                       finish([r2 isKindOfClass:[NSString class]] ? r2
-                                                                                 : one);
-                                     }];
-                              });
-                        } else {
-                          finish(one);
-                        }
-                      }];
-                }];
+                                   (int64_t)(2.8 * NSEC_PER_SEC)),
+                     dispatch_get_main_queue(), ^{
+        eval(wv, evalSel, @"document.documentElement.outerHTML",
+             ^(id result, NSError* err) {
+          (void)err;
+          NSString* one = [result isKindOfClass:[NSString class]] ? result : nil;
+          id cs = [ds performSelector:@selector(httpCookieStore)];
+          if (!cs) { finish(one); return; }
+          void (^keep)(NSArray<NSHTTPCookie*>*) = ^(NSArray<NSHTTPCookie*>* list) {
+            cookies = list;
+            if (one && nc_looks_like_challenge(0, [one dataUsingEncoding:NSUTF8StringEncoding])) {
+              /* まだチャレンジ中: 再挑戦して 1 回だけ待ち直す */
+              dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                           (int64_t)(4.5 * NSEC_PER_SEC)),
+                             dispatch_get_main_queue(), ^{
+                eval(wv, evalSel, @"document.documentElement.outerHTML",
+                     ^(id r2, NSError* e2) {
+                  (void)e2;
+                  finish([r2 isKindOfClass:[NSString class]] ? r2 : one);
+                });
+              });
+            } else {
+              finish(one);
+            }
+          };
+          void (*getAll)(id, SEL, void (^)(NSArray<NSHTTPCookie*>*)) =
+              (void (*)(id, SEL, void (^)(NSArray<NSHTTPCookie*>*)))objc_msgSend;
+          getAll(cs, @selector(getAllCookies:), keep);
+        });
       });
 
       /* 安全弁: cap を過ぎたら諦める */
