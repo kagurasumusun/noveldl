@@ -209,9 +209,10 @@ final class ReaderMarkup: @unchecked Sendable {
         let rubyInk = (attrs[.foregroundColor] as? UIColor) ?? UIColor.label
         // 空の属性だとルビが黒のまま描かれ、夜テーマで消える。
         // CoreText は前景色を CGColor で読む。
+        // NSColor / NSFont ではなく CT のキー。NS 側の名前だとルビ色は無視される。
         let annotationAttrs = NSMutableDictionary()
-        annotationAttrs.setObject(rubyFont, forKey: NSAttributedString.Key.font.rawValue as NSString)
-        annotationAttrs.setObject(rubyInk.cgColor, forKey: NSAttributedString.Key.foregroundColor.rawValue as NSString)
+        annotationAttrs.setObject(rubyFont, forKey: kCTFontAttributeName as NSString)
+        annotationAttrs.setObject(rubyInk.cgColor, forKey: kCTForegroundColorAttributeName as NSString)
         let annotation = CTRubyAnnotationCreateWithAttributes(
             .auto, .auto, .before,
             (ruby as CFString), annotationAttrs as CFDictionary)

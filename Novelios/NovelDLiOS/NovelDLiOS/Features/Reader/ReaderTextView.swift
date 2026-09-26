@@ -145,6 +145,7 @@ final class ScrollBox {
         if key == geomKey, !pageRanges.isEmpty {
             if textChanged {
                 lastShownRange = NSRange(location: NSNotFound, length: 0)
+                if !keepIndex { pageIndex = 0 }
             }
             displayCurrent()
             return
@@ -453,29 +454,27 @@ struct ReaderTextView: UIViewRepresentable {
 
         applyPageColors(tv)
 
-        // サイズ/余白の確定。変化があれば分割を作り直す(表示ページは維持)。
-        var geometryChanged = false
+        // サイズ/余白の確定。分割の作り直しは prepare が幾何キーで判断する。
         if let page = tv as? PageTextView, pageSize != page.fixedSize {
             page.fixedSize = pageSize
-            geometryChanged = true
         }
-        if box.refreshPads() {
-            geometryChanged = true
-        }
+        box.refreshPads()
         tv.textContainerInset = UIEdgeInsets(top: box.padTop, left: sideMargin, bottom: box.padBottom, right: sideMargin)
         tv.textContainer.size = CGSize(width: containerWidth(),
                                        height: CGFloat.greatestFiniteMagnitude)
         box.view = tv
         box.turn = turn
 
-        // 入れ替わり検知(本文 or スタイル変更)。
-        let sameText = context.coordinator.applied.isEqual(to: attributed)
+        // 文字色・書体だけの変更では読んでいるページを維持する。
+        // 本文の文字列が変わったとき(別の版・取り直し)だけ先頭へ戻す。
+        let previous = context.coordinator.applied
+        let sameText = previous.isEqual(to: attributed)
         if !sameText {
             context.coordinator.applied = attributed
-            geometryChanged = true
         }
+        let bodyReplaced = !sameText && previous.string != attributed.string
         box.prepare(text: attributed, containerWidth: containerWidth(),
-                    viewHeight: pageSize.height, keepIndex: !geometryChanged)
+                    viewHeight: pageSize.height, keepIndex: !bodyReplaced)
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {

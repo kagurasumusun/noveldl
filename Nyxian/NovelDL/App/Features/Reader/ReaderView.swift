@@ -523,7 +523,7 @@ struct ReaderView: View {
                         StepperRow(label: "めくる間隔", value: $autoSeconds, range: 3...30, suffix: "秒")
                     }
                     RowDivider()
-                    toggleRow("画面を消さない", keepAwake) { keepAwake.toggle() }
+                    toggleRow("自動ロックしない", keepAwake) { keepAwake.toggle() }
                 }
 
                 menuCard("この話") {
@@ -656,10 +656,19 @@ struct ReaderView: View {
         .padding(.bottom, 4)
     }
 
+    /// 見本は本文と同じ和文書体。system の serif は日本語グリフが無く、見本だけ崩れて見えていた。
+    private var previewFont: Font {
+        let size = min(fontSize, 22)
+        switch fontDesign {
+        case "serif": return Font(ReaderMarkup.Style.jpSerif(size))
+        case "rounded": return .system(size: size, design: .rounded)
+        default: return Font(ReaderMarkup.Style.jpSans(size))
+        }
+    }
+
     private var typePreview: some View {
         Text("吾輩は猫である。名前はまだ無い。")
-            .font(.system(size: min(fontSize, 22),
-                          design: fontDesign == "serif" ? .serif : (fontDesign == "rounded" ? .rounded : .default)))
+            .font(previewFont)
             .foregroundStyle(theme.ink)
             .lineSpacing(max(2, lineSpacing * 0.35))
             .frame(maxWidth: .infinity, alignment: .leading)
