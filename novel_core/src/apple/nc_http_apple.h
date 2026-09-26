@@ -20,6 +20,9 @@ int nc_http_apple_transport(const char* url,
 /* Convenience: novel_core_set_http_transport(nc_http_apple_transport, NULL). */
 void nc_http_apple_install(void);
 
+/* Enable/disable the WKWebView challenge fallback (default: enabled). */
+void nc_http_apple_set_webview_fallback(BOOL enabled);
+
 #ifdef __cplusplus
 }
 #endif

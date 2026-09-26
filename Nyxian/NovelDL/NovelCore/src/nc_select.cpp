@@ -159,6 +159,15 @@ Simple parse_simple(const std::string& s, size_t& i) {
             } else if (out.pseudo == "nth-child" || out.pseudo == "nth-last-child" ||
                        out.pseudo == "nth-of-type" || out.pseudo == "nth-last-of-type") {
                 parse_nth(body, out);
+            } else if (out.pseudo == "contains") {
+                // :contains(テキスト) — 子孫テキストの部分一致。引用符があれば剥がす。
+                std::string t = trim(body);
+                if (t.size() >= 2 && ((t.front() == '"' && t.back() == '"') ||
+                                      (t.front() == '\'' && t.back() == '\''))) {
+                    t = t.substr(1, t.size() - 2);
+                }
+                out.kind = Simple::K::Pseudo;
+                out.value = t;
             }
         }
         return out;
@@ -269,6 +278,10 @@ bool match_simple(const HtmlNode& n, const Simple& s) {
     case Simple::K::Not:
         return s.not_inner && !match_simple(n, *s.not_inner);
     case Simple::K::Pseudo: {
+        if (s.pseudo == "contains") {
+            if (s.value.empty()) return true;
+            return html_text(n).find(s.value) != std::string::npos;
+        }
         if (s.pseudo == "first-child") return element_index_among(n, false) == 1;
         if (s.pseudo == "last-child") {
             if (!n.parent) return true;

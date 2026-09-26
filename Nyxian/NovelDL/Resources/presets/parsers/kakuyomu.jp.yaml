@@ -1,3 +1,4 @@
+builtin_rev: 2
 name: カクヨム
 domain: kakuyomu.jp
 encoding: UTF-8
@@ -34,6 +35,9 @@ body_selectors:
 novel_info_selectors:
   title: "h1 a[href^='/works/']"
   author: ".partialGiftWidgetActivityName a, a[href^='/users/']"
+  # 2025年以降の新レイアウト(CSSモジュール名)に対応
+  story: "div[class*='CollapseTextWithKakuyomuLinks_collapseText']"
+  status: "ul[class*='Meta_disc'] div:contains(連載中), ul[class*='Meta_disc'] div:contains(完結済)"
 # ------------------------------------------------------------
 # 横断検索メタ情報
 confirm_over18: no

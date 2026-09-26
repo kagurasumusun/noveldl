@@ -1,10 +1,18 @@
+builtin_rev: 3
+metadata_api:
+  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  fields:
+    title: "title"
+    author: "writer"
+    story: "story"
+    updated: "general_lastup"
+  status_field: "isstop"
 
-builtin_rev: 2
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
-domain: mnlt.syosetu.com
+domain: mid.syosetu.com
 encoding: UTF-8
-top_url: https://mnlt.syosetu.com
+top_url: https://mid.syosetu.com
 sitename: 小説家になろう（18禁）
 access:
   profile: safari_mobile
@@ -12,8 +20,8 @@ access:
     - over18=yes
 
 # toc_sources は common/syosetu_2024 から継承し、サイト別YAMLで上書き可能。
-toc_url_pattern: "https://mnlt.syosetu.com/{ncode}/"
-novel_info_url_pattern: "https://mnlt.syosetu.com/novelview/infotop/ncode/{ncode}/"
+toc_url_pattern: "https://mid.syosetu.com/{ncode}/"
+novel_info_url_pattern: "https://mid.syosetu.com/novelview/infotop/ncode/{ncode}/"
 novel_info_selectors:
   title: "h1.p-infotop-title a, title"
   author: "dd.p-infotop-data__value a, .p-novel__author a, .novel_writername a, .novel_writername, .p-novel__author"

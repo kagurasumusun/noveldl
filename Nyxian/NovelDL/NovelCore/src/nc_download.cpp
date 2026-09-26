@@ -445,6 +445,78 @@ Value fetch_metadata_via_rules(const std::string& url, const Value& preset, Http
     v.set("next_update", Value::string(toc.next_update.value_or("")));
     v.set("comment_count", Value::string(toc.comment_count.value_or("")));
     v.set("updated", Value::string(toc.updated.value_or("")));
+
+    // API 形式のメタ情報(なろう小説API 等)。HTML から取れなかった空欄だけを補う。
+    if (const Value* api = preset.get("metadata_api")) {
+        std::string tpl = api->get_str("url", "");
+        if (!tpl.empty()) {
+            static const std::regex ncode_re(R"(/(n[0-9a-z]{4,12})(/|$))", std::regex::icase);
+            std::smatch nm;
+            std::string ncode;
+            std::string path_only = url.substr(0, url.find('?'));
+            if (std::regex_search(path_only, nm, ncode_re)) ncode = nm[1].str();
+            if (!ncode.empty()) {
+                std::string api_url = replace_all(tpl, "{ncode}", ncode);
+                try {
+                    std::string js = http.fetch(api_url, access, std::nullopt);
+                    Value j = json_parse(js);
+                    // なろう API は先頭に {allcount:N} を付けてくる → 実データの要素を探す
+                    const Value* obj = nullptr;
+                    // 実データの要素(=いずれかのキーを持つ要素)を選ぶ。
+                    // なろう API は先頭に {allcount:N} を付けてくるため除外される。
+                    std::vector<std::string> probe;
+                    std::vector<std::pair<std::string, std::string>> fills;  // (target, json path) 空欄のみ
+                    if (const Value* fields = api->get("fields")) {
+                        for (auto& kv : fields->map) {
+                            std::string path = kv.second.is_str() ? kv.second.s : "";
+                            if (path.empty()) continue;
+                            probe.push_back(path);
+                            if (v.get_str(kv.first, "").empty()) fills.emplace_back(kv.first, path);
+                        }
+                    }
+                    std::string status_field = api->get_str("status_field", "");
+                    if (!status_field.empty()) probe.push_back(status_field);
+                    if (j.is_array()) {
+                        for (auto& e : j.arr) {
+                            for (auto& w : probe) {
+                                if (!w.empty() && json_path_string(e, w)) { obj = &e; break; }
+                            }
+                            if (obj) break;
+                        }
+                        if (!obj && j.arr.size() > 1) obj = &j.arr[1];
+                    } else {
+                        obj = &j;
+                    }
+                    if (obj) {
+                        for (auto& f : fills) {
+                            auto got = json_path_string(*obj, f.second);
+                            if (got && !trim(*got).empty()) v.set(f.first, Value::string(*got));
+                        }
+                        if (!status_field.empty() && v.get_str("status", "").empty()) {
+                            auto got = json_path_string(*obj, status_field);
+                            if (got) {
+                                // なろう API: isstop 1=完結済 0=連載中
+                                v.set("status", Value::string(trim(*got) == "1" ? "完結済" : "連載中"));
+                            }
+                        }
+                    }
+                } catch (...) {
+                }
+            }
+        }
+    }
+
+    // API 由来の general_lastup 等も「YYYY/MM/DD」にそろえる。
+    {
+        std::string u = v.get_str("updated", "");
+        static const std::regex date_re2(R"(\d{4}[/-]\d{1,2}[/-]\d{1,2})");
+        std::smatch m2;
+        if (!u.empty() && std::regex_search(u, m2, date_re2)) {
+            std::string y = m2[0].str();
+            for (auto& c : y) if (c == '-') c = '/';
+            v.set("updated", Value::string(y));
+        }
+    }
     v.set("episodes", Value::integer((long long)toc.chapters.size()));
     v.set("toc_url", Value::string(url));
     return v;

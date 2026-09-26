@@ -1,4 +1,5 @@
 
+builtin_rev: 2
 name: 暁
 domain: www.akatsuki-novels.com
 encoding: UTF-8
@@ -45,7 +46,7 @@ postscript_selectors:
 novel_info_selectors:
   title: "#LookNovel"
   author: "a[href^='/users/view/']"
-  story: "div.body-x1 div"
+  story: "div.body-x1 div.txt-c ~ div"
 
 # 横断検索メタ情報
 confirm_over18: no

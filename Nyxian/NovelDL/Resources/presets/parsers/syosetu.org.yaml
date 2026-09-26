@@ -1,3 +1,4 @@
+builtin_rev: 2
 name: ハーメルン
 domain: syosetu.org
 encoding: UTF-8
@@ -83,7 +84,7 @@ postscript_selectors:
 novel_info_selectors:
   title: "#pagetitle [itemprop='name'], div#maind [itemprop='name'], [itemprop='name']"
   author: "[itemprop='author'] a, div#maind [itemprop='author'], [itemprop='author']"
-  story: "div.hidden.content, div#maind div.ss:nth-of-type(2)"
+  story: "div#maind div.ss:nth-of-type(2)"
 # ------------------------------------------------------------
 # 横断検索メタ情報
 # R-18作品: confirm_over18 で年齢クッキーを注入（一般作品には無害）

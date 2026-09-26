@@ -87,7 +87,8 @@ postscript_selectors:
 append_title_to_folder_name: yes
 title_strip_pattern: null
 webnovels_site: narou
-version: 2.2
+builtin_rev: 2
+version: 2.3
 )NC"},
         {"parsers", "estar.jp", R"NC(
 name: エブリスタ
@@ -156,6 +157,7 @@ confirm_over18: yes
 age_gate_link_regex: "href=\"([^\"]*cookie_set[^\"]*)\""
 )NC"},
         {"parsers", "kakuyomu.jp", R"NC(
+builtin_rev: 2
 name: カクヨム
 domain: kakuyomu.jp
 encoding: UTF-8
@@ -192,6 +194,9 @@ body_selectors:
 novel_info_selectors:
   title: "h1 a[href^='/works/']"
   author: ".partialGiftWidgetActivityName a, a[href^='/users/']"
+  # 2025年以降の新レイアウト(CSSモジュール名)に対応
+  story: "div[class*='CollapseTextWithKakuyomuLinks_collapseText']"
+  status: "ul[class*='Meta_disc'] div:contains(連載中), ul[class*='Meta_disc'] div:contains(完結済)"
 # ------------------------------------------------------------
 # 横断検索メタ情報
 confirm_over18: no
@@ -200,8 +205,16 @@ title_strip_pattern: null
 webnovels_site: kakuyomu
 version: 2.2
 )NC"},
-        {"parsers", "mid.syosetu.com", R"NC(
-builtin_rev: 2
+        {"parsers", "mid.syosetu.com", R"NC(builtin_rev: 3
+metadata_api:
+  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  fields:
+    title: "title"
+    author: "writer"
+    story: "story"
+    updated: "general_lastup"
+  status_field: "isstop"
+
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: mid.syosetu.com
@@ -226,8 +239,16 @@ last_successful_selectors: {}
 # 横断検索メタ情報
 confirm_over18: yes
 )NC"},
-        {"parsers", "mnlt.syosetu.com", R"NC(
-builtin_rev: 2
+        {"parsers", "mnlt.syosetu.com", R"NC(builtin_rev: 3
+metadata_api:
+  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  fields:
+    title: "title"
+    author: "writer"
+    story: "story"
+    updated: "general_lastup"
+  status_field: "isstop"
+
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: mnlt.syosetu.com
@@ -296,8 +317,16 @@ confirm_over18: yes
 over18_cookie: "over_fifteen=yes"
 version: 1.0
 )NC"},
-        {"parsers", "ncode.syosetu.com", R"NC(
-builtin_rev: 2
+        {"parsers", "ncode.syosetu.com", R"NC(builtin_rev: 3
+metadata_api:
+  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  fields:
+    title: "title"
+    author: "writer"
+    story: "story"
+    updated: "general_lastup"
+  status_field: "isstop"
+
 extends: common/syosetu_2024
 name: 小説家になろう
 domain: ncode.syosetu.com
@@ -320,8 +349,16 @@ novel_info_selectors:
 # 横断検索メタ情報
 confirm_over18: no
 )NC"},
-        {"parsers", "noc.syosetu.com", R"NC(
-builtin_rev: 2
+        {"parsers", "noc.syosetu.com", R"NC(builtin_rev: 3
+metadata_api:
+  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  fields:
+    title: "title"
+    author: "writer"
+    story: "story"
+    updated: "general_lastup"
+  status_field: "isstop"
+
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: noc.syosetu.com
@@ -383,8 +420,16 @@ append_title_to_folder_name: yes
 confirm_over18: no
 version: 1.0
 )NC"},
-        {"parsers", "novel18.syosetu.com", R"NC(
-builtin_rev: 2
+        {"parsers", "novel18.syosetu.com", R"NC(builtin_rev: 3
+metadata_api:
+  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  fields:
+    title: "title"
+    author: "writer"
+    story: "story"
+    updated: "general_lastup"
+  status_field: "isstop"
+
 extends: common/syosetu_2024
 name: 小説家になろう（18禁）
 domain: novel18.syosetu.com
@@ -636,6 +681,7 @@ confirm_over18: no
 version: 1.0
 )NC"},
         {"parsers", "syosetu.org", R"NC(
+builtin_rev: 2
 name: ハーメルン
 domain: syosetu.org
 encoding: UTF-8
@@ -721,7 +767,7 @@ postscript_selectors:
 novel_info_selectors:
   title: "#pagetitle [itemprop='name'], div#maind [itemprop='name'], [itemprop='name']"
   author: "[itemprop='author'] a, div#maind [itemprop='author'], [itemprop='author']"
-  story: "div.hidden.content, div#maind div.ss:nth-of-type(2)"
+  story: "div#maind div.ss:nth-of-type(2)"
 # ------------------------------------------------------------
 # 横断検索メタ情報
 # R-18作品: confirm_over18 で年齢クッキーを注入（一般作品には無害）
@@ -733,6 +779,7 @@ webnovels_site: hameln
 version: 1.3
 )NC"},
         {"parsers", "www.akatsuki-novels.com", R"NC(
+builtin_rev: 2
 name: 暁
 domain: www.akatsuki-novels.com
 encoding: UTF-8
@@ -779,7 +826,7 @@ postscript_selectors:
 novel_info_selectors:
   title: "#LookNovel"
   author: "a[href^='/users/view/']"
-  story: "div.body-x1 div"
+  story: "div.body-x1 div.txt-c ~ div"
 
 # 横断検索メタ情報
 confirm_over18: no

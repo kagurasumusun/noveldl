@@ -68,4 +68,5 @@ postscript_selectors:
 append_title_to_folder_name: yes
 title_strip_pattern: null
 webnovels_site: narou
-version: 2.2
+builtin_rev: 2
+version: 2.3

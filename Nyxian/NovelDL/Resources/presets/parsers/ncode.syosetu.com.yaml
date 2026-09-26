@@ -1,4 +1,12 @@
-builtin_rev: 2
+builtin_rev: 3
+metadata_api:
+  url: "https://api.syosetu.com/novelapi/api/?out=json&ncode={ncode}"
+  fields:
+    title: "title"
+    author: "writer"
+    story: "story"
+    updated: "general_lastup"
+  status_field: "isstop"
 extends: common/syosetu_2024
 name: 小説家になろう
 domain: ncode.syosetu.com
