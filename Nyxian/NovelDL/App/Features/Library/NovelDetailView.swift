@@ -229,7 +229,7 @@ struct NovelDetailView: View {
 
     private func synopsisCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
-            headerEN("STORY", "あらすじ")
+            sectionHead("あらすじ")
             synopsisBody(text)
         }
     }
@@ -262,7 +262,7 @@ struct NovelDetailView: View {
 
     private var actionCard: some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
-            headerEN("ACTIONS", "操作")
+            sectionHead("操作")
             actionBody
         }
     }
@@ -323,7 +323,7 @@ struct NovelDetailView: View {
     private var chapterSection: some View {
         VStack(alignment: .leading, spacing: Spacing.m) {
             HStack {
-                headerEN("INDEX", "目次")
+                sectionHead("目次")
                     .foregroundStyle(AppPalette.ink)
                 Spacer()
                 Text("全\(total)話・取得 \(downloaded)")
@@ -416,18 +416,11 @@ struct NovelDetailView: View {
         }
     }
 
-    /// セクション見出し — 英語は小さなキッカー(上段)、日本語を見出しの主役に。
-    private func headerEN(_ en: String, _ jp: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(en)
-                .font(AppFont.ui(10, weight: .semibold))
-                .tracking(2.2)
-                .foregroundStyle(AppPalette.gold)
-            Text(jp)
-                .font(AppFont.serif(17, weight: .semibold))
-                .foregroundStyle(AppPalette.ink)
-        }
-        .padding(.top, Spacing.m)
+    private func sectionHead(_ title: String) -> some View {
+        Text(title)
+            .font(AppFont.serif(17, weight: .semibold))
+            .foregroundStyle(AppPalette.ink)
+            .padding(.top, Spacing.m)
     }
 
     private func chapterRow(_ ch: ChapterMeta) -> some View {

@@ -42,7 +42,7 @@ struct DiscoverView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Spacing.m) {
-            SectionBanner(title: "さがす", eyebrow: "DISCOVER")
+            SectionBanner(title: "さがす")
 
             HStack(spacing: Spacing.m) {
                 Image(systemName: "magnifyingglass")
@@ -148,7 +148,7 @@ struct DiscoverView: View {
             Text("次の一行を探しましょう")
                 .font(AppFont.serif(18, weight: .semibold))
                 .foregroundStyle(AppPalette.ink)
-            Text("見つけた作品は「本棚に追加」で目次と全話をまとめて取得します。")
+            Text("「本棚に追加」は目次だけ取り込みます。本文は読み始めたときに取得します。")
                 .font(AppFont.ui(13))
                 .foregroundStyle(AppPalette.inkSoft)
                 .multilineTextAlignment(.center)
@@ -226,17 +226,11 @@ struct DiscoverView: View {
     /// 横断・専用の検索サービス(検索のみ — 取得は各サイトから)。
     private var searchServices: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("SEARCH")
-                .font(AppFont.ui(10, weight: .semibold))
-                .tracking(2.2)
-                .foregroundStyle(AppPalette.gold)
-                .padding(.horizontal, Spacing.l)
-                .padding(.top, Spacing.l)
             Text("検索サービス")
                 .font(AppFont.serif(17, weight: .semibold))
                 .foregroundStyle(AppPalette.ink)
                 .padding(.horizontal, Spacing.l)
-                .padding(.top, 2)
+                .padding(.top, Spacing.l)
             Text("横断・専用。検索だけ行い、本文の取得は各サイトからです。")
                 .font(AppFont.ui(12))
                 .foregroundStyle(AppPalette.inkFaint)

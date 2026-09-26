@@ -16,36 +16,61 @@ enum BookTheme: String, CaseIterable, Identifiable {
         }
     }
 
-    var background: Color {
+    /// 画面の色。SwiftUI の Color を UIColor に橋渡しすると、
+    /// アプリがダークのとき夜テーマの文字色が黒へ潰れて本文が見えなくなる。
+    /// 成分を一度だけ持ち、Color と UIColor の両方をここから作る。
+    private var backgroundRGB: (CGFloat, CGFloat, CGFloat) {
         switch self {
-        case .paper: return Color(red: 0.984, green: 0.973, blue: 0.949)
-        case .sepia: return Color(red: 0.945, green: 0.894, blue: 0.796)
-        case .night: return Color(red: 0.078, green: 0.075, blue: 0.086)
+        case .paper: return (0.984, 0.973, 0.949)
+        case .sepia: return (0.945, 0.894, 0.796)
+        case .night: return (0.055, 0.055, 0.062)
         }
     }
 
-    var ink: Color {
+    private var inkRGB: (CGFloat, CGFloat, CGFloat) {
         switch self {
-        case .paper: return Color(red: 0.125, green: 0.118, blue: 0.102)
-        case .sepia: return Color(red: 0.212, green: 0.161, blue: 0.098)
-        case .night: return Color(red: 0.851, green: 0.827, blue: 0.773)
+        case .paper: return (0.125, 0.118, 0.102)
+        case .sepia: return (0.212, 0.161, 0.098)
+        // 夜は暖かい白。灰色寄りの 0.85 はダークモードでさらに沈み、読めなくなる。
+        case .night: return (0.965, 0.945, 0.905)
         }
     }
 
-    var secondaryInk: Color {
+    private var secondaryRGB: (CGFloat, CGFloat, CGFloat) {
         switch self {
-        case .paper: return Color(red: 0.329, green: 0.310, blue: 0.278)
-        case .sepia: return Color(red: 0.380, green: 0.310, blue: 0.204)
-        case .night: return Color(red: 0.631, green: 0.608, blue: 0.565)
+        case .paper: return (0.329, 0.310, 0.278)
+        case .sepia: return (0.380, 0.310, 0.204)
+        case .night: return (0.80, 0.77, 0.72)
         }
     }
 
-    var hairline: Color {
+    private var hairlineRGB: (CGFloat, CGFloat, CGFloat) {
         switch self {
-        case .paper: return Color(red: 0.85, green: 0.82, blue: 0.76)
-        case .sepia: return Color(red: 0.79, green: 0.71, blue: 0.57)
-        case .night: return Color(red: 0.21, green: 0.20, blue: 0.22)
+        case .paper: return (0.85, 0.82, 0.76)
+        case .sepia: return (0.79, 0.71, 0.57)
+        case .night: return (0.32, 0.30, 0.28)
         }
+    }
+
+    var background: Color { Self.color(backgroundRGB) }
+    var ink: Color { Self.color(inkRGB) }
+    var secondaryInk: Color { Self.color(secondaryRGB) }
+    var hairline: Color { Self.color(hairlineRGB) }
+
+    var uiBackground: UIColor { Self.ui(backgroundRGB) }
+    var uiInk: UIColor { Self.ui(inkRGB) }
+    var uiSecondaryInk: UIColor { Self.ui(secondaryRGB) }
+    var uiHairline: UIColor { Self.ui(hairlineRGB) }
+
+    /// 明るい地の本文か。見出しの濃さを決める。
+    var inkIsLight: Bool { inkRGB.0 > 0.6 }
+
+    private static func color(_ rgb: (CGFloat, CGFloat, CGFloat)) -> Color {
+        Color(red: rgb.0, green: rgb.1, blue: rgb.2)
+    }
+
+    private static func ui(_ rgb: (CGFloat, CGFloat, CGFloat)) -> UIColor {
+        UIColor(red: rgb.0, green: rgb.1, blue: rgb.2, alpha: 1)
     }
 }
 

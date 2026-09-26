@@ -331,24 +331,16 @@ struct InfoChip: View {
 struct SectionBanner: View {
     let title: String
     var subtitle: String?
-    var eyebrow: String?
 
-    init(title: String, subtitle: String? = nil, eyebrow: String? = nil) {
+    init(title: String, subtitle: String? = nil) {
         self.title = title
         self.subtitle = subtitle
-        self.eyebrow = eyebrow
     }
 
     var body: some View {
-        // 和文が主役。欧文は上の小さなキッカーに限る。
+        // 画面の基本言語は日本語。英語の併記見出しは置かない。
         // 和文にトラッキングを掛けると字間が空き、見出しが散って見える。
         VStack(alignment: .leading, spacing: 3) {
-            if let eyebrow, !eyebrow.isEmpty {
-                Text(eyebrow.uppercased())
-                    .font(AppFont.ui(10, weight: .semibold))
-                    .tracking(2.2)
-                    .foregroundStyle(AppPalette.gold)
-            }
             Text(title)
                 .font(AppFont.serif(22, weight: .semibold))
                 .foregroundStyle(AppPalette.ink)

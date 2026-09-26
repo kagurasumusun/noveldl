@@ -21,6 +21,8 @@ final class ReaderMarkup: @unchecked Sendable {
         var fontSize: CGFloat = 19
         var lineSpacing: CGFloat = 6
         var ink: UIColor = UIColor(red: 0.125, green: 0.118, blue: 0.102, alpha: 1)
+        /// 夜テーマなど、地が暗く文字が明るいとき true。見出しの濃さに使う。
+        var inkIsLight: Bool = false
         var maxWidth: CGFloat = 320
         /// "serif" (Mincho-like), "sans" (Gothic), "mono"
         var design: String = "serif"
@@ -77,7 +79,7 @@ final class ReaderMarkup: @unchecked Sendable {
         para.paragraphSpacing = style.lineSpacing + 18
         let attrs: [NSAttributedString.Key: Any] = [
             .font: Style.jpSerif(min(style.fontSize + 2, 26)),
-            .foregroundColor: style.ink.withAlphaComponent(0.62),
+            .foregroundColor: style.ink.withAlphaComponent(style.inkIsLight ? 0.92 : 0.72),
             .paragraphStyle: para,
         ]
         return NSAttributedString(string: title, attributes: attrs)
@@ -90,7 +92,7 @@ final class ReaderMarkup: @unchecked Sendable {
         para.paragraphSpacing = style.lineSpacing + 6
         return NSAttributedString(string: "\n※\n", attributes: [
             .font: Style.jpSerif(max(style.fontSize - 4, 12)),
-            .foregroundColor: style.ink.withAlphaComponent(0.45),
+            .foregroundColor: style.ink.withAlphaComponent(style.inkIsLight ? 0.62 : 0.45),
             .paragraphStyle: para,
         ])
     }
@@ -204,10 +206,17 @@ final class ReaderMarkup: @unchecked Sendable {
     private func rubyText(base: String, ruby: String, attributes attrs: [NSAttributedString.Key: Any]) -> NSAttributedString {
         // Nyxian の SDK では attributes 引数は非 optional の CFDictionary として
         // インポートされる（nil 不可）— 空の NSDictionary をブリッジして渡す。
-        let noAttrs = NSDictionary() as CFDictionary
+        // 属性を空にするとルビが黒のまま描かれ、夜テーマで消える。
+        let baseFont = (attrs[.font] as? UIFont) ?? UIFont.systemFont(ofSize: 12)
+        let rubyFont = UIFont(descriptor: baseFont.fontDescriptor, size: max(baseFont.pointSize * 0.45, 8))
+        let rubyInk = (attrs[.foregroundColor] as? UIColor) ?? UIColor.label
+        let rubyAttrs: [NSAttributedString.Key: Any] = [
+            .font: rubyFont,
+            .foregroundColor: rubyInk,
+        ]
         let annotation = CTRubyAnnotationCreateWithAttributes(
             .auto, .auto, .before,
-            (ruby as CFString), noAttrs)
+            (ruby as CFString), rubyAttrs as CFDictionary)
         var rubyAttrs = attrs
         rubyAttrs[rubyKey] = annotation
         return NSAttributedString(string: base, attributes: rubyAttrs)

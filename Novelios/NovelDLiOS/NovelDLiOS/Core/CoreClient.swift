@@ -151,7 +151,7 @@ final class CoreClient: Observable, @unchecked Sendable {
                 guard let data = payload.data(using: .utf8) else { throw CoreError.badJSON }
                 let envelope = try self.decoder.decode(CoreEnvelope<T>.self, from: data)
                 if envelope.ok, let value = envelope.result { return value }
-                throw CoreError.message(envelope.error ?? "unknown core error")
+                throw CoreError.message(envelope.error ?? "内部処理で失敗しました")
             }
         }
     }
@@ -347,8 +347,8 @@ enum CoreError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .emptyResponse: return "The core returned no data."
-        case .badJSON: return "The core returned malformed JSON."
+        case .emptyResponse: return "内部処理から結果が返りませんでした。"
+        case .badJSON: return "内部処理の結果を読めませんでした。"
         case .message(let text): return text
         }
     }

@@ -82,12 +82,8 @@ struct LibraryView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Spacing.m) {
-            HStack(alignment: .top) {
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("LIBRARY")
-                        .font(AppFont.ui(10, weight: .semibold))
-                        .tracking(2.2)
-                        .foregroundStyle(AppPalette.gold)
                     Text("本棚")
                         .font(AppFont.serif(22, weight: .semibold))
                         .foregroundStyle(AppPalette.ink)
@@ -115,7 +111,6 @@ struct LibraryView: View {
                         showAddSheet = true
                     }
                 }
-                .padding(.top, 16)
             }
             Rectangle().fill(AppPalette.ink).frame(width: 28, height: 2)
         }
@@ -273,14 +268,14 @@ struct LibraryView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.l) {
                     VStack(alignment: .leading, spacing: Spacing.s) {
-                        Text("URL を貼り付け")
+                        Text("作品のアドレス")
                             .font(AppFont.ui(13, weight: .semibold))
                             .foregroundStyle(AppPalette.inkSoft)
                         PaperField(placeholder: "https://ncode.syosetu.com/n0000aa/", text: $importUrl, keyboard: .URL)
                         Button {
                             Task { await runImport(url: importUrl) }
                         } label: {
-                            Text("取得する")
+                            Text("本棚に追加")
                                 .font(AppFont.ui(15, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
@@ -288,7 +283,7 @@ struct LibraryView: View {
                                 .background(RoundedRectangle(cornerRadius: Metrics.fieldRadius, style: .continuous).fill(AppPalette.ember))
                         }
                         .buttonStyle(PressableButtonStyle())
-                        Text("追加すると目次を取り込み、全話をまとめて取得します。取得済みは再取得しません。")
+                        Text("追加すると目次だけ取り込みます。本文は読み始めたときに取得します。")
                             .font(AppFont.ui(12))
                             .foregroundStyle(AppPalette.inkFaint)
                     }

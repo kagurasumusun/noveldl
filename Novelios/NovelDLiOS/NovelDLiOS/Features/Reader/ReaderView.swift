@@ -302,13 +302,13 @@ struct ReaderView: View {
             chromeCaptioned("chevron.left", "前話", enabled: canGoPrev) {
                 goChapter(delta: -1)
             }
-            chromeCaptioned("chevron.up", "前頁") {
+            chromeCaptioned("chevron.up", "前ページ") {
                 _ = readerBox.pageUp()
             }
             chromeCaptioned("list.bullet", "目次", hidesChrome: false) {
                 sheet = .toc
             }
-            chromeCaptioned("chevron.down", "次頁") {
+            chromeCaptioned("chevron.down", "次ページ") {
                 _ = readerBox.pageDown()
             }
             chromeCaptioned("chevron.right", "次話", enabled: canGoNext) {
@@ -424,7 +424,7 @@ struct ReaderView: View {
             Text("・")
                 .font(AppFont.ui(11))
                 .foregroundStyle(theme.ink.opacity(0.35))
-            Text(pageCount > 1 ? "\(currentPage + 1)/\(pageCount)頁" : "1/1頁")
+            Text(pageCount > 1 ? "\(currentPage + 1)/\(pageCount)" : "1/1")
                 .font(AppFont.ui(11, weight: .medium).monospacedDigit())
                 .foregroundStyle(theme.ink.opacity(0.75))
         }
@@ -432,6 +432,7 @@ struct ReaderView: View {
         .padding(.vertical, 4)
         .background(Capsule().fill(theme.background.opacity(0.72)))
         .overlay(Capsule().strokeBorder(theme.ink.opacity(0.10), lineWidth: 1))
+        .accessibilityLabel("\(currentPage + 1)ページ、全\(max(pageCount, 1))ページ")
     }
 
     // MARK: 読書メニュー(読書時専用)
@@ -440,10 +441,6 @@ struct ReaderView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.l) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("READING")
-                        .font(AppFont.ui(10, weight: .semibold))
-                        .tracking(2.2)
-                        .foregroundStyle(AppPalette.gold)
                     Text("読書の設定")
                         .font(AppFont.serif(22, weight: .semibold))
                         .foregroundStyle(AppPalette.ink)
@@ -455,7 +452,7 @@ struct ReaderView: View {
                 }
                 .padding(.top, Spacing.s)
 
-                menuCard("紙面", "TYPE") {
+                menuCard("紙面") {
                     themePicker
                     menuField("書体") {
                         SegmentTabs(
@@ -482,7 +479,7 @@ struct ReaderView: View {
                         .padding(.top, Spacing.s)
                 }
 
-                menuCard("表示する項目", "SHOW") {
+                menuCard("表示") {
                     toggleRow("ルビ", showRuby) { showRuby.toggle(); applyStyle() }
                     RowDivider()
                     toggleRow("話の見出し", showChapterTitle) { showChapterTitle.toggle(); applyStyle() }
@@ -500,7 +497,7 @@ struct ReaderView: View {
                         .padding(.bottom, 2)
                 }
 
-                menuCard("めくり", "PAGE") {
+                menuCard("めくり") {
                     menuField("アニメーション") {
                         SegmentTabs(
                             titles: PageTurn.all.map(\.label),
@@ -520,7 +517,7 @@ struct ReaderView: View {
                     toggleRow("画面を消さない", keepAwake) { keepAwake.toggle() }
                 }
 
-                menuCard("この話", "CHAPTER") {
+                menuCard("この話") {
                     if pageCount > 1 {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .firstTextBaseline) {
@@ -665,21 +662,15 @@ struct ReaderView: View {
             )
     }
 
-    private func menuCard<Content: View>(_ title: String, _ en: String,
+    private func menuCard<Content: View>(_ title: String,
                                          @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(en)
-                    .font(AppFont.ui(10, weight: .semibold))
-                    .tracking(1.8)
-                    .foregroundStyle(AppPalette.gold)
-                Text(title)
-                    .font(AppFont.ui(15, weight: .semibold))
-                    .foregroundStyle(AppPalette.ink)
-            }
-            .padding(.horizontal, Spacing.m)
-            .padding(.top, Spacing.m)
-            .padding(.bottom, 6)
+            Text(title)
+                .font(AppFont.ui(15, weight: .semibold))
+                .foregroundStyle(AppPalette.ink)
+                .padding(.horizontal, Spacing.m)
+                .padding(.top, Spacing.m)
+                .padding(.bottom, 6)
             content()
                 .padding(.horizontal, Spacing.m)
                 .padding(.bottom, Spacing.s)
@@ -1006,7 +997,8 @@ struct ReaderView: View {
         ReaderMarkup.Style(
             fontSize: fontSize,
             lineSpacing: lineSpacing,
-            ink: UIColor(theme.ink),
+            ink: theme.uiInk,
+            inkIsLight: theme.inkIsLight,
             maxWidth: UIScreen.main.bounds.width - max(margin, 12) * 2,
             design: fontDesign,
             showRuby: showRuby

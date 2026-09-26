@@ -49,6 +49,8 @@ final class PageTextView: UITextView {
 final class ScrollBox {
     weak var view: UITextView?
     var turn: PageTurn = .curl
+    /// 本文色。ダークモードが attributedText の色を潰すときの基準にもする。
+    var ink: UIColor = UIColor(red: 0.125, green: 0.118, blue: 0.102, alpha: 1)
 
     /// 1ページ = 上余白(padTop)+ 本文帯 + 下余白(padBottom)。
     /// 余白は textContainerInset 側で確保する。値はセーフエリアから取り直す。
@@ -103,6 +105,9 @@ final class ScrollBox {
     func prepare(text: NSAttributedString, containerWidth: CGFloat, viewHeight: CGFloat, keepIndex: Bool) {
         lastWidth = containerWidth
         lastHeight = viewHeight
+        // 文字色だけの変更(紙→夜)は長さも書体も同じなので、下の幾何キーには出ない。
+        // ここで検知しないと、背景だけ黒くなって本文が墨色のまま残り、読めなくなる。
+        let textChanged = !fullText.isEqual(to: text)
         fullText = text
 
         let band = max(viewHeight - padTop - padBottom, 120)
@@ -131,6 +136,9 @@ final class ScrollBox {
         }
         let key = keyParts.joined(separator: "|")
         if key == geomKey, !pageRanges.isEmpty {
+            if textChanged {
+                lastShownRange = NSRange(location: NSNotFound, length: 0)
+            }
             displayCurrent()
             return
         }
@@ -214,6 +222,9 @@ final class ScrollBox {
             return
         }
         lastShownRange = range
+        // textColor を先に固定してから本文を載せる。
+        // 後から textColor を入れると、見出しの濃さまで一色に潰れる。
+        v.textColor = ink
         v.attributedText = fullText.attributedSubstring(from: range)
     }
 
@@ -360,6 +371,18 @@ struct ReaderTextView: UIViewRepresentable {
     var onReachStart: () -> Void = {}
     var onReachEnd: () -> Void = {}
 
+    /// 紙面の色を UITextView に直接渡す。
+    /// SwiftUI Color 経由だと、アプリ全体がダークのとき夜テーマの文字が黒になり読めない。
+    private func applyPageColors(_ tv: UITextView) {
+        tv.backgroundColor = theme.uiBackground
+        tv.textColor = theme.uiInk
+        tv.tintColor = theme.uiInk
+        // 紙・セピアは明るい紙面なのでライト扱い。夜だけダーク。
+        // アプリのダーク指定を紙面に引き継ぐと、システムが文字色を書き換える。
+        tv.overrideUserInterfaceStyle = theme == .night ? .dark : .light
+        box.ink = theme.uiInk
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
     }
@@ -372,7 +395,7 @@ struct ReaderTextView: UIViewRepresentable {
         let tv = PageTextView()
         tv.fixedSize = pageSize
         tv.frame = CGRect(origin: .zero, size: pageSize)
-        tv.backgroundColor = UIColor(theme.background)
+        applyPageColors(tv)
         tv.isEditable = false
         tv.isSelectable = false
         tv.isScrollEnabled = false
@@ -421,7 +444,7 @@ struct ReaderTextView: UIViewRepresentable {
         context.coordinator.onReachEnd = onReachEnd
         context.coordinator.swipeEnabled = swipePaging
 
-        tv.backgroundColor = UIColor(theme.background)
+        applyPageColors(tv)
 
         // サイズ/余白の確定。変化があれば分割を作り直す(表示ページは維持)。
         var geometryChanged = false

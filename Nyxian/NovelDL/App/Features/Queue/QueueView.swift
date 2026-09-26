@@ -13,7 +13,7 @@ struct QueueView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.xl) {
-                    SectionBanner(title: "取得", eyebrow: "FETCH", subtitle: "いま走っている取得")
+                    SectionBanner(title: "取得", subtitle: "いま走っている取得")
 
                     VStack(alignment: .leading, spacing: Spacing.l) {
                         HStack(alignment: .firstTextBaseline) {

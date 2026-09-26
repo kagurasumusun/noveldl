@@ -215,14 +215,14 @@ struct PresetFormView: View {
 
                     section("アクセスの節度") {
                         fieldRow("throttle_ms", "アクセス間隔(ミリ秒)", "例: 3000")
-                        toggleRow("browser_fallback", "ブラウザ経由の許可(WAF対策)")
+                        toggleRow("browser_fallback", "ブラウザ経由の取得を許可する")
                         fieldRow("over18_cookie", "年齢確認クッキー", "サイト側の仕組みに合わせた値(任意)")
                     }
 
                     }
                     section(isModernPreset ? "抽出ルール" : "上級設定(全文 YAML)") {
                         if isModernPreset {
-                            Text("項目を選んで編集します。インデントは崩さないでください。定義の版(builtin_rev)は下げないでください。")
+                            Text("項目を選んで編集します。インデントは崩さないでください。「builtin_rev」の数値は下げないでください。")
                                 .font(AppFont.ui(11))
                                 .foregroundStyle(AppPalette.inkFaint)
                             ScrollView(.horizontal, showsIndicators: false) {
