@@ -165,8 +165,14 @@ struct ReaderView: View {
                             .padding(.horizontal, Spacing.m)
                             .padding(.vertical, 6)
                             .frame(maxWidth: 280)
-                            .background(Capsule().fill(theme.background.opacity(0.92)))
-                            .overlay(Capsule().strokeBorder(theme.ink.opacity(0.12), lineWidth: 1))
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(theme.background.opacity(0.92))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(theme.ink.opacity(0.12), lineWidth: 1)
+                            )
                             .task {
                                 try? await Task.sleep(nanoseconds: 2_500_000_000)
                                 withAnimation { messagePillText = nil }
@@ -202,6 +208,9 @@ struct ReaderView: View {
             }
         }
         .statusBarHidden(!chromeVisible)
+        // 紙・セピアは暗い時刻、夜は明るい時刻。アプリ全体のダーク指定を
+        // 紙面に引き継ぐと、白い時刻がクリームの紙に乗って読めない。
+        .preferredColorScheme(theme == .night ? .dark : .light)
         .task(id: chapterIndex) {
             await load()
             // 話移動の直後に一度だけ表示。消しタイマーは持たない(手動出没のみ)。
@@ -546,12 +555,14 @@ struct ReaderView: View {
 
                     HStack(spacing: Spacing.s) {
                         QuietButton(title: "古い版", systemImage: "clock.arrow.circlepath",
-                                    disabled: viewingOldVersion && versionCursor + 1 >= max(savedVersions, 1)) {
+                                    disabled: viewingOldVersion && savedVersions > 0 && versionCursor + 1 >= savedVersions) {
                             Task { await stepVersion(older: true) }
                         }
-                        QuietButton(title: viewingOldVersion ? "新しい版" : "最新", systemImage: "arrow.uturn.backward",
-                                    disabled: !viewingOldVersion) {
-                            Task { await stepVersion(older: false) }
+                        if viewingOldVersion {
+                            QuietButton(title: versionCursor > 0 ? "新しい版" : "最新に戻す",
+                                        systemImage: "arrow.uturn.backward") {
+                                Task { await stepVersion(older: false) }
+                            }
                         }
                     }
                     .padding(.vertical, 8)
@@ -604,6 +615,7 @@ struct ReaderView: View {
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(20)
         .presentationBackground(AppPalette.canvas)
+        .preferredColorScheme(.dark)
     }
 
     private var themePicker: some View {
@@ -619,7 +631,7 @@ struct ReaderView: View {
                         Circle()
                             .fill(item.background)
                             .frame(width: 34, height: 34)
-                            .overlay(Circle().strokeBorder(item == .night ? AppPalette.inkFaint : item.hairline, lineWidth: 1))
+                            .overlay(Circle().strokeBorder(item == .night ? Color.white.opacity(0.55) : item.hairline, lineWidth: 1))
                             .overlay {
                                 if on {
                                     Circle()
@@ -834,6 +846,7 @@ struct ReaderView: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(AppPalette.canvas)
+        .preferredColorScheme(.dark)
     }
 
     private struct TocGroup {

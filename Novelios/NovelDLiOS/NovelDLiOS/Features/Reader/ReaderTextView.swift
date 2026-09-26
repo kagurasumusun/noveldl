@@ -133,6 +133,13 @@ final class ScrollBox {
             if let p0 = text.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle {
                 keyParts.append(String(Int(p0.lineSpacing * 10)))
             }
+            // 文字色だけの変更も幾何キーに入れる。isEqual が見逃しても再表示する。
+            if let c = text.attribute(.foregroundColor, at: min(text.length - 1, max(0, text.length / 2)), effectiveRange: nil) as? UIColor {
+                var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                if c.getRed(&r, green: &g, blue: &b, alpha: &a) {
+                    keyParts.append("\(Int(r * 255))-\(Int(g * 255))-\(Int(b * 255))")
+                }
+            }
         }
         let key = keyParts.joined(separator: "|")
         if key == geomKey, !pageRanges.isEmpty {

@@ -204,22 +204,20 @@ final class ReaderMarkup: @unchecked Sendable {
     }
 
     private func rubyText(base: String, ruby: String, attributes attrs: [NSAttributedString.Key: Any]) -> NSAttributedString {
-        // Nyxian の SDK では attributes 引数は非 optional の CFDictionary として
-        // インポートされる（nil 不可）— 空の NSDictionary をブリッジして渡す。
-        // 属性を空にするとルビが黒のまま描かれ、夜テーマで消える。
         let baseFont = (attrs[.font] as? UIFont) ?? UIFont.systemFont(ofSize: 12)
         let rubyFont = UIFont(descriptor: baseFont.fontDescriptor, size: max(baseFont.pointSize * 0.45, 8))
         let rubyInk = (attrs[.foregroundColor] as? UIColor) ?? UIColor.label
-        let rubyAttrs: [NSAttributedString.Key: Any] = [
-            .font: rubyFont,
-            .foregroundColor: rubyInk,
-        ]
+        // 空の属性だとルビが黒のまま描かれ、夜テーマで消える。
+        // CoreText は前景色を CGColor で読む。
+        let annotationAttrs = NSMutableDictionary()
+        annotationAttrs.setObject(rubyFont, forKey: NSAttributedString.Key.font.rawValue as NSString)
+        annotationAttrs.setObject(rubyInk.cgColor, forKey: NSAttributedString.Key.foregroundColor.rawValue as NSString)
         let annotation = CTRubyAnnotationCreateWithAttributes(
             .auto, .auto, .before,
-            (ruby as CFString), rubyAttrs as CFDictionary)
-        var rubyAttrs = attrs
-        rubyAttrs[rubyKey] = annotation
-        return NSAttributedString(string: base, attributes: rubyAttrs)
+            (ruby as CFString), annotationAttrs as CFDictionary)
+        var baseAttrs = attrs
+        baseAttrs[rubyKey] = annotation
+        return NSAttributedString(string: base, attributes: baseAttrs)
     }
 
     /// 画像は描画を止めないため小さな罫に置き換える(同期取得=かくつきの原因)。
