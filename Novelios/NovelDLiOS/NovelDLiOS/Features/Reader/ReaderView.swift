@@ -661,7 +661,7 @@ struct ReaderView: View {
         let size = min(fontSize, 22)
         switch fontDesign {
         case "serif": return Font(ReaderMarkup.Style.jpSerif(size))
-        case "rounded": return .system(size: size, design: .rounded)
+        case "rounded": return Font(ReaderMarkup.Style.jpRounded(size))
         default: return Font(ReaderMarkup.Style.jpSans(size))
         }
     }

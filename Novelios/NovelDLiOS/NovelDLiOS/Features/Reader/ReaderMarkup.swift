@@ -33,6 +33,8 @@ final class ReaderMarkup: @unchecked Sendable {
             switch design {
             case "sans":
                 return Self.jpSans(fontSize)
+            case "rounded":
+                return Self.jpRounded(fontSize)
             case "mono":
                 return UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             default:
@@ -60,6 +62,15 @@ final class ReaderMarkup: @unchecked Sendable {
                 if let f = UIFont(name: name, size: size) { return f }
             }
             return UIFont.systemFont(ofSize: size, weight: .regular)
+        }
+
+        /// 日本語グリフを持つ丸ゴシック。system の rounded は和文が無く、
+        /// 未対応のまま明朝へ落ちていた。
+        static func jpRounded(_ size: CGFloat) -> UIFont {
+            for name in ["Hiragino Maru Gothic ProN", "HiraMaruProN-W4"] {
+                if let f = UIFont(name: name, size: size) { return f }
+            }
+            return jpSans(size)
         }
     }
 
@@ -177,30 +188,101 @@ final class ReaderMarkup: @unchecked Sendable {
         attributes attrs: [NSAttributedString.Key: Any],
         showRuby: Bool = true
     ) -> NSAttributedString {
-        guard showRuby else {
-            // ルビ非表示:読み仮名を落として基底文字だけ残す。
-            let cleaned = inner.replacingOccurrences(
-                of: "<rt[^>]*>.*?</rt>", with: "", options: .regularExpression)
+        // なろう等は <ruby>漢字<rt>かんじ</rt></ruby> で <rb> が無い。
+        // <rb> だけを基底にすると漢字が落ち、読みだけが本文に残る。
+        let noRp = removingTag("rp", in: inner)
+        if !showRuby {
+            let cleaned = removingTag("rt", in: noRp)
             return NSAttributedString(string: decodeEntities(stripTags(cleaned)), attributes: attrs)
         }
-        let ns = inner as NSString
-        let re = try! NSRegularExpression(
-            pattern: #"(?is)<rb[^>]*>(.*?)</rb>\s*<rt[^>]*>(.*?)</rt>|<rt[^>]*>(.*?)</rt>"#)
-        guard let m = re.firstMatch(in: inner, range: NSRange(location: 0, length: ns.length)) else {
-            return NSAttributedString(string: decodeEntities(stripTags(inner)), attributes: attrs)
+        let ns = noRp as NSString
+        guard let re = try? NSRegularExpression(
+            pattern: #"(?is)<rt\b[^>]*>(.*?)</rt>"#) else {
+            return NSAttributedString(string: decodeEntities(stripTags(noRp)), attributes: attrs)
         }
-        var base = ""
-        var ruby = ""
-        if m.range(at: 1).location != NSNotFound {
-            base = decodeEntities(stripTags(ns.substring(with: m.range(at: 1))))
-            ruby = decodeEntities(stripTags(ns.substring(with: m.range(at: 2))))
+        let matches = re.matches(in: noRp, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else {
+            return NSAttributedString(string: decodeEntities(stripTags(noRp)), attributes: attrs)
+        }
+        let out = NSMutableAttributedString()
+        var cursor = 0
+        for m in matches {
+            let before = m.range.location > cursor
+                ? ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor))
+                : ""
+            let ruby = decodeEntities(stripTags(ns.substring(with: m.range(at: 1))))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            appendRubyGroup(before: before, ruby: ruby, to: out, attributes: attrs)
+            cursor = m.range.location + m.range.length
+        }
+        if cursor < ns.length {
+            let tail = decodeEntities(stripTags(
+                ns.substring(with: NSRange(location: cursor, length: ns.length - cursor))))
+            if !tail.isEmpty {
+                out.append(NSAttributedString(string: tail, attributes: attrs))
+            }
+        }
+        return out.length > 0
+            ? out
+            : NSAttributedString(string: decodeEntities(stripTags(noRp)), attributes: attrs)
+    }
+
+    /// `<rt>` の直前を基底にする。`<rb>` があればその中身、無ければタグを除いた文字。
+    private func appendRubyGroup(
+        before: String,
+        ruby: String,
+        to out: NSMutableAttributedString,
+        attributes attrs: [NSAttributedString.Key: Any]
+    ) {
+        let ns = before as NSString
+        if let rbRe = try? NSRegularExpression(pattern: #"(?is)<rb\b[^>]*>(.*?)</rb>"#),
+           let m = rbRe.firstMatch(in: before, range: NSRange(location: 0, length: ns.length)) {
+            let pre = decodeEntities(stripTags(ns.substring(with: NSRange(location: 0, length: m.range.location))))
+            if !pre.isEmpty {
+                out.append(NSAttributedString(string: pre, attributes: attrs))
+            }
+            let base = decodeEntities(stripTags(ns.substring(with: m.range(at: 1))))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            appendRubyBase(base, ruby: ruby, to: out, attributes: attrs)
+            let postStart = m.range.location + m.range.length
+            if postStart < ns.length {
+                let post = decodeEntities(stripTags(
+                    ns.substring(with: NSRange(location: postStart, length: ns.length - postStart))))
+                if !post.isEmpty {
+                    out.append(NSAttributedString(string: post, attributes: attrs))
+                }
+            }
+            return
+        }
+        let base = decodeEntities(stripTags(before)).trimmingCharacters(in: .whitespacesAndNewlines)
+        appendRubyBase(base, ruby: ruby, to: out, attributes: attrs)
+    }
+
+    private func appendRubyBase(
+        _ base: String,
+        ruby: String,
+        to out: NSMutableAttributedString,
+        attributes attrs: [NSAttributedString.Key: Any]
+    ) {
+        if !base.isEmpty, !ruby.isEmpty {
+            out.append(rubyText(base: base, ruby: ruby, attributes: attrs))
         } else {
-            ruby = decodeEntities(stripTags(ns.substring(with: m.range(at: 3))))
+            let fallback = base.isEmpty ? ruby : base
+            if !fallback.isEmpty {
+                out.append(NSAttributedString(string: fallback, attributes: attrs))
+            }
         }
-        guard !base.isEmpty, !ruby.isEmpty else {
-            return NSAttributedString(string: base.isEmpty ? ruby : base, attributes: attrs)
-        }
-        return rubyText(base: base, ruby: ruby, attributes: attrs)
+    }
+
+    private func removingTag(_ name: String, in input: String) -> String {
+        let pattern = "<\(name)\\b[^>]*>.*?</\(name)>"
+        guard let re = try? NSRegularExpression(
+            pattern: pattern,
+            options: [.caseInsensitive, .dotMatchesLineSeparators]) else { return input }
+        return re.stringByReplacingMatches(
+            in: input,
+            range: NSRange(location: 0, length: (input as NSString).length),
+            withTemplate: "")
     }
 
     private func rubyText(base: String, ruby: String, attributes attrs: [NSAttributedString.Key: Any]) -> NSAttributedString {
@@ -223,18 +305,21 @@ final class ReaderMarkup: @unchecked Sendable {
 
     /// 画像は描画を止めないため小さな罫に置き換える(同期取得=かくつきの原因)。
     /// 挿絵のプレースホルダ(実画像は後から非同期で差し替える)。
-    static let placeholderImage: UIImage = {
+    static let placeholderImage = makePlaceholder(white: 0.82)
+    static let placeholderImageNight = makePlaceholder(white: 0.16)
+
+    private static func makePlaceholder(white: CGFloat) -> UIImage {
         let size = CGSize(width: 240, height: 180)
         let r = UIGraphicsImageRenderer(size: size)
         return r.image { ctx in
-            UIColor(white: 0.82, alpha: 1).setFill()
+            UIColor(white: white, alpha: 1).setFill()
             ctx.fill(CGRect(origin: .zero, size: size))
         }
-    }()
+    }
 
     private func imageAttachment(src: String, style: Style) -> NSAttributedString {
         let att = NSTextAttachment()
-        att.image = Self.placeholderImage
+        att.image = style.inkIsLight ? Self.placeholderImageNight : Self.placeholderImage
         let width = min(style.maxWidth, 280)
         att.bounds = CGRect(x: 0, y: -4, width: width, height: width * 0.75)
         let s = NSMutableAttributedString(attachment: att)
